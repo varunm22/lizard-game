@@ -35,7 +35,10 @@ export class LizardModel {
   }
 
   static async load(url: string): Promise<LizardModel> {
-    const gltf = await new GLTFLoader().loadAsync(url);
+    const loader = new GLTFLoader();
+    // The single-file preview build inlines the model as a data: URL. Decode it here rather than
+    // fetching it, since strict Content-Security-Policies (like the claude.ai preview) block that.
+    const gltf = url.startsWith('data:') ? await loader.parseAsync(dataUrlToBuffer(url), '') : await loader.loadAsync(url);
     toonify(gltf.scene);
     return new LizardModel(gltf.scene, gltf.animations);
   }
@@ -57,4 +60,11 @@ export class LizardModel {
   update(dt: number) {
     this.mixer.update(dt);
   }
+}
+
+function dataUrlToBuffer(url: string): ArrayBuffer {
+  const bytes = atob(url.slice(url.indexOf(',') + 1));
+  const buf = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+  return buf.buffer;
 }
