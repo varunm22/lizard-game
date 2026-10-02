@@ -8,6 +8,9 @@ import type { MoveState } from './state';
 const TILT_RATE = 12;
 /** Steepest ground tilt the body follows; beyond it the lizard stays more upright. */
 const MAX_TILT = (35 * Math.PI) / 180;
+/** Head turn at full turn input (radians), and how fast it eases in and out (per second). */
+const HEAD_TURN = 0.5;
+const HEAD_TURN_RATE = 10;
 const CROSS_FADE: Partial<Record<MoveState, number>> = { jump: 0.08, land: 0.06, fall: 0.15 };
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -55,6 +58,9 @@ export class LizardVisual {
     if (state === 'walk' || state === 'run') {
       this.model.setRate(THREE.MathUtils.clamp(p.horizontalSpeed / LIZARD_GAIT_SPEED[state], 0.3, 5));
     }
+    // Lead turns with the head: turning right (positive input) swings the head to the lizard's right.
+    const goal = p.turning * HEAD_TURN;
+    this.model.headTurn += (goal - this.model.headTurn) * (1 - Math.exp(-HEAD_TURN_RATE * dt));
     this.model.update(dt);
   }
 }

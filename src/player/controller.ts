@@ -4,10 +4,13 @@ import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
 
 /**
- * The player's physics: an upright capsule on Rapier's kinematic character controller. Horizontal
- * velocity comes from camera-relative input with acceleration; vertical velocity (gravity, jumps)
- * is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
+ * The player's physics: an upright capsule on Rapier's kinematic character controller. Steering is
+ * tank-style: left/right turns the lizard (in place when standing still), forward/back moves it
+ * along its facing with acceleration. Vertical velocity (gravity, jumps) is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
  */
+/** A step's downward move larger than this (m) is a fall, not walking down a slope. */
+const FREE_FALL_DROP = 0.002;
+
 export class PlayerController {
   readonly body: RAPIER.RigidBody;
   readonly collider: RAPIER.Collider;
@@ -28,6 +31,8 @@ export class PlayerController {
   jumped = false;
   /** Seconds since leaving the ground (0 while grounded). */
   airTime = 0;
+  /** Turn input this step, -1 (left) to 1 (right); the visual leans the head into it. */
+  turning = 0;
 
   private vy = 0;
   private sinceGrounded = Infinity;
@@ -54,19 +59,25 @@ export class PlayerController {
     this.kcc = kcc;
   }
 
-  /** Advance one fixed step. `cameraYaw` is the yaw the camera looks along, so input is camera-relative. */
-  step(dt: number, input: InputState, cameraYaw: number) {
+  /** Advance one fixed step. */
+  step(dt: number, input: InputState) {
     this.prevPosition.copy(this.position);
     this.prevYaw = this.yaw;
     this.landed = this.jumped = false;
 
-    // Horizontal: accelerate toward the stick direction in camera space.
-    const fx = Math.sin(cameraYaw);
-    const fz = Math.cos(cameraYaw);
-    const speed = input.run ? M.runSpeed : M.walkSpeed;
-    const tx = (input.move.y * fx - input.move.x * fz) * speed;
-    const tz = (input.move.y * fz + input.move.x * fx) * speed;
-    const hasInput = input.move.x !== 0 || input.move.y !== 0;
+    // Turn: right input turns right, which is clockwise seen from above (yaw decreasing).
+    this.turning = input.move.x;
+    this.yaw -= input.move.x * M.turnRate * dt;
+    this.yaw = Math.atan2(Math.sin(this.yaw), Math.cos(this.yaw));
+
+    // Horizontal: accelerate toward forward/back input along the facing.
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const forward = input.move.y;
+    const speed = forward < 0 ? M.backSpeed : input.run ? M.runSpeed : M.walkSpeed;
+    const tx = forward * fx * speed;
+    const tz = forward * fz * speed;
+    const hasInput = forward !== 0;
     const accel = !this.grounded ? M.airAccel : hasInput ? M.groundAccel : M.groundDecel;
     let vx = this.velocity.x;
     let vz = this.velocity.z;
@@ -80,13 +91,6 @@ export class PlayerController {
     } else {
       vx += (dvx / dv) * maxDv;
       vz += (dvz / dv) * maxDv;
-    }
-
-    // Turn toward where we're asked to go (or moving), at a capped rate.
-    if (hasInput || Math.hypot(vx, vz) > 0.02) {
-      const want = hasInput ? Math.atan2(tx, tz) : Math.atan2(vx, vz);
-      const diff = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
-      this.yaw += THREE.MathUtils.clamp(diff, -M.turnRate * dt, M.turnRate * dt);
     }
 
     // Vertical: buffered, coyote-timed jumps and asymmetric gravity.
@@ -116,7 +120,12 @@ export class PlayerController {
     const moved = this.kcc.computedMovement();
     const wasGrounded = this.grounded;
     // Rapier still reports grounded on the step a jump leaves the floor; rising from a jump is airborne.
-    this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0);
+    // It also reports grounded early when falling fast, as soon as the ground is within this step's
+    // drop, while the capsule is still centimetres up. Taking that at face value zeroed the fall speed
+    // and left the lizard drifting the last few centimetres down at snap speed. Still falling freely
+    // (the whole drop was allowed) means not landed yet.
+    const fellFreely = this.desired.y < -FREE_FALL_DROP && moved.y <= this.desired.y + 1e-5;
+    this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0) && !fellFreely;
 
     // Blocked going up (a ceiling) or landed: stop vertical speed so it doesn't build up.
     if (this.vy > 0 && moved.y < this.desired.y - 1e-5) this.vy = 0;

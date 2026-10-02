@@ -10,6 +10,7 @@ import { MovementStateMachine } from './player/state';
 import { LizardModel } from './player/lizardModel';
 import { LizardVisual } from './player/visual';
 import { FollowCamera } from './camera/followCamera';
+import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
 import type { GameTestHooks } from './debug/testHooks';
 import lizardUrl from './assets/lizard.glb?url';
@@ -33,7 +34,8 @@ async function main() {
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
 
-  const followCam = new FollowCamera(camera, world, player.body);
+  const fade = new OccluderFade(world, obstacles);
+  const followCam = new FollowCamera(camera, world, player.body, fade.handles);
   followCam.yaw = SPAWN.yaw;
 
   const input = new Input(renderer.domElement);
@@ -49,17 +51,22 @@ async function main() {
     ready: false,
     physicsSteps: 0,
     terrainHeight,
-    obstacles: () => obstacles.map((o) => ({ name: o.name, ...o.position, height: o.height })),
+    obstacles: () =>
+      obstacles.map((o) => ({ name: o.name, ...o.position, height: o.height, opacity: (o.mesh.material as THREE.Material).opacity })),
     groundAt: (x, z) => {
       const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, undefined, undefined, player.body);
       return hit ? 5 - hit.timeOfImpact : null;
     },
-    lizard: () => ({ clips: lizard.clipNames, current: lizard.current }),
+    lizard: () => {
+      const head = lizard.root.getObjectByName('head')!;
+      const local = lizard.root.worldToLocal(head.getWorldPosition(new THREE.Vector3()));
+      return { clips: lizard.clipNames, current: lizard.current, head: { x: local.x, y: local.y, z: local.z } };
+    },
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
       return { x: f.x, y: f.y, z: f.z, yaw: player.yaw, speed: player.horizontalSpeed, grounded: player.grounded, state: states.state };
     },
-    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance }),
+    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded }),
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -74,7 +81,7 @@ async function main() {
 
   startLoop({
     step(dt) {
-      player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput, followCam.yaw);
+      player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
       if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
       const state = states.update(
         {
@@ -99,7 +106,9 @@ async function main() {
 
       visual.update(states.state, alpha, frameDt);
       player.feetAt(alpha, feet);
-      followCam.update(feet, frameDt);
+      const steering = player.turning !== 0 || player.horizontalSpeed > 0.02;
+      followCam.update(feet, player.grounded, player.yawAt(alpha), steering, frameDt);
+      fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
       followSun(sun, feet);
       renderer.render(scene, camera);
       hooks.ready = true;

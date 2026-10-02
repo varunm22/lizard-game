@@ -5,13 +5,16 @@
 export const MOVEMENT = {
   walkSpeed: 0.25,
   runSpeed: 0.6,
+  /** Backing up is slower and never runs. */
+  backSpeed: 0.15,
   /** Speeding up on the ground (m/s²). */
   groundAccel: 3,
   /** Slowing down on the ground with no input (m/s²); higher than accel so stops feel planted. */
   groundDecel: 6,
   /** Steering in the air (m/s²). */
   airAccel: 1.2,
-  turnRate: (540 * Math.PI) / 180,
+  /** Turning speed at full left/right input. */
+  turnRate: (200 * Math.PI) / 180,
 
   jumpHeight: 0.08,
   gravity: 9.81,
