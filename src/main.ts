@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { startLoop } from './loop';
+import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { buildTerrain, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
@@ -49,6 +49,7 @@ async function main() {
 
   const hooks: GameTestHooks = {
     ready: false,
+    advance: () => {},
     physicsSteps: 0,
     terrainHeight,
     obstacles: () =>
@@ -78,41 +79,64 @@ async function main() {
   };
   window.__game = hooks;
 
-  startLoop({
-    step(dt) {
-      player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
-      if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
-      const state = states.update(
-        {
-          grounded: player.grounded,
-          jumped: player.jumped,
-          landed: player.landed,
-          verticalSpeed: player.velocity.y,
-          horizontalSpeed: player.horizontalSpeed,
-        },
-        dt,
-      );
-      if (state !== lastState && state !== 'idle') hud.hideHint();
-      lastState = state;
-      world.timestep = dt;
-      world.step();
-      hooks.physicsSteps++;
-    },
+  const tick = (dt: number) => {
+    player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
+    if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
+    const state = states.update(
+      {
+        grounded: player.grounded,
+        jumped: player.jumped,
+        landed: player.landed,
+        verticalSpeed: player.velocity.y,
+        horizontalSpeed: player.horizontalSpeed,
+      },
+      dt,
+    );
+    if (state !== lastState && state !== 'idle') hud.hideHint();
+    lastState = state;
+    world.timestep = dt;
+    world.step();
+    hooks.physicsSteps++;
+  };
+  const readInput = (frameDt: number) => {
+    frameInput = input.read(frameDt);
+    followCam.applyInput(frameInput);
+  };
+  const updateViews = (alpha: number, frameDt: number) => {
+    visual.update(states.state, alpha, frameDt);
+    player.feetAt(alpha, feet);
+    const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
+    followCam.update(feet, player.grounded, player.yawAt(alpha), steering, frameDt);
+    fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
+    followSun(sun, feet);
+  };
+  const draw = () => {
+    renderer.render(scene, camera);
+    hooks.ready = true;
+  };
+
+  let stopLoop: (() => void) | null = startLoop({
+    step: tick,
     render(alpha, frameDt) {
       // Input is read once per frame, before the physics steps that frame owes.
-      frameInput = input.read(frameDt);
-      followCam.applyInput(frameInput);
-
-      visual.update(states.state, alpha, frameDt);
-      player.feetAt(alpha, feet);
-      const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
-      followCam.update(feet, player.grounded, player.yawAt(alpha), steering, frameDt);
-      fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
-      followSun(sun, feet);
-      renderer.render(scene, camera);
-      hooks.ready = true;
+      readInput(frameDt);
+      updateViews(alpha, frameDt);
+      draw();
     },
   });
+
+  // Tests drive time themselves: the first call stops the real-time loop for good, then each call
+  // runs exactly `n` fixed steps (input, physics, camera, animation) and draws once at the end.
+  hooks.advance = (n, drawFrame = true) => {
+    stopLoop?.();
+    stopLoop = null;
+    for (let i = 0; i < n; i++) {
+      readInput(FIXED_DT);
+      tick(FIXED_DT);
+      updateViews(1, FIXED_DT);
+    }
+    if (drawFrame) draw();
+  };
 }
 
 main();

@@ -4,6 +4,12 @@ import type { InputState } from '../input';
 export interface GameTestHooks {
   ready: boolean;
   physicsSteps: number;
+  /**
+   * Stop real time and run exactly `n` fixed physics steps right now, with input, camera and
+   * animation updated each step, then draw one frame (unless `draw` is false). Headless Chromium
+   * renders slowly, so tests use this instead of waiting for frames.
+   */
+  advance: (n: number, draw?: boolean) => void;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
   /** Height of the first physics surface under (x, z), found by a downward ray, or null. */

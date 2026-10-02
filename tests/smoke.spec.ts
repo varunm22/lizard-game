@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-test('terrain boots and its physics heightfield matches the drawn ground', async ({ page }) => {
+test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard loads idle', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
-  await page.waitForFunction(() => (window.__game?.physicsSteps ?? 0) >= 10);
+  await page.evaluate(() => window.__game!.advance(30));
 
   // Sample a grid away from obstacles: the collider and the height function agree to within a mm.
   const samples = await page.evaluate(() => {
@@ -33,17 +33,10 @@ test('terrain boots and its physics heightfield matches the drawn ground', async
     expect(top! - ground).toBeGreaterThan(o.height * 0.8);
   }
 
-  await page.screenshot({ path: 'test-results/screenshots/terrain.png' });
-  expect(errors).toEqual([]);
-});
-
-test('lizard loads with all of its animation clips and starts idle', async ({ page }) => {
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
   const lizard = await page.evaluate(() => window.__game!.lizard());
   expect([...lizard.clips].sort()).toEqual(['fall', 'idle', 'jump', 'land', 'run', 'walk']);
-  await page.waitForFunction(() => (window.__game?.physicsSteps ?? 0) >= 30);
   expect(await page.evaluate(() => window.__game!.player().state)).toBe('idle');
   expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('idle');
   await page.screenshot({ path: 'test-results/screenshots/spawn.png' });
+  expect(errors).toEqual([]);
 });
