@@ -4,10 +4,15 @@ import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
 
 /**
- * The player's physics: an upright capsule on Rapier's kinematic character controller. Steering is
+ * The player's physics: a capsule lying along the lizard's body on Rapier's kinematic character
+ * controller. Steering is
  * tank-style: left/right turns the lizard (in place when standing still), forward/back moves it
  * along its facing with acceleration. Vertical velocity (gravity, jumps) is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
  */
+/** Lays the capsule's long axis (Y) along the lizard's forward axis (+Z). */
+const LAY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const UP = new THREE.Vector3(0, 1, 0);
+
 /** A step's downward move larger than this (m) is a fall, not walking down a slope. */
 const FREE_FALL_DROP = 0.002;
 
@@ -40,6 +45,10 @@ export class PlayerController {
   private jumpHeld = false;
   private jumping = false;
   private desired = new THREE.Vector3();
+  private world: RAPIER.World;
+  private rot = new THREE.Quaternion();
+  /** Turning is checked against everything but the terrain, which the controller lifts the body off. */
+  private turnBlocker = (c: RAPIER.Collider) => c.shapeType() !== RAPIER.ShapeType.HeightField;
 
   constructor(world: RAPIER.World, feet: THREE.Vector3) {
     this.position.copy(feet).y += centreAboveFeet();
@@ -47,7 +56,9 @@ export class PlayerController {
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.position.x, this.position.y, this.position.z),
     );
-    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(M.capsuleHalfHeight, M.capsuleRadius), this.body);
+    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(M.bodyHalfLength, M.bodyRadius), this.body);
+    this.world = world;
+    this.body.setRotation(this.bodyRotation(this.yaw), true);
 
     const kcc = world.createCharacterController(M.skin);
     kcc.setUp({ x: 0, y: 1, z: 0 });
@@ -65,10 +76,24 @@ export class PlayerController {
     this.prevYaw = this.yaw;
     this.landed = this.jumped = false;
 
-    // Turn: right input turns right, which is clockwise seen from above (yaw decreasing).
+    // Turn: right input turns right, which is clockwise seen from above (yaw decreasing). The body
+    // is long, so a turn that would swing it into a rock or log is refused.
     this.turning = input.move.x;
-    this.yaw -= input.move.x * M.turnRate * dt;
-    this.yaw = Math.atan2(Math.sin(this.yaw), Math.cos(this.yaw));
+    if (input.move.x !== 0) {
+      const yaw = Math.atan2(Math.sin(this.yaw - input.move.x * M.turnRate * dt), Math.cos(this.yaw - input.move.x * M.turnRate * dt));
+      const blocked = this.world.intersectionWithShape(
+        this.position,
+        this.bodyRotation(yaw),
+        this.collider.shape,
+        undefined,
+        undefined,
+        undefined,
+        this.body,
+        this.turnBlocker,
+      );
+      if (!blocked) this.yaw = yaw;
+    }
+    this.body.setNextKinematicRotation(this.bodyRotation(this.yaw));
 
     // Horizontal: accelerate toward forward/back input along the facing.
     const fx = Math.sin(this.yaw);
@@ -127,8 +152,16 @@ export class PlayerController {
     const fellFreely = this.desired.y < -FREE_FALL_DROP && moved.y <= this.desired.y + 1e-5;
     this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0) && !fellFreely;
 
-    // Blocked going up (a ceiling) or landed: stop vertical speed so it doesn't build up.
-    if (this.vy > 0 && moved.y < this.desired.y - 1e-5) this.vy = 0;
+    // Standing still on a rounded or faceted edge (the rim of a log, the shoulder of a rock), the
+    // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
+    // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
+    if (this.grounded && wasGrounded && !hasInput && moved.y <= 0 && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
+      moved.x = moved.y = moved.z = 0;
+    }
+
+    // Blocked going up (a ceiling): stop vertical speed so it doesn't build up. Grazing a rounded
+    // side (the underside of a log against the snout) only slows the rise, so that keeps the jump.
+    if (this.vy > 0 && moved.y < this.desired.y * 0.25) this.vy = 0;
     this.position.x += moved.x;
     this.position.y += moved.y;
     this.position.z += moved.z;
@@ -159,11 +192,17 @@ export class PlayerController {
   }
 
   /** Teleport (tests and respawn). */
-  setFeet(feet: THREE.Vector3) {
+  setFeet(feet: THREE.Vector3, yaw = this.yaw) {
     this.position.copy(feet).y += centreAboveFeet();
     this.prevPosition.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.vy = 0;
+    this.yaw = this.prevYaw = yaw;
     this.body.setTranslation(this.position, true);
+    this.body.setRotation(this.bodyRotation(yaw), true);
+  }
+
+  private bodyRotation(yaw: number): THREE.Quaternion {
+    return this.rot.setFromAxisAngle(UP, yaw).multiply(LAY);
   }
 }

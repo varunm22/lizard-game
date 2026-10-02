@@ -186,7 +186,10 @@ test('the log blocks walking but can be jumped over', async ({ page }) => {
   await page.keyboard.down('KeyW');
   await steps(page, 120);
   const blocked = await player(page);
-  expect(blocked.z).toBeGreaterThan(log.z + 0.04); // stopped on the near side
+  // Stopped on the near side, with the snout (6 cm ahead of the body centre) still outside the log.
+  // The log lies yawed 0.4 rad, so measure square to its axis; the lizard may slide along it.
+  const across = (blocked.x - log.x) * Math.sin(0.4) + (blocked.z - log.z) * Math.cos(0.4);
+  expect(across).toBeGreaterThan(0.085);
   await page.screenshot({ path: 'test-results/screenshots/log-blocked.png' });
 
   // Back up for a run-up, then run and jump.
@@ -241,3 +244,43 @@ test('camera orbits on drag, and fades the big rock instead of zooming in past i
   const clear = await page.evaluate(() => window.__game!.obstacles());
   expect(clear.find((o) => o.name === 'rock-big')!.opacity).toBe(1);
 });
+
+/** Run (or walk) at an obstacle from `back` metres south, jump when `jumpAt` metres from it, then let go. */
+async function jumpOnto(page: Page, name: string, back: number, jumpAt: number, run: boolean) {
+  await page.goto('/');
+  await page.waitForFunction(() => window.__game?.ready === true);
+  const o = await page.evaluate((n) => window.__game!.obstacles().find((o) => o.name === n)!, name);
+  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI), [o.x, o.z + back]);
+  await steps(page, 5);
+  await page.evaluate((run) => window.__game!.setInput({ move: { x: 0, y: 1 }, run }, 600), run);
+  await page.waitForFunction((z) => window.__game!.player().z < z, o.z + jumpAt, { timeout: 30_000 });
+  await drive(page, { move: { x: 0, y: 1 }, run, jump: true }, 12);
+  await page.evaluate(() => window.__game!.setInput({ move: { x: 0, y: 0 } }, 1));
+  await steps(page, 30);
+  return o;
+}
+
+test('landing on the mid rock: stands on top and stays put', async ({ page }) => {
+  const rock = await jumpOnto(page, 'rock-mid', 0.3, 0.17, true);
+  const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [rock.x, rock.z]);
+  const on = await player(page);
+  expect(on.grounded).toBe(true);
+  expect(on.y).toBeGreaterThan(ground + rock.height - 0.01);
+  await page.screenshot({ path: 'test-results/screenshots/rock-landed.png' });
+  await steps(page, 90);
+  const later = await player(page);
+  expect(Math.hypot(later.x - on.x, later.y - on.y, later.z - on.z)).toBeLessThan(0.002);
+});
+
+test('landing on the log: stands on top and stays put', async ({ page }) => {
+  const log = await jumpOnto(page, 'log', 0.3, 0.17, true);
+  const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [log.x, log.z]);
+  const on = await player(page);
+  expect(on.grounded).toBe(true);
+  expect(on.y).toBeGreaterThan(ground + log.height - 0.01);
+  await page.screenshot({ path: 'test-results/screenshots/log-landed.png' });
+  await steps(page, 90);
+  const later = await player(page);
+  expect(Math.hypot(later.x - on.x, later.y - on.y, later.z - on.z)).toBeLessThan(0.002);
+});
+

@@ -13,6 +13,8 @@ export const MOVEMENT = {
   groundDecel: 6,
   /** Steering in the air (m/s²). */
   airAccel: 1.2,
+  /** Standing still, slower drift than this (m/s) is cancelled so the lizard grips edges. */
+  gripCreep: 0.05,
   /** Turning speed at full left/right input. */
   turnRate: (200 * Math.PI) / 180,
 
@@ -28,12 +30,18 @@ export const MOVEMENT = {
   /** A jump pressed this long before landing still fires on touchdown. */
   jumpBuffer: 0.1,
 
-  capsuleRadius: 0.025,
-  capsuleHalfHeight: 0.02,
+  /**
+   * The body collider is a capsule lying along the lizard, snout to hips (the thin tail tip is left
+   * out), so the head can't push into rocks and logs and the body rests across them like the real
+   * thing. It turns with the lizard.
+   */
+  bodyRadius: 0.012,
+  bodyHalfLength: 0.048,
   /**
    * Gap the controller keeps between the capsule and everything else. Rapier's controller snags on
-   * heightfield triangle edges at lizard scale when this is small: a stress run of 2000 random
-   * 80-step runs across the terrain stalled 16/300 times at 2 mm, 8/2000 at 6 mm and 0/2000 at 8 mm.
+   * heightfield triangle edges at lizard scale when this is small: with the original upright
+   * capsule, a stress run of 2000 random 80-step runs stalled 16/300 times at 2 mm, 8/2000 at 6 mm
+   * and 0/2000 at 8 mm. The lying body capsule ran 77 random walks and runs at 8 mm with no snags.
    */
   skin: 0.008,
   maxSlopeClimb: (45 * Math.PI) / 180,
@@ -44,4 +52,4 @@ export const MOVEMENT = {
 };
 
 /** Height of the capsule centre above the feet, including the skin gap. */
-export const centreAboveFeet = () => MOVEMENT.capsuleHalfHeight + MOVEMENT.capsuleRadius + MOVEMENT.skin;
+export const centreAboveFeet = () => MOVEMENT.bodyRadius + MOVEMENT.skin;

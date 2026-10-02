@@ -27,7 +27,7 @@ async function main() {
   const obstacles = buildObstacles(scene, world);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
-  player.yaw = player.prevYaw = SPAWN.yaw;
+  player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
   const states = new MovementStateMachine();
 
   const lizard = await LizardModel.load(lizardUrl);
@@ -72,8 +72,7 @@ async function main() {
       forcedSteps = forSteps;
     },
     teleport: (x, z, yaw) => {
-      player.setFeet(new THREE.Vector3(x, terrainHeight(x, z), z));
-      player.yaw = player.prevYaw = yaw;
+      player.setFeet(new THREE.Vector3(x, terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;
     },
   };
