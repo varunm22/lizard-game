@@ -76,7 +76,12 @@ export class FollowCamera {
    * `facingYaw` is where the lizard faces; `steering` is true while it is being turned or moved, which
    * swings the camera back behind it unless the player orbited recently.
    */
-  update(feet: THREE.Vector3, grounded: boolean, facingYaw: number, steering: boolean, dt: number) {
+  /**
+   * `feet` is the interpolated position drawn this frame; `groundedFeetY` is the feet height from the
+   * latest physics step when that step was on the ground, else null. (The interpolated position can
+   * still be partway down from the air on the step that lands, which would lift the camera.)
+   */
+  update(feet: THREE.Vector3, groundedFeetY: number | null, facingYaw: number, steering: boolean, dt: number) {
     this.sinceLook += dt;
     this.sinceSteer = steering ? 0 : this.sinceSteer + dt;
     if (this.sinceSteer < CAM.recenterLinger && this.sinceLook > CAM.recenterDelay) {
@@ -86,7 +91,8 @@ export class FollowCamera {
 
     // Track the ground the lizard stands on, not its jumps: rising with every hop and then easing
     // back down after landing makes the whole view drift and the jump look floaty.
-    if (grounded || !this.initialised) this.groundY = feet.y;
+    if (groundedFeetY !== null) this.groundY = groundedFeetY;
+    else if (!this.initialised) this.groundY = feet.y;
     const falling = feet.y < this.groundY;
     const goalY = Math.min(feet.y, this.groundY) + CAM.targetHeight;
     if (!this.initialised) {

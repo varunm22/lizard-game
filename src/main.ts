@@ -46,6 +46,7 @@ async function main() {
   let frameInput: InputState = input.read(0);
   let lastState = states.state;
   const feet = new THREE.Vector3();
+  const groundedFeet = new THREE.Vector3();
 
   const hooks: GameTestHooks = {
     ready: false,
@@ -106,7 +107,8 @@ async function main() {
     visual.update(states.state, alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
-    followCam.update(feet, player.grounded, player.yawAt(alpha), steering, frameDt);
+    const groundedFeetY = player.grounded ? player.feetAt(1, groundedFeet).y : null;
+    followCam.update(feet, groundedFeetY, player.yawAt(alpha), steering, frameDt);
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     followSun(sun, feet);
   };
