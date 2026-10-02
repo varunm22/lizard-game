@@ -194,6 +194,8 @@ test('the log blocks walking but can be jumped over', async ({ page }) => {
   // The log lies yawed 0.4 rad, so measure square to its axis; the lizard may slide along it.
   const across = (blocked.x - log.x) * Math.sin(0.4) + (blocked.z - log.z) * Math.cos(0.4);
   expect(across).toBeGreaterThan(0.085);
+  // Nose up against the log with the camera behind: the log is in front, so it stays solid.
+  expect((await page.evaluate(() => window.__game!.camera())).faded).not.toContain('log');
   await page.screenshot({ path: 'test-results/screenshots/log-blocked.png' });
 
   // Back up for a run-up, then run and jump.

@@ -7,7 +7,12 @@ const FADED_OPACITY = 0.3;
 /** How fast opacity eases toward its target (per second, exponential). */
 const FADE_RATE = 12;
 /** Sight lines run to the lizard's middle and to points this far ahead of and behind it (m). */
-const BODY_REACH = 0.06;
+const BODY_REACH = 0.045;
+/**
+ * Sight lines stop this far short of the lizard (m), so something the lizard is touching (a log
+ * its snout is up against) doesn't count as blocking the view of it.
+ */
+const NEAR_GAP = 0.03;
 
 /**
  * Makes obstacles translucent while they block the view of the lizard, so the camera can stay at
@@ -47,12 +52,12 @@ export class OccluderFade {
     for (const k of [0, 1, -1]) {
       this.to.set(target.x + fx * k, target.y, target.z + fz * k).sub(camera);
       const len = this.to.length();
-      if (len < 1e-4) continue;
+      if (len <= NEAR_GAP) continue;
       this.ray.origin = camera;
       this.ray.dir = this.to.divideScalar(len);
       this.world.intersectionsWithRay(
         this.ray,
-        len,
+        len - NEAR_GAP,
         true,
         (hit) => {
           this.blocking.add(this.byHandle.get(hit.collider.handle)!);
