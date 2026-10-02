@@ -3,6 +3,7 @@ export interface GameTestHooks {
   ready: boolean;
   physicsSteps: number;
   bodies: () => { x: number; y: number; z: number }[];
+  lizard: () => { clips: string[]; current: string | undefined };
 }
 
 declare global {
