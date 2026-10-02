@@ -1,0 +1,94 @@
+import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
+import type { InputState } from '../input';
+import { EDGE_WALL_GROUP, terrainHeight } from '../world/terrain';
+
+const CAM = {
+  /** Look-at point above the lizard's feet (m). */
+  targetHeight: 0.03,
+  distance: 0.38,
+  minDistance: 0.15,
+  maxDistance: 1.2,
+  pitch: 0.28,
+  minPitch: -0.15,
+  maxPitch: 1.25,
+  /** Radius of the sphere swept along the arm, so the near plane never grazes a surface. */
+  probeRadius: 0.012,
+  /** Closest the arm can be pulled in (m). */
+  minArm: 0.05,
+  /** How fast the arm grows back after an obstacle clears (per second, exponential). */
+  armReturnRate: 4,
+  /** How fast the look-at point catches up vertically (per second); horizontal is locked on. */
+  verticalFollowRate: 10,
+  /** Never closer than this to the ground directly under the camera. */
+  groundClearance: 0.012,
+};
+
+/**
+ * Third-person orbit camera with a spring arm: mouse or right stick orbit, wheel zoom, and a
+ * sphere cast from the lizard back to the camera that pulls the camera in before anything solid
+ * can get between them.
+ */
+export class FollowCamera {
+  /** Yaw the camera looks along (0 looks toward +Z). Movement input is relative to this. */
+  yaw = 0;
+  pitch = CAM.pitch;
+  distance = CAM.distance;
+  /** Current arm length after collision pull-in. */
+  arm = CAM.distance;
+  readonly target = new THREE.Vector3();
+  private probe = new RAPIER.Ball(CAM.probeRadius);
+  private dir = new THREE.Vector3();
+  private initialised = false;
+
+  constructor(
+    private camera: THREE.PerspectiveCamera,
+    private world: RAPIER.World,
+    private ignoreBody: RAPIER.RigidBody,
+  ) {}
+
+  applyInput(input: InputState) {
+    this.yaw -= input.look.yaw;
+    this.pitch = THREE.MathUtils.clamp(this.pitch - input.look.pitch, CAM.minPitch, CAM.maxPitch);
+    this.distance = THREE.MathUtils.clamp(this.distance * Math.pow(1.12, input.zoom), CAM.minDistance, CAM.maxDistance);
+  }
+
+  update(feet: THREE.Vector3, dt: number) {
+    const goalY = feet.y + CAM.targetHeight;
+    if (!this.initialised) {
+      this.target.set(feet.x, goalY, feet.z);
+      this.initialised = true;
+    } else {
+      this.target.x = feet.x;
+      this.target.z = feet.z;
+      this.target.y += (goalY - this.target.y) * (1 - Math.exp(-CAM.verticalFollowRate * dt));
+    }
+
+    // Direction from the camera toward the target.
+    const cp = Math.cos(this.pitch);
+    this.dir.set(cp * Math.sin(this.yaw), -Math.sin(this.pitch), cp * Math.cos(this.yaw));
+
+    // Sweep a small sphere from the target back along the arm; stop short of the first hit.
+    let allowed = this.distance;
+    const hit = this.world.castShape(
+      this.target,
+      { x: 0, y: 0, z: 0, w: 1 },
+      { x: -this.dir.x, y: -this.dir.y, z: -this.dir.z },
+      this.probe,
+      0,
+      this.distance,
+      true,
+      undefined,
+      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP),
+      undefined,
+      this.ignoreBody,
+    );
+    if (hit) allowed = Math.max(CAM.minArm, hit.time_of_impact);
+    // Pull in instantly, ease back out.
+    this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
+
+    const pos = this.camera.position.copy(this.target).addScaledVector(this.dir, -this.arm);
+    pos.y = Math.max(pos.y, terrainHeight(pos.x, pos.z) + CAM.groundClearance);
+    this.camera.lookAt(this.target);
+  }
+}

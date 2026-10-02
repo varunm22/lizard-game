@@ -9,6 +9,8 @@ const CELLS = 128;
 /** The drawn ground extends past the walkable square so the clearing's rim fades into the fog. */
 const VISUAL_SIZE = 8;
 const SEED = 7;
+/** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
+export const EDGE_WALL_GROUP = 0x0002;
 
 /** Lattice value noise in [-1, 1], smooth-stepped between integer points. */
 function valueNoise(x: number, z: number): number {
@@ -114,7 +116,11 @@ export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
     [0, half, half, 0.05],
     [0, -half, half, 0.05],
   ]) {
-    world.createCollider(RAPIER.ColliderDesc.cuboid(hx, 2, hz).setTranslation(x + Math.sign(x) * 0.05, 1, z + Math.sign(z) * 0.05));
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(hx, 2, hz)
+        .setTranslation(x + Math.sign(x) * 0.05, 1, z + Math.sign(z) * 0.05)
+        .setCollisionGroups((EDGE_WALL_GROUP << 16) | 0xffff),
+    );
   }
 
   return mesh;

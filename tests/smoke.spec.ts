@@ -37,12 +37,13 @@ test('terrain boots and its physics heightfield matches the drawn ground', async
   expect(errors).toEqual([]);
 });
 
-test('lizard loads with all of its animation clips', async ({ page }) => {
-  await page.goto('/?clip=walk&angle=0.3');
+test('lizard loads with all of its animation clips and starts idle', async ({ page }) => {
+  await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
   const lizard = await page.evaluate(() => window.__game!.lizard());
   expect([...lizard.clips].sort()).toEqual(['fall', 'idle', 'jump', 'land', 'run', 'walk']);
-  expect(lizard.current).toBe('walk');
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: 'test-results/screenshots/lizard-walk.png' });
+  await page.waitForFunction(() => (window.__game?.physicsSteps ?? 0) >= 30);
+  expect(await page.evaluate(() => window.__game!.player().state)).toBe('idle');
+  expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('idle');
+  await page.screenshot({ path: 'test-results/screenshots/spawn.png' });
 });
