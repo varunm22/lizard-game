@@ -2,7 +2,11 @@
 export interface GameTestHooks {
   ready: boolean;
   physicsSteps: number;
-  bodies: () => { x: number; y: number; z: number }[];
+  /** The analytic terrain height the mesh and heightfield are built from. */
+  terrainHeight: (x: number, z: number) => number;
+  /** Height of the first physics surface under (x, z), found by a downward ray, or null. */
+  groundAt: (x: number, z: number) => number | null;
+  obstacles: () => { name: string; x: number; y: number; z: number; height: number }[];
   lizard: () => { clips: string[]; current: string | undefined };
 }
 
