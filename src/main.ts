@@ -105,7 +105,7 @@ async function main() {
 
       visual.update(states.state, alpha, frameDt);
       player.feetAt(alpha, feet);
-      const steering = player.turning !== 0 || player.horizontalSpeed > 0.02;
+      const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
       followCam.update(feet, player.grounded, player.yawAt(alpha), steering, frameDt);
       fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
       followSun(sun, feet);

@@ -16,7 +16,7 @@ export const MOVEMENT = {
   /** Standing still, slower drift than this (m/s) is cancelled so the lizard grips edges. */
   gripCreep: 0.05,
   /** Turning speed at full left/right input. */
-  turnRate: (200 * Math.PI) / 180,
+  turnRate: (90 * Math.PI) / 180,
 
   jumpHeight: 0.08,
   gravity: 9.81,

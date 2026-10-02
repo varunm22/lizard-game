@@ -36,8 +36,10 @@ export class PlayerController {
   jumped = false;
   /** Seconds since leaving the ground (0 while grounded). */
   airTime = 0;
-  /** Turn input this step, -1 (left) to 1 (right); the visual leans the head into it. */
+  /** Turn input this step, -1 (left) to 1 (right); the visual turns the head into it. */
   turning = 0;
+  /** True when the body itself turned this step (only while moving forward or back). */
+  bodyTurning = false;
 
   private vy = 0;
   private sinceGrounded = Infinity;
@@ -77,9 +79,11 @@ export class PlayerController {
     this.landed = this.jumped = false;
 
     // Turn: right input turns right, which is clockwise seen from above (yaw decreasing). The body
-    // is long, so a turn that would swing it into a rock or log is refused.
+    // only turns while moving forward or back; standing still, left/right just turns the head. The
+    // body is long, so a turn that would swing it into a rock or log is refused.
     this.turning = input.move.x;
-    if (input.move.x !== 0) {
+    this.bodyTurning = false;
+    if (input.move.x !== 0 && input.move.y !== 0) {
       const yaw = Math.atan2(Math.sin(this.yaw - input.move.x * M.turnRate * dt), Math.cos(this.yaw - input.move.x * M.turnRate * dt));
       const blocked = this.world.intersectionWithShape(
         this.position,
@@ -91,7 +95,10 @@ export class PlayerController {
         this.body,
         this.turnBlocker,
       );
-      if (!blocked) this.yaw = yaw;
+      if (!blocked) {
+        this.yaw = yaw;
+        this.bodyTurning = true;
+      }
     }
     this.body.setNextKinematicRotation(this.bodyRotation(this.yaw));
 

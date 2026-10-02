@@ -71,23 +71,25 @@ test('running is faster than walking', async ({ page }) => {
   await page.screenshot({ path: 'test-results/screenshots/run.png' });
 });
 
-test('A/D turn the lizard in place, leading with the head', async ({ page }) => {
+test('A/D while standing still only turn the head; the lizard stays put', async ({ page }) => {
   await boot(page, 0.6, 0.6, 0);
   const start = await player(page);
   const restHead = (await page.evaluate(() => window.__game!.lizard())).head;
-  // Turn right for half a second: yaw decreases (clockwise from above), the lizard stays put.
-  await page.evaluate(() => window.__game!.setInput({ move: { x: 1, y: 0 } }, 30));
-  await steps(page, 20);
+  await page.evaluate(() => window.__game!.setInput({ move: { x: 1, y: 0 } }, 40));
+  await steps(page, 25);
   const head = (await page.evaluate(() => window.__game!.lizard())).head;
   // The head swings toward the lizard's right, which is -X in its own frame.
-  expect(head.x).toBeLessThan(restHead.x - 0.003);
-  await page.screenshot({ path: 'test-results/screenshots/turn.png' });
-  await steps(page, 15);
+  expect(head.x).toBeLessThan(restHead.x - 0.005);
+  await page.screenshot({ path: 'test-results/screenshots/look-right.png' });
+  await steps(page, 20);
   const p = await player(page);
-  expect(p.yaw).toBeLessThan(start.yaw - 1.5);
-  expect(p.yaw).toBeGreaterThan(start.yaw - 2);
-  expect(Math.hypot(p.x - start.x, p.z - start.z)).toBeLessThan(0.005);
+  expect(p.yaw).toBe(start.yaw);
+  expect(Math.hypot(p.x - start.x, p.z - start.z)).toBeLessThan(0.002);
   expect(p.state).toBe('idle');
+  // Let go and the head comes back to centre.
+  await steps(page, 30);
+  const back = (await page.evaluate(() => window.__game!.lizard())).head;
+  expect(Math.abs(back.x - restHead.x)).toBeLessThan(0.003);
 });
 
 test('W with D walks a curve to the right; S backs up without turning', async ({ page }) => {
@@ -97,8 +99,10 @@ test('W with D walks a curve to the right; S backs up without turning', async ({
   await drive(page, { move: { x: 1, y: 1 } }, 30);
   const curved = await player(page);
   expect(curved.z).toBeGreaterThan(start.z + 0.03);
-  expect(curved.x).toBeLessThan(start.x - 0.01);
-  expect(curved.yaw).toBeLessThan(-1.2);
+  expect(curved.x).toBeLessThan(start.x - 0.005);
+  // 0.5 s at 90°/s.
+  expect(curved.yaw).toBeLessThan(-0.6);
+  expect(curved.yaw).toBeGreaterThan(-0.85);
 
   await page.evaluate(([x, z]) => window.__game!.teleport(x, z, 0), [start.x, start.z]);
   await steps(page, 5);
