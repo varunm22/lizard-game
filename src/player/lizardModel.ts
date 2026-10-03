@@ -23,13 +23,15 @@ const BONE_Z = new THREE.Vector3(0, 0, 1);
 export const BENT_BONES = ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'] as const;
 export type BentBone = (typeof BENT_BONES)[number];
 /**
- * Points the rig has no joint for, in model space (+Z forward, Y up), from PROFILE in
- * assets-src/lizard.py: the snout tip, the tail tip, and where the hind and front feet stand.
+ * Points the rig has no joint for, in model space (+Z forward, Y up): the snout tip, the tail tip,
+ * and where the hind and front feet stand. assets-src/lizard.py writes them as glTF extras on the armature.
  */
-const SNOUT = new THREE.Vector3(0, 0.008, 0.064);
-const TAIL_TIP = new THREE.Vector3(0, 0.0036, -0.092);
-const HIND_FOOT_Z = -0.014;
-const FRONT_FOOT_Z = 0.026;
+interface RigPoints {
+  snout: [number, number, number];
+  tail_tip: [number, number, number];
+  hind_foot_z: number;
+  front_foot_z: number;
+}
 /** Spheres roughly filling the body around each spine joint (radius, m), snout to tail tip: what pushes plants aside. */
 const BODY_SPHERES = { snout: 0.004, head: 0.009, neck: 0.008, chest: 0.011, hips: 0.011, tail1: 0.006, tail2: 0.0045, tail3: 0.0035, tail4: 0.0025 };
 
@@ -64,7 +66,7 @@ export class LizardModel {
     this.root = root;
     root.updateMatrixWorld(true);
     const head = root.getObjectByName('head')!;
-    this.snoutInHead = head.worldToLocal(root.localToWorld(SNOUT.clone()));
+    this.snoutInHead = head.worldToLocal(root.localToWorld(new THREE.Vector3(...rigPoints(root).snout)));
     // The snout sphere rides on the head bone.
     this.sphereBones = Object.keys(BODY_SPHERES).map((name) => root.getObjectByName(name === 'snout' ? 'head' : name)!);
     this.bodySpheres = Object.values(BODY_SPHERES).map((r) => ({ x: 0, y: 0, z: 0, r }));
@@ -151,6 +153,7 @@ export class LizardModel {
 
   private measureRig(): SpineRig {
     this.root.updateMatrixWorld(true);
+    const p = rigPoints(this.root);
     const rootInv = this.root.matrixWorld.clone().invert();
     const at = (name: string): Point => {
       const p = this.root.getObjectByName(name)!.getWorldPosition(new THREE.Vector3()).applyMatrix4(rootInv);
@@ -170,10 +173,10 @@ export class LizardModel {
       chest: at('chest'),
       neck: at('neck'),
       head: at('head'),
-      snout: { s: SNOUT.z, y: SNOUT.y },
-      tail: [at('tail1'), at('tail2'), at('tail3'), at('tail4'), { s: TAIL_TIP.z, y: TAIL_TIP.y }],
-      hindFoot: { s: HIND_FOOT_Z, y: 0 },
-      frontFoot: { s: FRONT_FOOT_Z, y: 0 },
+      snout: { s: p.snout[2], y: p.snout[1] },
+      tail: [at('tail1'), at('tail2'), at('tail3'), at('tail4'), { s: p.tail_tip[2], y: p.tail_tip[1] }],
+      hindFoot: { s: p.hind_foot_z, y: 0 },
+      frontFoot: { s: p.front_foot_z, y: 0 },
     };
   }
 
@@ -202,4 +205,13 @@ export class LizardModel {
       this.soles.set(leg, verts.filter((v) => v.y < low + 0.0015).map(({ mesh, index }) => ({ mesh, index })));
     }
   }
+}
+
+function rigPoints(root: THREE.Object3D): RigPoints {
+  let p: RigPoints | undefined;
+  root.traverse((o) => {
+    if (o.userData.snout) p = o.userData as RigPoints;
+  });
+  if (!p) throw new Error('lizard.glb has no rig points; regenerate it with npm run assets');
+  return p;
 }

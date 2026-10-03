@@ -32,7 +32,7 @@ export function createScene(container: HTMLElement): SceneContext {
   scene.background = new THREE.Color(PALETTE.sky);
   scene.fog = new THREE.Fog(PALETTE.sky, FOG.near, FOG.far);
 
-  // World units are metres; the lizard will be ~0.15 m long, so the camera sits low and close.
+  // World units are metres; the lizard is ~0.19 m long, so the camera sits low and close.
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.005, 30);
 
   scene.add(new THREE.HemisphereLight(0xdff2ff, 0x6b7d4a, 1.4));

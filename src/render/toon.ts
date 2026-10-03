@@ -21,7 +21,7 @@ export function toonify(root: THREE.Object3D) {
     mesh.receiveShadow = true;
     const swap = (m: THREE.Material) => {
       const src = m as THREE.MeshStandardMaterial;
-      return new THREE.MeshToonMaterial({ color: src.color, gradientMap: toonGradient(), name: src.name });
+      return new THREE.MeshToonMaterial({ color: src.color, map: src.map, gradientMap: toonGradient(), name: src.name });
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material);
   });
