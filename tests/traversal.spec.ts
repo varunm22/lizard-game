@@ -208,9 +208,19 @@ test('walking into the log climbs it, rearing up the face, drapes over the top a
   for (const f of await page.evaluate(() => window.__game!.feet())) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.004);
   await page.screenshot({ path: 'test-results/screenshots/log-draped.png' });
 
-  // Walking on, the front goes over the edge and it drops off the far side rather than balancing.
-  await drive(page, { move: { x: 0, y: 1 } }, 40);
-  await steps(page, 20);
+  // Walking on, the front goes over the edge and it drops off the far side rather than balancing,
+  // at walking speed: sliding down the log's rounded side doesn't fling it forward.
+  const fastest = await page.evaluate(() => {
+    const g = window.__game!;
+    g.setInput({ move: { x: 0, y: 1 } }, 40);
+    let top = 0;
+    for (let i = 0; i < 60; i++) {
+      g.advance(1, false);
+      top = Math.max(top, g.player().speed);
+    }
+    return top;
+  });
+  expect(fastest).toBeLessThan(0.27);
   const off = await player(page);
   expect(off.z).toBeLessThan(log.z - 0.06);
   expect(off.grounded).toBe(true);

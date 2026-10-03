@@ -153,7 +153,8 @@ export class PlayerController {
     const tip = this.grounded ? this.overhang(fx, fz) : 0;
     const standing = this.grounded;
     if (tip !== 0) this.grounded = false;
-    const perched = tip === -1;
+    // Front-only support (landed short) pulls up, unless backing away.
+    const perched = tip === -1 && forward >= 0;
     if (((forward > 0 && standing && this.blockedAhead) || perched) && this.startClimb(fx, fz, perched)) {
       this.stepClimb(dt);
       return;
@@ -217,6 +218,15 @@ export class PlayerController {
     // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
     if (this.grounded && wasGrounded && !hasInput && moved.y <= 0 && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
       moved.x = moved.y = moved.z = 0;
+    }
+
+    // Sliding down a rounded side (coming off the log) turns the drop into sideways motion, several
+    // times walking speed. Never move sideways faster than the speed asked for.
+    const sideways = Math.hypot(moved.x, moved.z);
+    const allowed = Math.max(Math.hypot(vx, vz), TIP_SPEED) * dt;
+    if (sideways > allowed) {
+      moved.x *= allowed / sideways;
+      moved.z *= allowed / sideways;
     }
 
     // Blocked going up (a ceiling): stop vertical speed so it doesn't build up. Grazing a rounded
