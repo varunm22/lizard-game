@@ -192,7 +192,9 @@ test('walking into the log climbs it, rearing up the face, drapes over the top a
     const g = window.__game!;
     g.setInput({ move: { x: 0, y: 1 } }, 400);
     for (let k = 0; k < 200 && !g.player().climbing; k++) g.advance(1, false);
-    g.advance(9);
+    // Until the chest has reared up the face (how soon depends on how far forward the front feet are).
+    for (let k = 0; k < 20 && g.lizard().spine.chest <= 0.6; k++) g.advance(1);
+    g.advance(1);
     return { climbing: g.player().climbing, spine: g.lizard().spine, feet: g.feet() };
   });
   expect(rear.climbing).toBe(true);
