@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
-import { EDGE_WALL_GROUP, terrainHeight } from '../world/terrain';
+import { EDGE_WALL_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 
 const CAM = {
   /** Look-at point above the lizard's feet (m). */
@@ -120,7 +120,7 @@ export class FollowCamera {
       this.distance,
       true,
       undefined,
-      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP),
+      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP),
       undefined,
       this.ignoreBody,
       this.skip,
