@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTFParser } from 'three/addons/loaders/GLTFLoader.js';
 import { toonify } from '../render/toon';
 import type { Point, SpineRig } from './spineFit';
 
@@ -71,7 +71,7 @@ export class LizardModel {
   }
 
   static async load(url: string): Promise<LizardModel> {
-    const loader = new GLTFLoader();
+    const loader = new GLTFLoader().register(decodeEmbeddedImages);
     // The single-file preview build inlines the model as a data: URL. Decode it here rather than
     // fetching it, since strict Content-Security-Policies (like the claude.ai preview) block that.
     const gltf = url.startsWith('data:') ? await loader.parseAsync(dataUrlToBuffer(url), '') : await loader.loadAsync(url);
@@ -184,6 +184,28 @@ export class LizardModel {
       this.soles.set(leg, verts.filter((v) => v.y < low + 0.0015).map(({ mesh, index }) => ({ mesh, index })));
     }
   }
+}
+
+/**
+ * GLTFLoader turns an image embedded in a GLB into a blob: URL and fetches it, which strict
+ * Content-Security-Policies (like the claude.ai preview's) refuse. Decode the bytes directly instead.
+ */
+function decodeEmbeddedImages(parser: GLTFParser) {
+  const original = parser.loadImageSource.bind(parser);
+  const cache = new Map<number, Promise<THREE.Texture>>();
+  parser.loadImageSource = (sourceIndex: number, loader: THREE.Loader) => {
+    const def = parser.json.images[sourceIndex];
+    if (def.bufferView === undefined) return original(sourceIndex, loader);
+    if (!cache.has(sourceIndex)) cache.set(sourceIndex, parser.getDependency('bufferView', def.bufferView).then(async (data: ArrayBuffer) => {
+      const bitmap = await createImageBitmap(new Blob([data], { type: def.mimeType }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+      const texture = new THREE.Texture(bitmap);
+      texture.needsUpdate = true;
+      texture.userData.mimeType = def.mimeType;
+      return texture;
+    }));
+    return cache.get(sourceIndex)!.then((t) => t.clone());
+  };
+  return { name: 'decode_embedded_images' };
 }
 
 function dataUrlToBuffer(url: string): ArrayBuffer {
