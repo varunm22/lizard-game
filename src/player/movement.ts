@@ -18,10 +18,10 @@ export const MOVEMENT = {
   /** Turning speed at full left/right input. */
   turnRate: (90 * Math.PI) / 180,
 
-  jumpHeight: 0.08,
+  jumpHeight: 0.1,
   /**
-   * Well under real gravity, for a slower, floatier hop that carries further: about 0.4 s in the
-   * air, 24 cm at a run (real gravity gave 0.23 s and 14 cm).
+   * Well under real gravity, for a slower, floatier hop that carries further: with the 10 cm jump,
+   * about 0.45 s in the air and 27 cm at a run (real gravity and 8 cm gave 0.23 s and 14 cm).
    */
   gravity: 3.5,
   /** Gravity multiplier while falling, so the way down is a little quicker than the way up. */

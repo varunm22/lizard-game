@@ -17,7 +17,8 @@ export interface Obstacle {
  * Placeholder obstacles until the props step: a few rocks and a fallen log, fixed in place and sunk
  * a little into the terrain. Each collider is the convex hull of its own mesh, so what you see is
  * what you stand on, and the faceted tops give flat footing instead of a ball to slide off. Sized
- * against the jump (0.08 m): the pebble, mid rock and log can be jumped onto; the big rock can't.
+ * against the jump (0.1 m): the pebble, mid rock and log can be jumped onto, the big rock only with a
+ * well-timed running jump.
  */
 export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacle[] {
   const obstacles: Obstacle[] = [];

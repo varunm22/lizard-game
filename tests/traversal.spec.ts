@@ -120,7 +120,7 @@ test('steering: A/D look around when still, turn the body when moving; S backs u
   expect(Math.abs(back.yaw)).toBeLessThan(0.01);
 });
 
-test('jump: ~8 cm unhurried arc, lands flush, camera holds still; a tap hops lower', async ({ page }) => {
+test('jump: ~10 cm unhurried arc, lands flush, camera holds still; a tap hops lower', async ({ page }) => {
   await boot(page);
   const start = await player(page);
   // Step through a held jump, recording the arc in the page.
@@ -142,13 +142,13 @@ test('jump: ~8 cm unhurried arc, lands flush, camera holds still; a tap hops low
     }
     return { peak, camRise: camHigh - camY, landedAt, seen: [...seen] };
   });
-  expect(arc.peak - start.y).toBeGreaterThan(0.07);
-  expect(arc.peak - start.y).toBeLessThan(0.09);
+  expect(arc.peak - start.y).toBeGreaterThan(0.09);
+  expect(arc.peak - start.y).toBeLessThan(0.11);
   expect(arc.seen).toContain('jump');
   expect(arc.seen).toContain('fall');
-  // About 0.4 s in the air, and grounded means on the ground, not drifting down the last few cm.
-  expect(arc.landedAt).toBeGreaterThan(20);
-  expect(arc.landedAt).toBeLessThan(28);
+  // About 0.45 s in the air, and grounded means on the ground, not drifting down the last few cm.
+  expect(arc.landedAt).toBeGreaterThan(23);
+  expect(arc.landedAt).toBeLessThan(31);
   // The camera holds its height through a hop on flat ground instead of bobbing after it.
   expect(arc.camRise).toBeLessThan(0.003);
   await steps(page, 30);
