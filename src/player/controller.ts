@@ -15,6 +15,36 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 /** A step's downward move larger than this (m) is a fall, not walking down a slope. */
 const FREE_FALL_DROP = 0.002;
+/**
+ * The capsule can rest on one end across a rim (half on a log, the rest over the drop), which a
+ * lizard can't: it tips off. With nothing within this far under its centre, but something under one
+ * end, it slides toward the overhang at TIP_SPEED until it falls.
+ */
+const SUPPORT_REACH = 0.015;
+const TIP_SPEED = 0.15;
+/** Where support is checked, from the centre along the facing (the capsule's straight part ends at ±0.048). */
+const SUPPORT_CHECKS = [-0.058, -0.03, 0.03, 0.058];
+/**
+ * Climbing: walking into something whose top is between CLIMB_MIN and CLIMB_MAX above the feet
+ * (the log, the mid rock; autostep handles lower), with room to lie on top, scrambles up onto it.
+ * Landing short with only the front of the body on a rim pulls up onto it the same way. The rim is
+ * the first top found stepping out from the centre to CLIMB_SCAN.
+ */
+const CLIMB_MIN = 0.015;
+const CLIMB_MAX = 0.075;
+/** A front-only perch can pull up onto a top this far below the body's feet height. */
+const PERCH_DROP = 0.03;
+const CLIMB_SCAN = 0.12;
+/** How far past the face the climb carries the centre, so the hind feet end up on top too. */
+const CLIMB_OVER = 0.03;
+/** Climb time: a base plus this much per metre of height. */
+const CLIMB_BASE_TIME = 0.2;
+const CLIMB_TIME_PER_M = 6;
+
+const smooth = (t: number) => {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+};
 
 export class PlayerController {
   readonly body: RAPIER.RigidBody;
@@ -41,6 +71,10 @@ export class PlayerController {
   /** True when the body itself turned this step (only while moving forward or back). */
   bodyTurning = false;
 
+  /** The climb in progress. */
+  private climb: { from: THREE.Vector3; to: THREE.Vector3; t: number; duration: number; top: number } | null = null;
+  /** Forward input last step was mostly stopped by something ahead. */
+  private blockedAhead = false;
   private vy = 0;
   private sinceGrounded = Infinity;
   private sinceJumpPressed = Infinity;
@@ -49,6 +83,7 @@ export class PlayerController {
   private desired = new THREE.Vector3();
   private world: RAPIER.World;
   private rot = new THREE.Quaternion();
+  private supportRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   /** Turning is checked against everything but the terrain, which the controller lifts the body off. */
   private turnBlocker = (c: RAPIER.Collider) => c.shapeType() !== RAPIER.ShapeType.HeightField;
 
@@ -77,6 +112,10 @@ export class PlayerController {
     this.prevPosition.copy(this.position);
     this.prevYaw = this.yaw;
     this.landed = this.jumped = false;
+    if (this.climb) {
+      this.stepClimb(dt);
+      return;
+    }
 
     // Turn: right input turns right, which is clockwise seen from above (yaw decreasing). The body
     // only turns while moving forward or back; standing still, left/right just turns the head. The
@@ -110,6 +149,16 @@ export class PlayerController {
     const tx = forward * fx * speed;
     const tz = forward * fz * speed;
     const hasInput = forward !== 0;
+    // Balanced on one end of the body over a rim isn't standing: it tips off, unless it climbs.
+    const tip = this.grounded ? this.overhang(fx, fz) : 0;
+    const standing = this.grounded;
+    if (tip !== 0) this.grounded = false;
+    // Front-only support (landed short) pulls up, unless backing away.
+    const perched = tip === -1 && forward >= 0;
+    if (((forward > 0 && standing && this.blockedAhead) || perched) && this.startClimb(fx, fz, perched)) {
+      this.stepClimb(dt);
+      return;
+    }
     const accel = !this.grounded ? M.airAccel : hasInput ? M.groundAccel : M.groundDecel;
     let vx = this.velocity.x;
     let vz = this.velocity.z;
@@ -123,6 +172,11 @@ export class PlayerController {
     } else {
       vx += (dvx / dv) * maxDv;
       vz += (dvz / dv) * maxDv;
+    }
+    if (tip !== 0 && (vx * fx + vz * fz) * tip < TIP_SPEED) {
+      const add = TIP_SPEED * tip - (vx * fx + vz * fz);
+      vx += add * fx;
+      vz += add * fz;
     }
 
     // Vertical: buffered, coyote-timed jumps and asymmetric gravity.
@@ -166,6 +220,15 @@ export class PlayerController {
       moved.x = moved.y = moved.z = 0;
     }
 
+    // Sliding down a rounded side (coming off the log) turns the drop into sideways motion, several
+    // times walking speed. Never move sideways faster than the speed asked for.
+    const sideways = Math.hypot(moved.x, moved.z);
+    const allowed = Math.max(Math.hypot(vx, vz), TIP_SPEED) * dt;
+    if (sideways > allowed) {
+      moved.x *= allowed / sideways;
+      moved.z *= allowed / sideways;
+    }
+
     // Blocked going up (a ceiling): stop vertical speed so it doesn't build up. Grazing a rounded
     // side (the underside of a log against the snout) only slows the rise, so that keeps the jump.
     if (this.vy > 0 && moved.y < this.desired.y * 0.25) this.vy = 0;
@@ -173,6 +236,8 @@ export class PlayerController {
     this.position.y += moved.y;
     this.position.z += moved.z;
     this.body.setNextKinematicTranslation(this.position);
+    const wanted = this.desired.x * fx + this.desired.z * fz;
+    this.blockedAhead = forward > 0 && wanted > 0 && moved.x * fx + moved.z * fz < wanted * 0.3;
 
     // Keep the velocity actually achieved, so walls absorb momentum instead of storing it.
     this.velocity.set(moved.x / dt, this.vy, moved.z / dt);
@@ -180,6 +245,87 @@ export class PlayerController {
 
     if (this.grounded && !wasGrounded && this.airTime > 0.05) this.landed = true;
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+  }
+
+  /** Climbing in progress: the visual bends the body up over the rim. */
+  get climbing(): boolean {
+    return this.climb !== null;
+  }
+
+  /** Height of the top being climbed onto, while climbing. */
+  get climbTop(): number | null {
+    return this.climb?.top ?? null;
+  }
+
+  /** Start a climb onto what's ahead if it's the right height and there's room on top. */
+  private startClimb(fx: number, fz: number, perched: boolean): boolean {
+    const feetY = this.position.y - centreAboveFeet();
+    const from = feetY + CLIMB_MAX + 0.005;
+    const lowest = perched ? feetY - PERCH_DROP : feetY + CLIMB_MIN;
+    const topAt = (s: number) => {
+      this.supportRay.origin = { x: this.position.x + fx * s, y: from, z: this.position.z + fz * s };
+      const hit = this.world.castRay(this.supportRay, from - lowest, true, undefined, undefined, undefined, this.body);
+      // A ray that starts inside something means its top is out of reach.
+      return hit && hit.timeOfImpact > 1e-4 ? from - hit.timeOfImpact : null;
+    };
+    let rim = -1;
+    for (let s = 0.02; s <= CLIMB_SCAN && rim < 0; s += 0.01) if (topAt(s) !== null) rim = s;
+    if (rim < 0) return false;
+    // The body ends up with its hind feet past the rim, lying on the top found there.
+    const over = rim + CLIMB_OVER;
+    const top = topAt(over);
+    if (top === null) return false;
+    const to = new THREE.Vector3(this.position.x + fx * over, top + centreAboveFeet() + 0.001, this.position.z + fz * over);
+    if (this.world.intersectionWithShape(to, this.bodyRotation(this.yaw), this.collider.shape, undefined, undefined, undefined, this.body)) {
+      return false;
+    }
+    const height = Math.abs(top - feetY);
+    this.climb = { from: this.position.clone(), to, t: 0, duration: CLIMB_BASE_TIME + CLIMB_TIME_PER_M * height, top };
+    this.vy = 0;
+    this.jumping = false;
+    return true;
+  }
+
+  /**
+   * Follow the climb path: up and over together, the rise finishing a little early so the body
+   * clears the rim. The capsule cuts the corner, but nothing else moves into the space it passes.
+   */
+  private stepClimb(dt: number) {
+    const c = this.climb!;
+    c.t = Math.min(1, c.t + dt / c.duration);
+    const rise = smooth(c.t / 0.75);
+    const over = smooth(c.t);
+    this.position.set(
+      c.from.x + (c.to.x - c.from.x) * over,
+      c.from.y + (c.to.y - c.from.y) * rise,
+      c.from.z + (c.to.z - c.from.z) * over,
+    );
+    this.body.setNextKinematicTranslation(this.position);
+    this.velocity.subVectors(this.position, this.prevPosition).divideScalar(dt);
+    this.grounded = true;
+    this.airTime = 0;
+    this.turning = 0;
+    this.bodyTurning = false;
+    if (c.t >= 1) {
+      this.climb = null;
+      this.blockedAhead = false;
+    }
+  }
+
+  /**
+   * Which way to slide when balanced on one end: +1 (forward) when only the rear is supported, -1
+   * when only the front is, 0 when the centre is supported or there's nothing to go on.
+   */
+  private overhang(fx: number, fz: number): number {
+    const reach = M.bodyRadius + M.skin + SUPPORT_REACH;
+    const supported = (s: number) => {
+      this.supportRay.origin = { x: this.position.x + fx * s, y: this.position.y, z: this.position.z + fz * s };
+      return this.world.castRay(this.supportRay, reach, true, undefined, undefined, undefined, this.body) !== null;
+    };
+    if (supported(0)) return 0;
+    let side = 0;
+    for (const s of SUPPORT_CHECKS) if (supported(s)) side += Math.sign(s);
+    return -Math.sign(side);
   }
 
   /** Feet position for rendering, interpolated between the last two steps. */
@@ -204,6 +350,8 @@ export class PlayerController {
     this.prevPosition.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.vy = 0;
+    this.climb = null;
+    this.blockedAhead = false;
     this.yaw = this.prevYaw = yaw;
     this.body.setTranslation(this.position, true);
     this.body.setRotation(this.bodyRotation(yaw), true);
