@@ -53,6 +53,8 @@ export interface GameTestHooks {
   plants: (near?: { x: number; z: number; r: number }) => { kind: string; x: number; y: number; z: number; height: number; tiltX: number; tiltZ: number }[];
   /** The pond's centre, mean shoreline radius, deepest depth, and the height of its surface. */
   pond: () => { x: number; z: number; radius: number; depth: number; waterY: number };
+  /** Ripples spreading on the pond: where each started, seconds since, and its strength (~0.2 wake to 1.5 splash). */
+  ripples: () => { x: number; z: number; age: number; strength: number }[];
   /** `faded` names the obstacles currently blocking the view of the lizard. */
   camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[] };
   /**
