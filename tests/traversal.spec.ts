@@ -236,6 +236,15 @@ test('the big rock is too tall to climb, and the log can be jumped over', async 
   expect(blocked.climbing).toBe(false);
   const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [blocked.x, blocked.z]);
   expect(blocked.y).toBeLessThan(ground + 0.02);
+  // Jumping at it, the lizard comes down off its face onto the ground. It doesn't hang there by the
+  // snout with only one foot on the rock until it next moves.
+  await teleport(page, rock.x, rock.z + 0.35, Math.PI);
+  await driveUntilZBelow(page, { move: { x: 0, y: 1 } }, rock.z + 0.16);
+  await drive(page, { move: { x: 0, y: 1 }, jump: true }, 12);
+  await steps(page, 60);
+  const fell = await player(page);
+  expect(fell.y).toBeLessThan(ground + 0.02);
+  for (const f of await page.evaluate(() => window.__game!.feet())) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.003);
 
   const log = await obstacle(page, 'log');
   await teleport(page, log.x, log.z + 0.25, Math.PI);
@@ -249,12 +258,13 @@ test('the big rock is too tall to climb, and the log can be jumped over', async 
 
 test('landing on the mid rock and the log: stands on top and stays put', async ({ page }) => {
   await boot(page);
-  for (const name of ['rock-mid', 'log']) {
+  // The mid rock is narrower than the lizard is long: a running jump carries it over and off.
+  for (const [name, run] of [['rock-mid', false], ['log', true]] as const) {
     const o = await obstacle(page, name);
     await teleport(page, o.x, o.z + 0.3, Math.PI);
-    await driveUntilZBelow(page, { move: { x: 0, y: 1 }, run: true }, o.z + 0.17);
-    await drive(page, { move: { x: 0, y: 1 }, run: true, jump: true }, 12);
-    await steps(page, 30);
+    await driveUntilZBelow(page, { move: { x: 0, y: 1 }, run }, o.z + 0.17);
+    await drive(page, { move: { x: 0, y: 1 }, run, jump: true }, 12);
+    await steps(page, 90);
     const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [o.x, o.z]);
     const on = await player(page);
     expect(on.grounded, name).toBe(true);
