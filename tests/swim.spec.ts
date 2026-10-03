@@ -51,8 +51,8 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   const sunk = await player(page);
   expect(sunk.swimming).toBe(true);
   expect(sunk.grounded).toBe(false);
-  expect(start.y - sunk.y).toBeGreaterThan(0.01);
-  expect(start.y - sunk.y).toBeLessThan(0.03);
+  expect(start.y - sunk.y).toBeGreaterThan(0.035);
+  expect(start.y - sunk.y).toBeLessThan(0.06);
   await page.evaluate(() => window.__game!.setInput({ move: { x: -1, y: 0 } }, 60));
   await steps(page, 60);
   const turned = await player(page);
@@ -61,7 +61,7 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   expect(Math.abs(turn)).toBeGreaterThan(1.3);
   expect(Math.hypot(turned.x - sunk.x, turned.z - sunk.z)).toBeLessThan(0.005);
 
-  // A tap of Space tilts the snout up for about a second, rising, then it levels off and sinks.
+  // A tap of Space eases the snout up for about half a second, rising, then it levels off and sinks.
   const tilt = await page.evaluate(() => {
     const g = window.__game!;
     const y0 = g.player().y;
@@ -75,7 +75,8 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
     g.advance(60, false);
     return { pitch, risen, after: g.player().swimPitch, still: g.player().swimming };
   });
-  expect(tilt.pitch).toBeGreaterThan(0.45);
+  expect(tilt.pitch).toBeGreaterThan(0.35);
+  expect(tilt.pitch).toBeLessThan(0.55);
   expect(tilt.risen).toBeGreaterThan(0.025);
   expect(tilt.after).toBeLessThan(0.05);
   expect(tilt.still).toBe(true);

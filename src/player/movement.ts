@@ -43,13 +43,17 @@ export const MOVEMENT = {
   /** Vertical drag is quicker, so a Space tilt starts rising at once. */
   swimVerticalDrag: 5,
   /** Left alone in the water, the lizard sinks this fast (m/s). */
-  sinkSpeed: 0.025,
-  /** Space tilts the head up this far for swimTiltTime seconds, rising at swimRiseSpeed. */
+  sinkSpeed: 0.06,
+  /**
+   * Space tilts the head toward swimTilt for swimTiltTime seconds, rising at up to swimRiseSpeed
+   * (about 6 cm a press from still). The tilt eases in and out slowly, so a short press only gets
+   * most of the way there (about 27°).
+   */
   swimTilt: (35 * Math.PI) / 180,
-  swimTiltTime: 1,
-  swimRiseSpeed: 0.12,
+  swimTiltTime: 0.5,
+  swimRiseSpeed: 0.25,
   /** How fast the body pitches into and out of the tilt (per second, exponential). */
-  swimTiltRate: 6,
+  swimTiltRate: 3,
   /**
    * The lizard starts swimming once its whole body is under (the capsule's top below the surface)
    * and stops when standing in water this much shallower than that.
