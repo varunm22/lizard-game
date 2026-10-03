@@ -36,19 +36,19 @@ export class Splashes {
 
     if (feetUnder && !this.feetWasUnder) {
       const fall = Math.max(0, -player.velocity.y);
-      this.water.ripple(x, z, Math.min(1.5, 0.3 + 1.2 * fall));
+      this.water.ripple(x, z, Math.min(2, 0.6 + 1.4 * fall));
       // A hard landing sends out a second, later ring.
-      if (fall > 0.5) this.water.ripple(x, z, 0.7, 0.25);
+      if (fall > 0.5) this.water.ripple(x, z, 1, 0.3);
       this.sinceWake = 0;
     } else if (player.swimming && this.backWasUnder && !backUnder) {
-      this.water.ripple(x, z, 0.5);
+      this.water.ripple(x, z, 0.8);
       this.sinceWake = 0;
     }
 
     // Wading or swimming along the top: the body cuts the surface.
     this.sinceWake += dt;
     if (feetUnder && !backUnder && player.horizontalSpeed > WAKE_SPEED && this.sinceWake > WAKE_INTERVAL) {
-      this.water.ripple(x, z, 0.2);
+      this.water.ripple(x, z, 0.4);
       this.sinceWake = 0;
     }
     this.feetWasUnder = feetUnder;

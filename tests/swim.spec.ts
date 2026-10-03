@@ -134,7 +134,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   await page.evaluate(([px, pz, r]) => window.__game!.teleport(px + r + 0.2, pz + 0.1, -Math.PI / 2), [pond.x, pond.z, pond.radius]);
   const wade = await firstRipple({ move: { x: 0, y: 1 } }, 300);
   expect(wade).not.toBeNull();
-  expect(wade!.ripple.strength).toBeLessThan(0.5);
+  expect(wade!.ripple.strength).toBeLessThan(0.9);
   expect(Math.hypot(wade!.ripple.x - wade!.p.x, wade!.ripple.z - wade!.p.z)).toBeLessThan(0.02);
 
   // Running and jumping off the shore: a much bigger ring.
@@ -144,7 +144,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   await page.evaluate(() => window.__game!.advance(25, false));
   const splash = await firstRipple({ move: { x: 0, y: 1 }, run: true, jump: true }, 60);
   expect(splash).not.toBeNull();
-  expect(splash!.ripple.strength).toBeGreaterThan(1);
+  expect(splash!.ripple.strength).toBeGreaterThan(1.4);
   await page.evaluate(() => window.__game!.advance(20));
   await page.screenshot({ path: 'test-results/screenshots/ripple-splash.png' });
 
@@ -154,6 +154,6 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   const surfacing = await firstRipple({ jump: true }, 60);
   expect(surfacing).not.toBeNull();
   expect(surfacing!.p.swimming).toBe(true);
-  expect(surfacing!.ripple.strength).toBeGreaterThan(0.3);
+  expect(surfacing!.ripple.strength).toBeGreaterThan(0.6);
   expect(errors).toEqual([]);
 });

@@ -7,18 +7,19 @@ const MAX_RIPPLES = 16;
 /** Rings spread at this speed (m/s), about what small ripples on a real pond do. */
 const RIPPLE_SPEED = 0.22;
 /** Distance between a ripple's rings (m). */
-const RIPPLE_WAVELENGTH = 0.022;
+const RIPPLE_WAVELENGTH = 0.028;
 /** Height of a strength-1 ripple's rings (m). */
-const RIPPLE_HEIGHT = 0.0025;
+const RIPPLE_HEIGHT = 0.003;
 /** A ripple lasts base + perStrength * strength seconds. */
-const RIPPLE_LIFE = { base: 1.2, perStrength: 1.4 };
+const RIPPLE_LIFE = { base: 1.8, perStrength: 1.6 };
 /** Grid cells across the water sheet: ~1.5 cm, enough for the waves; ripple rings are shaded per pixel. */
 const SEGMENTS = 160;
 
 /**
  * Surface height above WATER_Y at a point of the sheet (pond-centred metres): a few slow crossing
  * swells, plus every live ripple, a packet of rings travelling out from where it started, widening
- * and fading as it goes. Shared by both shaders.
+ * and fading as it goes, in .x. Shared by both shaders. In .y, how strongly a ripple's crest shows
+ * there (0 to 1), for the foam lines that make even a gentle ripple readable in the toon shading.
  */
 const HEIGHT_GLSL = /* glsl */ `
 uniform float uTime;
@@ -30,8 +31,9 @@ float swellHeight(vec2 p) {
        + 0.0005 * sin(dot(p, vec2(31.0, -26.0)) - uTime * 2.6);
 }
 
-float rippleHeight(vec2 p) {
+vec2 rippleHeight(vec2 p) {
   float h = 0.0;
+  float crest = 0.0;
   for (int i = 0; i < ${MAX_RIPPLES}; i++) {
     vec4 r = uRipples[i];
     float age = uTime - r.z;
@@ -41,10 +43,12 @@ float rippleHeight(vec2 p) {
     float front = ${RIPPLE_SPEED.toFixed(3)} * age;
     float width = 0.012 + 0.02 * r.w + 0.03 * age;
     float x = (d - front) / width;
-    float fade = (1.0 - age / life) * (1.0 - age / life) / (1.0 + 12.0 * front);
-    h += ${RIPPLE_HEIGHT.toFixed(4)} * r.w * fade * exp(-x * x) * cos(${((2 * Math.PI) / RIPPLE_WAVELENGTH).toFixed(2)} * (d - front));
+    float t = age / life;
+    float ring = exp(-x * x) * cos(${((2 * Math.PI) / RIPPLE_WAVELENGTH).toFixed(2)} * (d - front));
+    h += ${RIPPLE_HEIGHT.toFixed(4)} * r.w * (1.0 - t) * (1.0 - t) / (1.0 + 6.0 * front) * ring;
+    crest = max(crest, (1.0 - t * t) * (0.55 + 0.45 * min(1.0, r.w)) * ring);
   }
-  return h;
+  return vec2(h, crest);
 }
 `;
 
@@ -90,13 +94,13 @@ export class Water {
           vec2 dx = vWaterXZ + vec2(E, 0.0);
           vec2 dz = vWaterXZ + vec2(0.0, E);
           float swell = swellHeight(vWaterXZ);
-          float rings = rippleHeight(vWaterXZ);
-          float h = swell + rings;
-          vec2 slope = (vec2(swellHeight(dx) + rippleHeight(dx), swellHeight(dz) + rippleHeight(dz)) - h) / E;
+          vec2 rings = rippleHeight(vWaterXZ);
+          float h = swell + rings.x;
+          vec2 slope = (vec2(swellHeight(dx) + rippleHeight(dx).x, swellHeight(dz) + rippleHeight(dz).x) - h) / E;
           // Foam on ripple crests, and a faint glint along the swells' tops.
-          float foam = smoothstep(0.0009, 0.0013, rings);
+          float foam = smoothstep(0.42, 0.52, rings.y);
           float glint = smoothstep(0.0015, 0.0017, swell);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.98, 1.0), max(0.75 * foam, 0.2 * glint));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.98, 1.0), max(0.85 * foam, 0.2 * glint));
           diffuseColor.a = mix(diffuseColor.a, 0.85, foam);`,
         )
         .replace(
@@ -116,7 +120,7 @@ export class Water {
     scene.add(this.mesh);
   }
 
-  /** Start a ripple at world (x, z), `delay` seconds from now; strength ~0.3 for a gentle touch up to ~1.5 for a splash. */
+  /** Start a ripple at world (x, z), `delay` seconds from now; strength ~0.6 for a gentle touch up to 2 for a splash. */
   ripple(x: number, z: number, strength: number, delay = 0) {
     this.uniforms.uRipples.value[this.next].set(x - POND.x, z - POND.z, this.time + delay, strength);
     this.next = (this.next + 1) % MAX_RIPPLES;
