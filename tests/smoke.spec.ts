@@ -26,7 +26,7 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
 
   // Obstacles sit on the ground, not floating or buried.
   const obstacles = await page.evaluate(() => window.__game!.obstacles());
-  expect(obstacles.map((o) => o.name).sort()).toEqual(['log', 'pebble', 'rock-big', 'rock-mid']);
+  expect(obstacles.map((o) => o.name).sort()).toEqual(['log', 'pebble', 'rock-big', 'rock-island', 'rock-mid', 'rock-sunk']);
   for (const o of obstacles) {
     const top = await page.evaluate(([x, z]) => window.__game!.groundAt(x, z), [o.x, o.z]);
     const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [o.x, o.z]);
@@ -34,7 +34,7 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
   }
 
   const lizard = await page.evaluate(() => window.__game!.lizard());
-  expect([...lizard.clips].sort()).toEqual(['fall', 'idle', 'jump', 'land', 'run', 'walk']);
+  expect([...lizard.clips].sort()).toEqual(['fall', 'idle', 'jump', 'land', 'run', 'swim', 'walk']);
   expect(await page.evaluate(() => window.__game!.player().state)).toBe('idle');
   expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('idle');
   await page.screenshot({ path: 'test-results/screenshots/spawn.png' });

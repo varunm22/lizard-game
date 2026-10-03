@@ -34,6 +34,32 @@ export const MOVEMENT = {
   /** A jump pressed this long before landing still fires on touchdown. */
   jumpBuffer: 0.1,
 
+  /** Swimming speeds (m/s): slower than walking, Shift for a faster tail beat. */
+  swimSpeed: 0.14,
+  swimFastSpeed: 0.24,
+  swimBackSpeed: 0.06,
+  /** Water drag: velocity eases toward the target at this rate (per second, exponential). */
+  swimDrag: 3,
+  /** Vertical drag is quicker, so a Space tilt starts rising at once. */
+  swimVerticalDrag: 5,
+  /** Left alone in the water, the lizard sinks this fast (m/s). */
+  sinkSpeed: 0.06,
+  /**
+   * Space tilts the head toward swimTilt for swimTiltTime seconds, rising at up to swimRiseSpeed
+   * (about 6 cm a press from still). The tilt eases in and out slowly, so a short press only gets
+   * most of the way there (about 27°).
+   */
+  swimTilt: (35 * Math.PI) / 180,
+  swimTiltTime: 0.5,
+  swimRiseSpeed: 0.25,
+  /** How fast the body pitches into and out of the tilt (per second, exponential). */
+  swimTiltRate: 3,
+  /**
+   * The lizard starts swimming once its whole body is under (the capsule's top below the surface)
+   * and stops when standing in water this much shallower than that.
+   */
+  swimExitMargin: 0.004,
+
   /**
    * The body collider is a capsule lying along the lizard, snout to hips (the thin tail tip is left
    * out), so the head can't push into rocks and logs and the body rests across them like the real

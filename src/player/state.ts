@@ -17,10 +17,12 @@ export interface PhysicsFacts {
   horizontalSpeed: number;
   /** Scrambling up onto something: walks, whatever the ground speed. */
   climbing: boolean;
+  /** In the water: swims, whatever else is true. */
+  swimming: boolean;
 }
 
 /**
- * idle / walk / run / jump / fall / land, decided only from physics facts. Each state maps to the
+ * idle / walk / run / jump / fall / land / swim, decided only from physics facts. Each state maps to the
  * lizard clip of the same name.
  */
 export class MovementStateMachine {
@@ -28,6 +30,7 @@ export class MovementStateMachine {
   private landTimer = 0;
 
   update(f: PhysicsFacts, dt: number): MoveState {
+    if (f.swimming) return (this.state = 'swim');
     if (f.jumped) return (this.state = 'jump');
     if (!f.grounded) {
       // Rising out of a jump keeps the jump pose; anything else in the air is falling.

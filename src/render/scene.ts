@@ -7,6 +7,9 @@ export const PALETTE = {
   bark: 0x8a6446,
 };
 
+/** Distance fog in the open air (m): starts past the clearing, hides the world's edge. */
+export const FOG = { near: 2, far: 8 };
+
 export interface SceneContext {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -27,7 +30,7 @@ export function createScene(container: HTMLElement): SceneContext {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PALETTE.sky);
-  scene.fog = new THREE.Fog(PALETTE.sky, 2, 8);
+  scene.fog = new THREE.Fog(PALETTE.sky, FOG.near, FOG.far);
 
   // World units are metres; the lizard will be ~0.15 m long, so the camera sits low and close.
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.005, 30);

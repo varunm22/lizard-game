@@ -4,7 +4,7 @@ import { toonify } from '../render/toon';
 import type { Point, SpineRig } from './spineFit';
 
 /** Animation clips baked by assets-src/lizard.py. */
-export const LIZARD_CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'land'] as const;
+export const LIZARD_CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'land', 'swim'] as const;
 export type LizardClip = (typeof LIZARD_CLIPS)[number];
 
 /**
@@ -12,6 +12,8 @@ export type LizardClip = (typeof LIZARD_CLIPS)[number];
  * assets-src/lizard.py. Scale playback by groundSpeed / this so the feet don't skate.
  */
 export const LIZARD_GAIT_SPEED = { walk: 0.09, run: 0.18 } as const;
+/** The swim clip's tail beat at playback rate 1 (one cycle per 0.67 s) suits this swimming speed. */
+export const LIZARD_SWIM_SPEED = 0.14;
 
 const ONE_SHOT: LizardClip[] = ['jump', 'land'];
 /** How a head turn splits between the neck and head bones. */

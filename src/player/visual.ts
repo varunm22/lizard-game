@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { LIZARD_GAIT_SPEED, type LizardModel } from './lizardModel';
+import { LIZARD_GAIT_SPEED, LIZARD_SWIM_SPEED, type LizardModel } from './lizardModel';
 import type { PlayerController } from './controller';
 import type { MoveState } from './state';
 import { fitSpine, type SpineFit } from './spineFit';
@@ -36,7 +36,15 @@ const HEAD_TURN_RATE = 10;
 const REACH_RATE = 15;
 /** Feet look for the surface this far above and below where the pose put them. */
 const FOOT_PROBE = 0.012;
-const CROSS_FADE: Partial<Record<MoveState, number>> = { jump: 0.08, land: 0.06, fall: 0.15 };
+const CROSS_FADE: Partial<Record<MoveState, number>> = { jump: 0.08, land: 0.06, fall: 0.15, swim: 0.3 };
+/**
+ * Swimming, the drawn body is raised this much so it sits centred on the physics capsule (on land
+ * the feet hold it lower), and eases there at SWIM_LIFT_RATE per second.
+ */
+const SWIM_LIFT = 0.01;
+const SWIM_LIFT_RATE = 6;
+/** Tail beat rate when drifting with no swimming input, relative to the clip. */
+const SWIM_IDLE_RATE = 0.4;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
@@ -63,6 +71,7 @@ export class LizardVisual {
   private sampleUp = SAMPLE_UP;
   private legs: LegReach;
   private reach = 1;
+  private swimLift = 0;
   private footRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   /** The spine fit drawn last frame. */
   fit: SpineFit | null = null;
@@ -86,18 +95,19 @@ export class LizardVisual {
     const top = p.climbTop;
     this.sampleUp = top === null ? SAMPLE_UP : Math.max(SAMPLE_UP, top - this.feet.y + 0.005);
 
-    // Sample the surface along the body. In the air the body just straightens.
+    // Sample the surface along the body. In the air or the water the body just straightens.
+    const standing = p.grounded && !p.swimming;
     this.targetNormal.copy(UP);
     let hindSlope = 0;
     for (let i = 0; i < SAMPLES.length; i++) {
       let h = 0;
-      if (p.grounded) {
+      if (standing) {
         const hit = this.cast(this.feet.x + fx * SAMPLES[i], this.feet.z + fz * SAMPLES[i]);
         h = hit === null ? -SAMPLE_DOWN : this.sampleUp - hit.timeOfImpact;
       }
       this.heights[i] += (h - this.heights[i]) * ease;
     }
-    if (p.grounded) {
+    if (standing) {
       const centre = this.cast(this.feet.x, this.feet.z);
       if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
       const hind = this.model.rig.hindFoot.s;
@@ -128,20 +138,25 @@ export class LizardVisual {
     this.yawQ.setFromAxisAngle(UP, yaw);
     this.local.copy(this.normal).applyQuaternion(this.rollQ.copy(this.yawQ).invert());
     this.rollQ.setFromAxisAngle(Z, Math.atan2(-this.local.x, this.local.y));
-    this.pitchQ.setFromAxisAngle(X, -fit.hips);
-    this.model.root.position.copy(this.feet).y += fit.rootY;
+    this.pitchQ.setFromAxisAngle(X, -fit.hips - p.swimPitchAt(alpha));
+    this.swimLift += ((p.swimming ? SWIM_LIFT : 0) - this.swimLift) * (1 - Math.exp(-SWIM_LIFT_RATE * dt));
+    this.model.root.position.copy(this.feet).y += fit.rootY + this.swimLift;
     this.model.root.quaternion.copy(this.yawQ).multiply(this.rollQ).multiply(this.pitchQ);
 
     this.model.play(state, CROSS_FADE[state] ?? 0.2);
     if (state === 'walk' || state === 'run') {
       const speed = p.climbing ? p.velocity.length() : p.horizontalSpeed;
       this.model.setRate(THREE.MathUtils.clamp(speed / LIZARD_GAIT_SPEED[state], 0.3, 5));
+    } else if (state === 'swim') {
+      // Beat the tail with the swimming speed, and briskly while rising, which the tail drives.
+      const effort = Math.max(p.horizontalSpeed / LIZARD_SWIM_SPEED, p.velocity.y > 0 ? 1 : 0);
+      this.model.setRate(THREE.MathUtils.clamp(effort, SWIM_IDLE_RATE, 2));
     }
     // Lead turns with the head: turning right (positive input) swings the head to the lizard's right.
     const goal = p.turning * (p.bodyTurning ? HEAD_LEAD : HEAD_LOOK);
     this.model.headTurn += (goal - this.model.headTurn) * (1 - Math.exp(-HEAD_TURN_RATE * dt));
     this.model.update(dt);
-    this.reach += ((p.grounded ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
+    this.reach += ((standing ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
     this.legs.apply((x, y, z) => this.footGround(x, y, z), this.reach);
   }
 

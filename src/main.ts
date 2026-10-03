@@ -4,6 +4,7 @@ import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { buildTerrain, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
+import { buildWater, POND, updateUnderwaterView, WATER_Y } from './world/pond';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -25,6 +26,7 @@ async function main() {
   const { renderer, scene, camera, sun } = createScene(document.body);
   buildTerrain(scene, world);
   const obstacles = buildObstacles(scene, world);
+  buildWater(scene);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
@@ -82,6 +84,8 @@ async function main() {
         speed: player.horizontalSpeed,
         grounded: player.grounded,
         climbing: player.climbing,
+        swimming: player.swimming,
+        swimPitch: player.swimPitch,
         state: states.state,
       };
     },
@@ -93,8 +97,9 @@ async function main() {
     viewFrom: (offset) => {
       viewOffset = offset && new THREE.Vector3(offset.x, offset.y, offset.z);
     },
-    teleport: (x, z, yaw) => {
-      player.setFeet(new THREE.Vector3(x, terrainHeight(x, z), z), yaw);
+    pond: () => ({ x: POND.x, z: POND.z, radius: POND.radius, depth: POND.depth, waterY: WATER_Y }),
+    teleport: (x, z, yaw, y) => {
+      player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;
     },
   };
@@ -111,6 +116,7 @@ async function main() {
         verticalSpeed: player.velocity.y,
         horizontalSpeed: player.horizontalSpeed,
         climbing: player.climbing,
+        swimming: player.swimming,
       },
       dt,
     );
@@ -128,13 +134,15 @@ async function main() {
     visual.update(states.state, alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
-    const groundedFeetY = player.grounded ? player.feetAt(1, groundedFeet).y : null;
+    // Swimming, the camera follows the lizard up and down as if it were on the ground.
+    const groundedFeetY = player.grounded || player.swimming ? player.feetAt(1, groundedFeet).y : null;
     followCam.update(feet, groundedFeetY, player.yawAt(alpha), steering, frameDt);
     if (viewOffset) {
       camera.position.copy(feet).add(viewOffset);
       camera.lookAt(feet);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
+    updateUnderwaterView(scene, camera);
     followSun(sun, feet);
   };
   const draw = () => {
