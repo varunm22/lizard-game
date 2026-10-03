@@ -97,12 +97,16 @@ def reset_scene():
     scene.unit_settings.scale_length = 1.0
 
 
+# How far the rest feet stand ahead of the shoulders and behind the hips.
+FOOT_SETBACK = 0.004
+
+
 def leg_points(side, front):
     """Semi-erect legs: the upper leg runs out and a little down from low on the flank, the lower
     leg nearly straight down. The forelegs are relatively long and the hind legs short for an
     iguana, so the two pairs are about the same length."""
     y = SHOULDER_Y if front else HIP_Y
-    reach = -0.004 if front else 0.004
+    reach = -FOOT_SETBACK if front else FOOT_SETBACK
     if front:
         return (side * 0.0090, y, 0.0118), (side * 0.0160, y + reach * 0.3, 0.0100), (side * 0.0190, y + reach, 0.0016)
     return (side * 0.0078, y, 0.0112), (side * 0.0170, y + reach * 0.3, 0.0094), (side * 0.0200, y + reach, 0.0016)
@@ -681,11 +685,17 @@ def skin_weights(y):
 LEGS = [leg_name(s, f) for f in (True, False) for s in (1, -1)]
 TAIL = ['tail1', 'tail2', 'tail3', 'tail4']
 
-# Gait timing. Body speed at playback rate 1 = 2 * stride / (half the cycle). The game scales
+# Gait timing. Body speed at playback rate 1 = 2 * stride / (duty * cycle). The game scales
 # playback rate by (ground speed / these speeds) so feet don't skate; keep LIZARD_GAIT_SPEED in
-# src/player/lizardModel.ts in sync.
-WALK = dict(frames=12, stride=0.009, lift=0.0035)  # 0.4 s cycle -> 0.09 m/s
-RUN = dict(frames=8, stride=0.012, lift=0.0050)  # 0.267 s cycle -> 0.18 m/s
+# src/player/lizardModel.ts in sync. Step rate at a given speed is speed * duty / (2 * stride), so
+# long strides and a short stance keep the cadence calm: about 4 steps a second at the game's walk
+# and 6 at its run. A stride much past 15 mm overreaches these short legs and the feet slip.
+WALK = dict(frames=12, stride=0.015, lift=0.0040, duty=0.5)  # 0.4 s cycle -> 0.15 m/s
+RUN = dict(frames=10, stride=0.015, lift=0.0055, duty=0.3)  # 0.333 s cycle -> 0.30 m/s
+# How much of the spine's side-to-side swing the hips take (the chest takes the rest), and how much
+# of the hips' swing the tail base turns back against so the tail trails straight behind.
+HIP_SWING = 0.6
+TAIL_COUNTER = 0.8
 
 
 def new_action(rig, name):
@@ -758,34 +768,51 @@ def bake_legs(rig, targets, frames, foot_at):
         key(rig, f, {name: m.to_euler('XYZ') for name, m in pose.items()})
 
 
-def gait(rig, targets, name, frames, stride, lift, spine_bend, tail_bend, bob):
-    """A looping trot: diagonal leg pairs move together while the spine and tail wave side to side."""
+def gait(rig, targets, name, frames, stride, lift, spine_bend, tail_bend, bob, duty, tuck, crouch):
+    """A looping trot: diagonal leg pairs move together while the spine and tail wave side to side.
+
+    Each foot is planted for `duty` of the cycle; under 0.5 the trot has a moment with every foot
+    up, which is how running lizards get a long stride without a frantic cadence. The legs are
+    short, so a long stride needs help: each stance is centred under its shoulder or hip, the feet
+    tuck `tuck` m in toward the body, the body sits `crouch` m lower, and the spine bends so the
+    shoulder over a foot reaching forward swings forward with it.
+    """
     new_action(rig, name)
     phase = {'front_L': 0.0, 'hind_R': 0.0, 'front_R': 0.5, 'hind_L': 0.5}
     for f in range(frames + 1):
-        w = 2 * math.pi * f / frames
+        w = 2 * math.pi * f / frames  # 0: front_L and hind_R plant
         rot = {
-            # The chest swings toward the side whose front foot is planted furthest forward.
-            'chest': (0, 0, -spine_bend * math.cos(w)),
-            'hips': (0, 0, spine_bend * 0.6 * math.cos(w)),
-            'neck': (0, 0, spine_bend * 0.7 * math.cos(w)),
-            'head': (0, 0, spine_bend * 0.3 * math.cos(w)),
+            # The chest swings so the shoulder over the front foot planted furthest forward leads;
+            # neck and head turn back against it so the head stays nearly steady.
+            'chest': (0, 0, spine_bend * math.cos(w)),
+            'hips': (0, 0, -spine_bend * HIP_SWING * math.cos(w)),
+            'neck': (0, 0, -spine_bend * (1 - HIP_SWING) * 0.7 * math.cos(w)),
+            'head': (0, 0, -spine_bend * (1 - HIP_SWING) * 0.3 * math.cos(w)),
         }
+        # The tail base turns back against the hips' swing so the tail trails straight behind,
+        # with only a gentle wave of its own travelling down it.
         for i, tb in enumerate(TAIL):
-            rot[tb] = (0, 0, tail_bend * (1 + 0.3 * i) * math.cos(w - 0.9 * (i + 1)))
-        key(rig, f, rot, {'root': (0, bob * abs(math.sin(w)), 0)})  # root's local Y is world up
+            # The tail bones point backward, so the same turn in their frame takes the opposite sign.
+            counter = -spine_bend * HIP_SWING * TAIL_COUNTER * math.cos(w) if i == 0 else 0.0
+            rot[tb] = (0, 0, counter + tail_bend * math.cos(w - 0.8 * (i + 1)))
+        root_y = -crouch + bob * abs(math.sin(w))
+        key(rig, f, rot, {'root': (0, root_y, 0)})  # root's local Y is world up
 
     def foot_at(leg, f):
         p = (f / frames + phase[leg]) % 1.0
         rest = rest_foot(rig, leg)
-        if p < 0.5:  # stance: planted, sliding back under the body from front (-Y) to back
-            y = lerp(-stride, stride, p / 0.5)
+        front = leg.startswith('front')
+        # Rest feet sit a little ahead of the shoulders and behind the hips; centre stances under them.
+        centre = rest.y + (FOOT_SETBACK if front else -FOOT_SETBACK)
+        x = rest.x - leg_sign(leg) * tuck
+        if p < duty:  # stance: planted, sliding back under the body from front (-Y) to back
+            y = lerp(-stride, stride, p / duty)
             z = 0.0
         else:  # swing: lift and reach forward again
-            q = (p - 0.5) / 0.5
+            q = (p - duty) / (1 - duty)
             y = lerp(stride, -stride, 0.5 - 0.5 * math.cos(math.pi * q))
             z = lift * math.sin(math.pi * q)
-        return Vector((rest.x, rest.y + y, rest.z + z))
+        return Vector((x, centre + y, rest.z + z))
 
     bake_legs(rig, targets, range(frames + 1), foot_at)
 
@@ -873,8 +900,8 @@ def swim(rig, frames, legs, body, tail):
 def build_animations(rig):
     targets = setup_ik(rig)
     idle(rig, targets)
-    gait(rig, targets, 'walk', spine_bend=0.12, tail_bend=0.12, bob=0.0005, **WALK)
-    gait(rig, targets, 'run', spine_bend=0.2, tail_bend=0.18, bob=0.0010, **RUN)
+    gait(rig, targets, 'walk', spine_bend=0.3, tail_bend=0.06, bob=0.0005, tuck=0.005, crouch=0.0015, **WALK)
+    gait(rig, targets, 'run', spine_bend=0.3, tail_bend=0.08, bob=0.0010, tuck=0.005, crouch=0.0015, **RUN)
     jump(rig)
     pose_air(rig, 'fall', frames=16, legs_fwd=0.5, tail_up=0.25, head_up=0.15, wiggle=0.15)
     land(rig, targets)

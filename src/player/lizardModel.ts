@@ -11,7 +11,7 @@ export type LizardClip = (typeof LIZARD_CLIPS)[number];
  * Body speed (m/s) each gait clip matches at playback rate 1, from the stride and cycle length in
  * assets-src/lizard.py. Scale playback by groundSpeed / this so the feet don't skate.
  */
-export const LIZARD_GAIT_SPEED = { walk: 0.09, run: 0.18 } as const;
+export const LIZARD_GAIT_SPEED = { walk: 0.15, run: 0.3 } as const;
 /** The swim clip's tail beat at playback rate 1 (one cycle per 0.67 s) suits this swimming speed. */
 export const LIZARD_SWIM_SPEED = 0.14;
 
