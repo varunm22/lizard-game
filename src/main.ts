@@ -5,6 +5,7 @@ import { createScene, followSun } from './render/scene';
 import { buildTerrain, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
 import { buildWater, POND, updateUnderwaterView, WATER_Y } from './world/pond';
+import { Plants } from './world/plants';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -15,6 +16,7 @@ import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
 import type { GameTestHooks } from './debug/testHooks';
 import lizardUrl from './assets/lizard.glb?url';
+import plantsUrl from './assets/plants.glb?url';
 
 /** Spawn on open ground, facing the log and the big rock. */
 const SPAWN = { x: 0.1, z: 0.05, yaw: Math.PI };
@@ -27,6 +29,16 @@ async function main() {
   buildTerrain(scene, world);
   const obstacles = buildObstacles(scene, world);
   buildWater(scene);
+  // Plants grow anywhere a rock or log (or its rim) isn't: look down for one at the point and around it.
+  const down = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+  const solid = obstacles.map((o) => o.mesh);
+  scene.updateMatrixWorld();
+  const open = (x: number, z: number) =>
+    [[0, 0], [0.015, 0], [-0.015, 0], [0, 0.015], [0, -0.015]].every(([dx, dz]) => {
+      down.ray.origin.set(x + dx, 5, z + dz);
+      return down.intersectObjects(solid, false).length === 0;
+    });
+  const plants = await Plants.load(plantsUrl, scene, open, SPAWN);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
@@ -50,6 +62,8 @@ async function main() {
   const feet = new THREE.Vector3();
   let viewOffset: THREE.Vector3 | null = null;
   const groundedFeet = new THREE.Vector3();
+  const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
+  const pushers = [...lizard.bodySpheres, cameraPusher];
 
   const hooks: GameTestHooks = {
     ready: false,
@@ -97,6 +111,10 @@ async function main() {
     viewFrom: (offset) => {
       viewOffset = offset && new THREE.Vector3(offset.x, offset.y, offset.z);
     },
+    plants: (near) =>
+      plants.all
+        .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
+        .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz })),
     pond: () => ({ x: POND.x, z: POND.z, radius: POND.radius, depth: POND.depth, waterY: WATER_Y }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
@@ -142,6 +160,10 @@ async function main() {
       camera.lookAt(feet);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
+    // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
+    lizard.updateBodySpheres();
+    Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
+    plants.update(pushers, frameDt);
     updateUnderwaterView(scene, camera);
     followSun(sun, feet);
   };
