@@ -31,7 +31,7 @@ const TAIL_TIP = new THREE.Vector3(0, 0.0036, -0.092);
 const HIND_FOOT_Z = -0.014;
 const FRONT_FOOT_Z = 0.026;
 /** Spheres roughly filling the body around each spine joint (radius, m), snout to tail tip: what pushes plants aside. */
-const BODY_SPHERES = { head: 0.009, neck: 0.008, chest: 0.011, hips: 0.011, tail1: 0.006, tail2: 0.0045, tail3: 0.0035, tail4: 0.0025 };
+const BODY_SPHERES = { snout: 0.004, head: 0.009, neck: 0.008, chest: 0.011, hips: 0.011, tail1: 0.006, tail2: 0.0045, tail3: 0.0035, tail4: 0.0025 };
 
 /** The visual lizard: the skinned GLB plus its animation mixer. It never moves itself; callers place it. */
 export class LizardModel {
@@ -56,11 +56,17 @@ export class LizardModel {
   /** The body as spheres in world space, refreshed by `updateBodySpheres`. */
   readonly bodySpheres: { x: number; y: number; z: number; r: number }[];
   private sphereBones: THREE.Object3D[];
+  /** The snout tip in the head bone's own frame (the rig has no joint there). */
+  private snoutInHead: THREE.Vector3;
   private v = new THREE.Vector3();
 
   private constructor(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
     this.root = root;
-    this.sphereBones = Object.keys(BODY_SPHERES).map((name) => root.getObjectByName(name)!);
+    root.updateMatrixWorld(true);
+    const head = root.getObjectByName('head')!;
+    this.snoutInHead = head.worldToLocal(root.localToWorld(SNOUT.clone()));
+    // The snout sphere rides on the head bone.
+    this.sphereBones = Object.keys(BODY_SPHERES).map((name) => root.getObjectByName(name === 'snout' ? 'head' : name)!);
     this.bodySpheres = Object.values(BODY_SPHERES).map((r) => ({ x: 0, y: 0, z: 0, r }));
     this.findSoles();
     this.rig = this.measureRig();
@@ -89,7 +95,8 @@ export class LizardModel {
   updateBodySpheres() {
     this.root.updateMatrixWorld();
     this.sphereBones.forEach((bone, i) => {
-      bone.getWorldPosition(this.v);
+      if (i === 0) bone.localToWorld(this.v.copy(this.snoutInHead));
+      else bone.getWorldPosition(this.v);
       Object.assign(this.bodySpheres[i], { x: this.v.x, y: this.v.y, z: this.v.z });
     });
   }

@@ -12,6 +12,10 @@ const VISUAL_SIZE = 12;
 const SEED = 7;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
+/** Collision group bit carried by plant stems: they block the body but aren't ground to stand on. */
+export const PLANT_STEM_GROUP = 0x0004;
+/** Query filter for looking for the surface under or ahead of the lizard: everything but plant stems. */
+export const IGNORE_STEMS = (0xffff << 16) | (0xffff & ~PLANT_STEM_GROUP);
 
 /** Lattice value noise in [-1, 1], smooth-stepped between integer points. */
 function valueNoise(x: number, z: number): number {

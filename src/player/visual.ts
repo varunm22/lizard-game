@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { IGNORE_STEMS } from '../world/terrain';
 import { LIZARD_GAIT_SPEED, LIZARD_SWIM_SPEED, type LizardModel } from './lizardModel';
 import type { PlayerController } from './controller';
 import type { MoveState } from './state';
@@ -163,13 +164,13 @@ export class LizardVisual {
   /** The surface just under a foot, or null if it's out of the leg's reach. */
   private footGround(x: number, y: number, z: number): number | null {
     this.footRay.origin = { x, y: y + FOOT_PROBE, z };
-    const hit = this.world.castRay(this.footRay, 2 * FOOT_PROBE, true, undefined, undefined, undefined, this.player.body);
+    const hit = this.world.castRay(this.footRay, 2 * FOOT_PROBE, true, undefined, IGNORE_STEMS, undefined, this.player.body);
     return hit && hit.timeOfImpact > 0 ? y + FOOT_PROBE - hit.timeOfImpact : null;
   }
 
   private cast(x: number, z: number) {
     this.ray.origin = { x, y: this.feet.y + this.sampleUp, z };
-    return this.world.castRayAndGetNormal(this.ray, this.sampleUp + SAMPLE_DOWN, true, undefined, undefined, undefined, this.player.body);
+    return this.world.castRayAndGetNormal(this.ray, this.sampleUp + SAMPLE_DOWN, true, undefined, IGNORE_STEMS, undefined, this.player.body);
   }
 
   /** Eased surface height at `s` along the body, linear between samples. */

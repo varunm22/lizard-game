@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
 import { WATER_Y, waterDepth } from '../world/pond';
+import { IGNORE_STEMS } from '../world/terrain';
 
 /**
  * The player's physics: a capsule lying along the lizard's body on Rapier's kinematic character
@@ -286,7 +287,7 @@ export class PlayerController {
         this.bodyRotation(yaw),
         this.collider.shape,
         undefined,
-        undefined,
+        IGNORE_STEMS,
         undefined,
         this.body,
         this.turnBlocker,
@@ -393,7 +394,7 @@ export class PlayerController {
     const lowest = perched ? feetY - PERCH_DROP : feetY + CLIMB_MIN;
     const topAt = (s: number) => {
       this.supportRay.origin = { x: this.position.x + fx * s, y: from, z: this.position.z + fz * s };
-      const hit = this.world.castRay(this.supportRay, from - lowest, true, undefined, undefined, undefined, this.body);
+      const hit = this.world.castRay(this.supportRay, from - lowest, true, undefined, IGNORE_STEMS, undefined, this.body);
       // A ray that starts inside something means its top is out of reach.
       return hit && hit.timeOfImpact > 1e-4 ? from - hit.timeOfImpact : null;
     };
@@ -450,7 +451,7 @@ export class PlayerController {
     const reach = M.bodyRadius + M.skin + SUPPORT_REACH;
     const supported = (s: number) => {
       this.supportRay.origin = { x: this.position.x + fx * s, y: this.position.y, z: this.position.z + fz * s };
-      return this.world.castRay(this.supportRay, reach, true, undefined, undefined, undefined, this.body) !== null;
+      return this.world.castRay(this.supportRay, reach, true, undefined, IGNORE_STEMS, undefined, this.body) !== null;
     };
     if (supported(0)) return 0;
     let side = 0;

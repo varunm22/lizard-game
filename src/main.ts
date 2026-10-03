@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
-import { buildTerrain, terrainHeight } from './world/terrain';
+import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
 import { buildWater, POND, updateUnderwaterView, WATER_Y } from './world/pond';
 import { Plants } from './world/plants';
@@ -38,7 +38,7 @@ async function main() {
       down.ray.origin.set(x + dx, 5, z + dz);
       return down.intersectObjects(solid, false).length === 0;
     });
-  const plants = await Plants.load(plantsUrl, scene, open, SPAWN);
+  const plants = await Plants.load(plantsUrl, scene, world, open, SPAWN);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
@@ -74,7 +74,7 @@ async function main() {
     obstacles: () =>
       obstacles.map((o) => ({ name: o.name, ...o.position, height: o.height, opacity: (o.mesh.material as THREE.Material).opacity })),
     groundAt: (x, z) => {
-      const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, undefined, undefined, player.body);
+      const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
       return hit ? 5 - hit.timeOfImpact : null;
     },
     lizard: () => {
@@ -86,7 +86,7 @@ async function main() {
     feet: () =>
       lizard.solePoints().map(({ leg, point }) => {
         // Look down from just above the foot, so a log or rock overhanging it doesn't count.
-        const hit = world.castRay(new RAPIER.Ray({ x: point.x, y: point.y + 0.02, z: point.z }, { x: 0, y: -1, z: 0 }), 1, true, undefined, undefined, undefined, player.body);
+        const hit = world.castRay(new RAPIER.Ray({ x: point.x, y: point.y + 0.02, z: point.z }, { x: 0, y: -1, z: 0 }), 1, true, undefined, IGNORE_STEMS, undefined, player.body);
         return { leg, gap: hit ? hit.timeOfImpact - 0.02 : Infinity };
       }),
     player: () => {
