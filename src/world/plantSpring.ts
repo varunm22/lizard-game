@@ -21,7 +21,7 @@ export interface PlantBody {
   radius: number;
   /** Furthest the stem lies over when pushed (radians). */
   maxTilt: number;
-  /** Spring natural frequency (rad/s) and damping ratio; low damping overshoots on the rebound. */
+  /** Spring natural frequency (rad/s) and damping ratio; above 1 it returns without overshooting. */
   omega: number;
   zeta: number;
   tx: number;
@@ -32,14 +32,17 @@ export interface PlantBody {
   awake: boolean;
 }
 
+/** How fast a pushed stem gives way toward the lean that would clear the pusher (per second, exponential). */
+const GIVE_RATE = 10;
 /** Below these the plant counts as upright and still. */
 const REST_TILT = 2e-4;
 const REST_SPIN = 2e-3;
 
 /**
  * Advance one plant by `dt`. The spring pulls the stem upright; then each pusher overlapping the
- * stem tips it just far enough to clear, and any swing back into the pusher is cancelled. When the
- * pusher moves on, the spring flings the stem back past upright and it settles in a few wobbles.
+ * stem eases it toward the lean that would clear it (capped at `maxTilt`, so a stiff plant can't
+ * get fully out of the way), and any swing back into the pusher is cancelled. When the pusher moves
+ * on, the spring brings the stem back: overdamped plants creep upright without bouncing.
  */
 export function stepPlant(p: PlantBody, pushers: readonly Pusher[], dt: number) {
   if (p.awake) {
@@ -89,8 +92,9 @@ export function stepPlant(p: PlantBody, pushers: readonly Pusher[], dt: number) 
       if (along >= target) continue;
     }
     touched = true;
-    p.tx += ax * (target - along);
-    p.tz += az * (target - along);
+    const give = (target - along) * Math.min(1, GIVE_RATE * dt);
+    p.tx += ax * give;
+    p.tz += az * give;
     // Cancel any swing back into the pusher.
     const spin = p.vx * ax + p.vz * az;
     if (under ? spin > 0 : spin < 0) {

@@ -102,6 +102,8 @@ export class PlayerController {
    */
   private swim = new THREE.Vector3();
   private desired = new THREE.Vector3();
+  /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
+  speedScale = 1;
   private world: RAPIER.World;
   private rot = new THREE.Quaternion();
   private supportRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
@@ -160,7 +162,7 @@ export class PlayerController {
     const fx = Math.sin(this.yaw);
     const fz = Math.cos(this.yaw);
     const forward = input.move.y;
-    const speed = forward < 0 ? M.backSpeed : input.run ? M.runSpeed : M.walkSpeed;
+    const speed = (forward < 0 ? M.backSpeed : input.run ? M.runSpeed : M.walkSpeed) * this.speedScale;
     const tx = forward * fx * speed;
     const tz = forward * fz * speed;
     const hasInput = forward !== 0;

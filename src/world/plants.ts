@@ -8,16 +8,27 @@ import { POND, WATER_Y } from './pond';
 
 /**
  * How each kind (a mesh in assets-src/plants.py) sways: spring frequency (Hz) and damping ratio,
- * how far from its stem a body is pushed clear (m, before scaling), and how far over it can lie.
- * Light, low-damped grass and flowers whip back and wobble; reeds are slower and heavier.
+ * how far from its stem a body is pushed clear (m, before scaling), how far over it can lean, and
+ * how much it holds the lizard back at its centre (`drag`). Damping above 1 means no bounce: a
+ * pushed plant creeps back upright over a couple of seconds. They only give a little; a body
+ * pushing through brushes past and through the stems rather than flattening them.
  */
 const KINDS = {
-  grass: { hz: 3.2, zeta: 0.16, radius: 0.012, maxTilt: 1.35 },
-  fern: { hz: 2.2, zeta: 0.22, radius: 0.03, maxTilt: 1.0 },
-  daisy: { hz: 2.0, zeta: 0.12, radius: 0.005, maxTilt: 1.35 },
-  poppy: { hz: 1.8, zeta: 0.12, radius: 0.006, maxTilt: 1.35 },
-  reed: { hz: 1.4, zeta: 0.15, radius: 0.012, maxTilt: 1.2 },
+  grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 0.35, drag: 0.6 },
+  fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 0.8 },
+  daisy: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.2 },
+  poppy: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.2 },
+  reed: { hz: 0.3, zeta: 1.3, radius: 0.012, maxTilt: 0.25, drag: 0.7 },
 } as const;
+/**
+ * A plant slows the lizard while its body is within this much of the plant's own radius (m, about
+ * the body's half-width), more the closer it is to the stem.
+ */
+const DRAG_REACH = 0.015;
+/** Where along the body (m from the physics centre, + toward the snout) vegetation is felt. */
+const DRAG_SAMPLES = [-0.03, 0, 0.04];
+/** However thick the vegetation, the lizard keeps at least this fraction of its speed. */
+const MIN_SPEED_SCALE = 0.35;
 export type PlantKind = keyof typeof KINDS;
 
 /** Springs advance in steps no longer than this, so a slow frame can't blow them up (s). */
@@ -28,6 +39,7 @@ const MAX_PUSHER = 0.05;
 
 export interface Plant extends PlantBody {
   kind: PlantKind;
+  drag: number;
   yaw: number;
   scale: number;
 }
@@ -46,9 +58,9 @@ interface Patch {
 const TILE = 1;
 
 /**
- * Plants scattered over the meadow that lean out of the lizard's way and spring back once it has
- * passed. They are drawn, not simulated: no physics bodies, so they never block movement, the
- * camera or the obstacle checks. Each kind is drawn as instanced meshes bent in the vertex shader; each
+ * Plants scattered over the meadow that give a little as the lizard pushes through, slow it down,
+ * and creep back upright once it has passed. No physics bodies: they never block movement, the
+ * camera or the obstacle checks; the slowing is a speed multiplier (`speedScale`). Each kind is drawn as instanced meshes bent in the vertex shader; each
  * plant's lean is a CPU damped spring (`plantSpring.ts`) pushed by spheres along the drawn body.
  */
 export class Plants {
@@ -97,6 +109,7 @@ export class Plants {
       height: height * p.scale,
       radius: k.radius * p.scale,
       maxTilt: k.maxTilt,
+      drag: k.drag,
       omega: 2 * Math.PI * k.hz,
       zeta: k.zeta,
       tx: 0,
@@ -105,6 +118,29 @@ export class Plants {
       vz: 0,
       awake: false,
     };
+  }
+
+  /**
+   * Ground speed multiplier for a lizard at (x, z) facing (fx, fz): 1 in the open, lower the more
+   * plants its body is among and the nearer their stems. Each plant's pull fades linearly from its
+   * kind's `drag` at the stem to nothing at the edge of its reach; pulls at a few points along the
+   * body are averaged and summed over plants, so a thick patch slows more than a lone stem.
+   */
+  speedScale(x: number, z: number, fx: number, fz: number): number {
+    let sum = 0;
+    for (const s of DRAG_SAMPLES) {
+      const sx = x + fx * s;
+      const sz = z + fz * s;
+      for (const p of this.all) {
+        const reach = p.radius + DRAG_REACH;
+        const dx = p.x - sx;
+        const dz = p.z - sz;
+        if (Math.abs(dx) > reach || Math.abs(dz) > reach) continue;
+        const d = Math.hypot(dx, dz);
+        if (d < reach) sum += (p.drag * (1 - d / reach)) / DRAG_SAMPLES.length;
+      }
+    }
+    return Math.max(MIN_SPEED_SCALE, 1 / (1 + sum));
   }
 
   /** Advance every plant by `dt`, pushed by `pushers`. */

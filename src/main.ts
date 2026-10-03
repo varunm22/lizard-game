@@ -62,6 +62,7 @@ async function main() {
   const feet = new THREE.Vector3();
   let viewOffset: THREE.Vector3 | null = null;
   const groundedFeet = new THREE.Vector3();
+  const tickFeet = new THREE.Vector3();
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
   const pushers = [...lizard.bodySpheres, cameraPusher];
 
@@ -124,6 +125,9 @@ async function main() {
   window.__game = hooks;
 
   const tick = (dt: number) => {
+    // Plants slow the lizard by where its physics body is, not where it's drawn.
+    player.feetAt(1, tickFeet);
+    player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw));
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     const state = states.update(

@@ -47,8 +47,8 @@ async function driveUntilZBelow(page: Page, input: Drive, z: number, max = 300) 
 }
 
 test('walking with W follows the ground and comes to rest; Shift runs', async ({ page }) => {
-  // Open ground, camera behind looking +Z: forward is +Z.
-  const errors = await boot(page);
+  // Open ground with no plants in the way (they slow the lizard), camera behind looking +Z: forward is +Z.
+  const errors = await boot(page, 0.75);
   const start = await player(page);
   expect(start.grounded).toBe(true);
 
