@@ -46,6 +46,11 @@ export interface GameTestHooks {
     swimPitch: number;
     state: string;
   };
+  /**
+   * Every plant: its kind, root position, stem height (m), and current lean as a vector in the
+   * ground plane (radians; points the way the top leans). `near` keeps only those within r of (x, z).
+   */
+  plants: (near?: { x: number; z: number; r: number }) => { kind: string; x: number; y: number; z: number; height: number; tiltX: number; tiltZ: number }[];
   /** The pond's centre, mean shoreline radius, deepest depth, and the height of its surface. */
   pond: () => { x: number; z: number; radius: number; depth: number; waterY: number };
   /** `faded` names the obstacles currently blocking the view of the lizard. */
