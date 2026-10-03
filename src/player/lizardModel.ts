@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toonify } from '../render/toon';
+import { loadGltf } from '../render/gltf';
 import type { Point, SpineRig } from './spineFit';
 
 /** Animation clips baked by assets-src/lizard.py. */
@@ -30,6 +30,8 @@ const SNOUT = new THREE.Vector3(0, 0.008, 0.064);
 const TAIL_TIP = new THREE.Vector3(0, 0.0036, -0.092);
 const HIND_FOOT_Z = -0.014;
 const FRONT_FOOT_Z = 0.026;
+/** Spheres roughly filling the body around each spine joint (radius, m), snout to tail tip: what pushes plants aside. */
+const BODY_SPHERES = { snout: 0.004, head: 0.009, neck: 0.008, chest: 0.011, hips: 0.011, tail1: 0.006, tail2: 0.0045, tail3: 0.0035, tail4: 0.0025 };
 
 /** The visual lizard: the skinned GLB plus its animation mixer. It never moves itself; callers place it. */
 export class LizardModel {
@@ -51,9 +53,21 @@ export class LizardModel {
   private bentBones: { bone: THREE.Object3D; name: BentBone; rest: THREE.Quaternion; axis: THREE.Vector3 }[] = [];
   /** For each leg, the skinned vertices that make up the sole of its foot. */
   readonly soles = new Map<string, { mesh: THREE.SkinnedMesh; index: number }[]>();
+  /** The body as spheres in world space, refreshed by `updateBodySpheres`. */
+  readonly bodySpheres: { x: number; y: number; z: number; r: number }[];
+  private sphereBones: THREE.Object3D[];
+  /** The snout tip in the head bone's own frame (the rig has no joint there). */
+  private snoutInHead: THREE.Vector3;
+  private v = new THREE.Vector3();
 
   private constructor(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
     this.root = root;
+    root.updateMatrixWorld(true);
+    const head = root.getObjectByName('head')!;
+    this.snoutInHead = head.worldToLocal(root.localToWorld(SNOUT.clone()));
+    // The snout sphere rides on the head bone.
+    this.sphereBones = Object.keys(BODY_SPHERES).map((name) => root.getObjectByName(name === 'snout' ? 'head' : name)!);
+    this.bodySpheres = Object.values(BODY_SPHERES).map((r) => ({ x: 0, y: 0, z: 0, r }));
     this.findSoles();
     this.rig = this.measureRig();
     for (const [name, share] of Object.entries(HEAD_TURN_SPLIT)) {
@@ -72,12 +86,19 @@ export class LizardModel {
   }
 
   static async load(url: string): Promise<LizardModel> {
-    const loader = new GLTFLoader();
-    // The single-file preview build inlines the model as a data: URL. Decode it here rather than
-    // fetching it, since strict Content-Security-Policies (like the claude.ai preview) block that.
-    const gltf = url.startsWith('data:') ? await loader.parseAsync(dataUrlToBuffer(url), '') : await loader.loadAsync(url);
+    const gltf = await loadGltf(url);
     toonify(gltf.scene);
     return new LizardModel(gltf.scene, gltf.animations);
+  }
+
+  /** Move `bodySpheres` to the spine joints as currently posed. */
+  updateBodySpheres() {
+    this.root.updateMatrixWorld();
+    this.sphereBones.forEach((bone, i) => {
+      if (i === 0) bone.localToWorld(this.v.copy(this.snoutInHead));
+      else bone.getWorldPosition(this.v);
+      Object.assign(this.bodySpheres[i], { x: this.v.x, y: this.v.y, z: this.v.z });
+    });
   }
 
   /**
@@ -181,11 +202,4 @@ export class LizardModel {
       this.soles.set(leg, verts.filter((v) => v.y < low + 0.0015).map(({ mesh, index }) => ({ mesh, index })));
     }
   }
-}
-
-function dataUrlToBuffer(url: string): ArrayBuffer {
-  const bytes = atob(url.slice(url.indexOf(',') + 1));
-  const buf = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
-  return buf.buffer;
 }
