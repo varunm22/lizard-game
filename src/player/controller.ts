@@ -27,6 +27,12 @@ const TIP_SPEED = 0.15;
 /** Where support is checked, from the centre along the facing (the capsule's straight part ends at ±0.048). */
 const SUPPORT_CHECKS = [-0.058, -0.03, 0.03, 0.058];
 /**
+ * With none of those supported, these closer-spaced checks along the straight part tell balancing
+ * on a bump between them (standing) from touching something only with an end cap, like the face of
+ * a rock it landed against (not standing).
+ */
+const RESTING_CHECKS = Array.from({ length: 11 }, (_, i) => -0.05 + i * 0.01);
+/**
  * Climbing: walking into something whose top is between CLIMB_MIN and CLIMB_MAX above the feet
  * (the log, the mid rock; autostep handles lower), with room to lie on top, scrambles up onto it.
  * Landing short with only the front of the body on a rim pulls up onto it the same way. The rim is
@@ -159,9 +165,12 @@ export class PlayerController {
     const tz = forward * fz * speed;
     const hasInput = forward !== 0;
     // Balanced on one end of the body over a rim isn't standing: it tips off, unless it climbs.
-    const tip = this.grounded ? this.overhang(fx, fz) : 0;
+    // Nothing under the body at all (landed leaning on a steep face by the snout or tail) isn't
+    // standing either: gravity takes it, so it slides off the face instead of hanging there.
+    const support = this.grounded ? this.overhang(fx, fz) : 0;
+    const tip = support ?? 0;
     const standing = this.grounded;
-    if (tip !== 0) this.grounded = false;
+    if (support !== 0) this.grounded = false;
     // Front-only support (landed short) pulls up, unless backing away.
     const perched = tip === -1 && forward >= 0;
     if (((forward > 0 && standing && this.blockedAhead) || perched) && this.startClimb(fx, fz, perched)) {
@@ -432,9 +441,10 @@ export class PlayerController {
 
   /**
    * Which way to slide when balanced on one end: +1 (forward) when only the rear is supported, -1
-   * when only the front is, 0 when the centre is supported or there's nothing to go on.
+   * when only the front is, 0 when the centre or both ends are supported, null when nothing under
+   * the body is (the capsule is only touching something with an end or a side).
    */
-  private overhang(fx: number, fz: number): number {
+  private overhang(fx: number, fz: number): number | null {
     const reach = M.bodyRadius + M.skin + SUPPORT_REACH;
     const supported = (s: number) => {
       this.supportRay.origin = { x: this.position.x + fx * s, y: this.position.y, z: this.position.z + fz * s };
@@ -442,8 +452,15 @@ export class PlayerController {
     };
     if (supported(0)) return 0;
     let side = 0;
-    for (const s of SUPPORT_CHECKS) if (supported(s)) side += Math.sign(s);
-    return -Math.sign(side);
+    let ends = 0;
+    for (const s of SUPPORT_CHECKS) {
+      if (supported(s)) {
+        side += Math.sign(s);
+        ends++;
+      }
+    }
+    if (side !== 0) return -Math.sign(side);
+    return ends > 0 || RESTING_CHECKS.some(supported) ? 0 : null;
   }
 
   /** Feet position for rendering, interpolated between the last two steps. */
