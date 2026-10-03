@@ -7,7 +7,7 @@ Run headless with the `bpy` pip package (Blender as a Python module):
 Conventions (Blender space, Z up, exported as Y up): every plant stands on z = 0 with its stem rising
 from the origin, so the game can bend it from the base. Colours are per-vertex (COLOR_0), one mesh
 per kind, so the game can draw each kind as a single instanced mesh. Units are metres; the lizard is
-~0.15 m long and ~2 cm tall, so grass reaches its back and flowers stand well over its head.
+~0.19 m long and ~2 cm tall, so grass reaches its back and flowers stand well over its head.
 """
 
 import math

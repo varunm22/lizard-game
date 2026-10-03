@@ -24,11 +24,14 @@ export const BENT_BONES = ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', '
 export type BentBone = (typeof BENT_BONES)[number];
 /**
  * Points the rig has no joint for, in model space (+Z forward, Y up): the snout tip, the tail tip,
- * and where the hind and front feet stand. A model can carry its own as glTF extras on the armature
- * (assets-src/marine_iguana.py does); these defaults are assets-src/lizard.py's, from its PROFILE.
+ * and where the hind and front feet stand. assets-src/lizard.py writes them as glTF extras on the armature.
  */
-const DEFAULT_POINTS = { snout: [0, 0.008, 0.064], tail_tip: [0, 0.0036, -0.092], hind_foot_z: -0.014, front_foot_z: 0.026 };
-type RigPoints = typeof DEFAULT_POINTS;
+interface RigPoints {
+  snout: [number, number, number];
+  tail_tip: [number, number, number];
+  hind_foot_z: number;
+  front_foot_z: number;
+}
 /** Spheres roughly filling the body around each spine joint (radius, m), snout to tail tip: what pushes plants aside. */
 const BODY_SPHERES = { snout: 0.004, head: 0.009, neck: 0.008, chest: 0.011, hips: 0.011, tail1: 0.006, tail2: 0.0045, tail3: 0.0035, tail4: 0.0025 };
 
@@ -205,9 +208,10 @@ export class LizardModel {
 }
 
 function rigPoints(root: THREE.Object3D): RigPoints {
-  let p: RigPoints = DEFAULT_POINTS;
+  let p: RigPoints | undefined;
   root.traverse((o) => {
-    if (o.userData.snout) p = { ...DEFAULT_POINTS, ...(o.userData as Partial<RigPoints>) };
+    if (o.userData.snout) p = o.userData as RigPoints;
   });
+  if (!p) throw new Error('lizard.glb has no rig points; regenerate it with npm run assets');
   return p;
 }

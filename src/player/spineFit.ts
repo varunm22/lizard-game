@@ -51,7 +51,7 @@ const FOOT_REACH = 0.03;
 const HANG_BELOW_CENTRE = 0.012;
 /**
  * How far above the hind feet the front feet can get (scrabbling at a face) before the hind feet
- * leave the ground, as a fraction of the distance between them (0.035 m on the classic lizard).
+ * leave the ground, as a fraction of the distance between them.
  */
 const MAX_TRUNK_RISE = 0.875;
 /** How far the tail may hang below the physics feet height. */
