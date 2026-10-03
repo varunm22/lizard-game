@@ -19,9 +19,13 @@ export const MOVEMENT = {
   turnRate: (90 * Math.PI) / 180,
 
   jumpHeight: 0.08,
-  gravity: 9.81,
-  /** Gravity multiplier while falling, for a snappier arc. */
-  fallGravityScale: 1.6,
+  /**
+   * Well under real gravity, for a slower, floatier hop that carries further: about 0.4 s in the
+   * air, 24 cm at a run (real gravity gave 0.23 s and 14 cm).
+   */
+  gravity: 3.5,
+  /** Gravity multiplier while falling, so the way down is a little quicker than the way up. */
+  fallGravityScale: 1.3,
   /** Gravity multiplier while still rising after jump is released: short taps give short hops. */
   jumpCutGravityScale: 3,
   maxFallSpeed: 3,
