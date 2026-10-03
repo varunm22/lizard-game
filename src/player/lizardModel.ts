@@ -52,9 +52,15 @@ export class LizardModel {
     const next = this.actions.get(name);
     if (!next || name === this.current) return;
     const prev = this.current && this.actions.get(this.current);
-    next.reset().play();
+    next.reset().setEffectiveTimeScale(1).play();
     if (prev) next.crossFadeFrom(prev, fade, false);
     this.current = name;
+  }
+
+  /** Playback rate of the current clip (1 = as authored). */
+  setRate(rate: number) {
+    const action = this.current && this.actions.get(this.current);
+    if (action) action.timeScale = rate;
   }
 
   update(dt: number) {
