@@ -4,7 +4,7 @@ import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { buildTerrain, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
-import { buildWater, POND, POND_REACH, updateUnderwaterView, WATER_Y } from './world/pond';
+import { buildWater, POND, updateUnderwaterView, WATER_Y } from './world/pond';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -97,7 +97,7 @@ async function main() {
     viewFrom: (offset) => {
       viewOffset = offset && new THREE.Vector3(offset.x, offset.y, offset.z);
     },
-    pond: () => ({ x: POND.x, z: POND.z, reach: POND_REACH, waterY: WATER_Y }),
+    pond: () => ({ x: POND.x, z: POND.z, radius: POND.radius, depth: POND.depth, waterY: WATER_Y }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;

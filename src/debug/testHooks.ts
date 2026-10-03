@@ -46,8 +46,8 @@ export interface GameTestHooks {
     swimPitch: number;
     state: string;
   };
-  /** The pond's centre, the radius its water covers, and the height of its surface. */
-  pond: () => { x: number; z: number; reach: number; waterY: number };
+  /** The pond's centre, mean shoreline radius, deepest depth, and the height of its surface. */
+  pond: () => { x: number; z: number; radius: number; depth: number; waterY: number };
   /** `faded` names the obstacles currently blocking the view of the lizard. */
   camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[] };
   /**

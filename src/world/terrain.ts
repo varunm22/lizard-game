@@ -4,11 +4,11 @@ import { toonGradient } from '../render/toon';
 import { carvePond, nearPond, WATER_Y } from './pond';
 
 /** Side of the walkable square (m). The physics heightfield covers exactly this. */
-export const TERRAIN_SIZE = 4;
-/** Cells per side of the physics heightfield: 4 m / 128 = ~3 cm, a fifth of a lizard. */
-const CELLS = 128;
+export const TERRAIN_SIZE = 6;
+/** Cells per side of the physics heightfield: 6 m / 192 = ~3 cm, a fifth of a lizard. */
+const CELLS = 192;
 /** The drawn ground extends past the walkable square so the clearing's rim fades into the fog. */
-const VISUAL_SIZE = 8;
+const VISUAL_SIZE = 12;
 const SEED = 7;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -51,7 +51,7 @@ export function terrainHeight(x: number, z: number): number {
   const bumps = valueNoise(x / 0.35 - 7, z / 0.35 + 3) * 0.012;
   const grit = valueNoise(x / 0.09 + 2, z / 0.09 + 9) * 0.003;
   const calm = 0.25 + 0.75 * smoothstep(0.35, 1.1, r);
-  const t = Math.max(0, r - 1.5);
+  const t = Math.max(0, r - 2.5);
   const bank = t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1);
   return carvePond(x, z, (swell + bumps) * calm + grit + bank);
 }

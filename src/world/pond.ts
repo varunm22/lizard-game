@@ -3,21 +3,23 @@ import { FOG, PALETTE } from '../render/scene';
 
 /**
  * The pond carved into the clearing, behind and to the left of the spawn point: a still surface at
- * WATER_Y over a bowl about 9 cm deep, with a gently sloping shore you can walk in and out over.
+ * WATER_Y over a bowl 35 cm deep (a couple of lizard lengths) and about 1.6 m across. A sloping
+ * shore runs down to a shallow shelf you can wade onto, which then drops off into the deep middle.
  * Its surroundings never dip below the surface, so the water only shows inside the bowl.
  */
 export const POND = {
-  x: -0.6,
-  z: 0.55,
+  x: -1.4,
+  z: 0.9,
   /** Mean shoreline radius (m); the outline wobbles around it. */
-  radius: 0.32,
+  radius: 0.8,
   /** Width of the shore that rises from the waterline back to the meadow. */
-  shore: 0.15,
-  /** Depth of the deepest part below the surface. */
-  depth: 0.09,
+  shore: 0.2,
+  /** Depth of the shallow shelf inside the shoreline, and of the deepest part. */
+  shelf: 0.05,
+  depth: 0.35,
 } as const;
 /** Height of the water surface (m). The meadow around the pond is all above it. */
-export const WATER_Y = -0.032;
+export const WATER_Y = -0.045;
 /** The water mesh covers this far from the centre; everything outside is dry land. */
 export const POND_REACH = POND.radius * 1.2 + POND.shore;
 
@@ -33,8 +35,8 @@ function shoreline(dx: number, dz: number): number {
 }
 
 /**
- * Carve the pond into a meadow height: the bed falls from the waterline to full depth inside the
- * shoreline, and the shore blends from the waterline back to the meadow.
+ * Carve the pond into a meadow height: inside the shoreline the bed falls gently to the shelf, then
+ * drops off to full depth; outside it the shore blends from the waterline back to the meadow.
  */
 export function carvePond(x: number, z: number, meadow: number): number {
   const dx = x - POND.x;
@@ -43,7 +45,8 @@ export function carvePond(x: number, z: number, meadow: number): number {
   if (r >= POND_REACH) return meadow;
   const edge = shoreline(dx, dz);
   if (r >= edge) return WATER_Y + (meadow - WATER_Y) * smoothstep(edge, edge + POND.shore, r);
-  return WATER_Y - POND.depth * smoothstep(edge, edge * 0.3, r);
+  const t = 1 - r / edge;
+  return WATER_Y - POND.shelf * smoothstep(0, 0.2, t) - (POND.depth - POND.shelf) * smoothstep(0.2, 0.9, t);
 }
 
 export const nearPond = (x: number, z: number) => Math.hypot(x - POND.x, z - POND.z) < POND_REACH;
@@ -82,7 +85,7 @@ export function updateUnderwaterView(scene: THREE.Scene, camera: THREE.Camera) {
   const under = waterDepth(camera.position) > 0;
   const fog = scene.fog as THREE.Fog;
   fog.color.set(under ? UNDERWATER : PALETTE.sky);
-  fog.near = under ? 0.02 : FOG.near;
-  fog.far = under ? 0.6 : FOG.far;
+  fog.near = under ? 0.05 : FOG.near;
+  fog.far = under ? 1.2 : FOG.far;
   (scene.background as THREE.Color).copy(fog.color);
 }
