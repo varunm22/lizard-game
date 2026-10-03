@@ -23,13 +23,12 @@ const BONE_Z = new THREE.Vector3(0, 0, 1);
 export const BENT_BONES = ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'] as const;
 export type BentBone = (typeof BENT_BONES)[number];
 /**
- * Points the rig has no joint for, in model space (+Z forward, Y up), from PROFILE in
- * assets-src/lizard.py: the snout tip, the tail tip, and where the hind and front feet stand.
+ * Points the rig has no joint for, in model space (+Z forward, Y up): the snout tip, the tail tip,
+ * and where the hind and front feet stand. A model can carry its own as glTF extras on the armature
+ * (assets-src/marine_iguana.py does); these defaults are assets-src/lizard.py's, from its PROFILE.
  */
-const SNOUT = new THREE.Vector3(0, 0.008, 0.064);
-const TAIL_TIP = new THREE.Vector3(0, 0.0036, -0.092);
-const HIND_FOOT_Z = -0.014;
-const FRONT_FOOT_Z = 0.026;
+const DEFAULT_POINTS = { snout: [0, 0.008, 0.064], tail_tip: [0, 0.0036, -0.092], hind_foot_z: -0.014, front_foot_z: 0.026 };
+type RigPoints = typeof DEFAULT_POINTS;
 
 /** The visual lizard: the skinned GLB plus its animation mixer. It never moves itself; callers place it. */
 export class LizardModel {
@@ -130,6 +129,10 @@ export class LizardModel {
 
   private measureRig(): SpineRig {
     this.root.updateMatrixWorld(true);
+    let p: RigPoints = DEFAULT_POINTS;
+    this.root.traverse((o) => {
+      if (o.userData.snout) p = { ...DEFAULT_POINTS, ...(o.userData as Partial<RigPoints>) };
+    });
     const rootInv = this.root.matrixWorld.clone().invert();
     const at = (name: string): Point => {
       const p = this.root.getObjectByName(name)!.getWorldPosition(new THREE.Vector3()).applyMatrix4(rootInv);
@@ -149,10 +152,10 @@ export class LizardModel {
       chest: at('chest'),
       neck: at('neck'),
       head: at('head'),
-      snout: { s: SNOUT.z, y: SNOUT.y },
-      tail: [at('tail1'), at('tail2'), at('tail3'), at('tail4'), { s: TAIL_TIP.z, y: TAIL_TIP.y }],
-      hindFoot: { s: HIND_FOOT_Z, y: 0 },
-      frontFoot: { s: FRONT_FOOT_Z, y: 0 },
+      snout: { s: p.snout[2], y: p.snout[1] },
+      tail: [at('tail1'), at('tail2'), at('tail3'), at('tail4'), { s: p.tail_tip[2], y: p.tail_tip[1] }],
+      hindFoot: { s: p.hind_foot_z, y: 0 },
+      frontFoot: { s: p.front_foot_z, y: 0 },
     };
   }
 

@@ -49,8 +49,11 @@ export interface SpineFit {
 const FOOT_REACH = 0.03;
 /** How far a foot over a drop hangs below the surface under the body's centre. */
 const HANG_BELOW_CENTRE = 0.012;
-/** How far above the hind feet the front feet can get (scrabbling at a face) before the hind feet leave the ground. */
-const MAX_TRUNK_RISE = 0.035;
+/**
+ * How far above the hind feet the front feet can get (scrabbling at a face) before the hind feet
+ * leave the ground, as a fraction of the distance between them (0.035 m on the classic lizard).
+ */
+const MAX_TRUNK_RISE = 0.875;
 /** How far the tail may hang below the physics feet height. */
 const TAIL_REACH = 0.08;
 /** Steepest the hips pitch to follow the ground. */
@@ -99,7 +102,7 @@ export function fitSpine(rig: SpineRig, surface: (s: number) => number, hindSlop
   // Hips: hind feet on the surface, pitched to the ground under them. With the hind feet hanging
   // (nothing within reach), start level and let the chest's clearance tip them.
   // Climbing onto something tall, the hind feet leave the ground once the front feet couldn't reach.
-  const hindY = Math.max(reach(rig.hindFoot.s), reach(rig.frontFoot.s) - MAX_TRUNK_RISE);
+  const hindY = Math.max(reach(rig.hindFoot.s), reach(rig.frontFoot.s) - MAX_TRUNK_RISE * (rig.frontFoot.s - rig.hindFoot.s));
   let hips = hindY === surface(rig.hindFoot.s) ? clamp(hindSlope, -MAX_HIPS, MAX_HIPS) : 0;
   let rootY = 0;
   let chestAt: Point = rig.chest;
