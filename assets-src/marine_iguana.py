@@ -32,27 +32,29 @@ base.OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'marin
 # ---------------------------------------------------------------------------------------------
 # Proportions (Blender space: snout at -Y, metres). Snout to vent 0.074 m, tail 0.114 m.
 # ---------------------------------------------------------------------------------------------
-# (y, half_width, half_height, centre_z). The head is about as wide as it is long, with heavy
-# jowls; the tail is taller than wide from its base.
+# (y, half_width, half_height, centre_z), measured off side-on photos (iNaturalist research-grade
+# observations): the trunk is about 30% as deep as snout-to-vent and a little wider, the head about
+# 22% of it long and 18% tall at the jowls, and the tail base about 18% deep, flattened side to side.
+# Standing, the belly clears the ground by about a tenth of snout-to-vent.
 base.PROFILE = [
-    (-0.0645, 0.0042, 0.0034, 0.0078),
-    (-0.0630, 0.0059, 0.0048, 0.0081),
-    (-0.0605, 0.0069, 0.0057, 0.0085),
-    (-0.0570, 0.0075, 0.0061, 0.0087),
-    (-0.0515, 0.0078, 0.0060, 0.0088),
-    (-0.0470, 0.0073, 0.0056, 0.0087),
-    (-0.0420, 0.0068, 0.0054, 0.0085),
-    (-0.0360, 0.0076, 0.0057, 0.0084),
-    (-0.0300, 0.0092, 0.0062, 0.0083),
-    (-0.0180, 0.0104, 0.0066, 0.0081),
-    (-0.0050, 0.0102, 0.0064, 0.0080),
-    (0.0040, 0.0084, 0.0058, 0.0078),
-    (0.0110, 0.0058, 0.0054, 0.0075),
-    (0.0300, 0.0038, 0.0050, 0.0068),
-    (0.0550, 0.0028, 0.0044, 0.0060),
-    (0.0800, 0.0019, 0.0036, 0.0053),
-    (0.1050, 0.0011, 0.0024, 0.0046),
-    (0.1240, 0.0003, 0.0006, 0.0042),
+    (-0.0645, 0.0044, 0.0040, 0.0135),
+    (-0.0630, 0.0062, 0.0056, 0.0138),
+    (-0.0605, 0.0072, 0.0066, 0.0142),
+    (-0.0570, 0.0078, 0.0072, 0.0145),
+    (-0.0515, 0.0082, 0.0076, 0.0147),
+    (-0.0470, 0.0080, 0.0076, 0.0147),
+    (-0.0420, 0.0080, 0.0082, 0.0147),
+    (-0.0360, 0.0090, 0.0100, 0.0149),
+    (-0.0300, 0.0102, 0.0115, 0.0150),
+    (-0.0180, 0.0112, 0.0129, 0.0150),
+    (-0.0050, 0.0112, 0.0126, 0.0149),
+    (0.0040, 0.0108, 0.0116, 0.0145),
+    (0.0120, 0.0088, 0.0098, 0.0134),
+    (0.0300, 0.0046, 0.0070, 0.0116),
+    (0.0550, 0.0032, 0.0054, 0.0093),
+    (0.0800, 0.0022, 0.0040, 0.0072),
+    (0.1050, 0.0013, 0.0026, 0.0056),
+    (0.1240, 0.0003, 0.0006, 0.0048),
 ]
 base.SPINE = [
     ('head', -0.0645, -0.046, None),
@@ -64,20 +66,20 @@ base.SPINE = [
     ('tail3', 0.067, 0.096, None),
     ('tail4', 0.096, 0.124, None),
 ]
-base.SHOULDER_Y, base.HIP_Y = -0.031, 0.008
-base.LEG_ATTACH_X, base.LEG_ATTACH_Z = 0.0080, 0.0066
+base.SHOULDER_Y, base.HIP_Y = -0.031, 0.010
 base.STEPS, base.RING = 110, 24
 SNOUT_TIP = -0.0657  # the blunt snout's fan closes just ahead of the first cross-section
 
 
 def leg_points(side, front):
-    """Front legs as in lizard.py; the hind legs are longer and splay wider, as an iguana's do."""
+    """Semi-erect legs: the upper leg runs out and a little down from low on the flank, the lower
+    leg nearly straight down. The forelegs are relatively long and the hind legs short for an
+    iguana, so the two pairs are about the same length."""
     y = base.SHOULDER_Y if front else base.HIP_Y
     reach = -0.004 if front else 0.004
-    root = (side * base.LEG_ATTACH_X, y, base.LEG_ATTACH_Z)
     if front:
-        return root, (side * 0.0168, y + reach * 0.3, 0.0090), (side * 0.0203, y + reach, 0.0016)
-    return root, (side * 0.0186, y + reach * 0.3, 0.0098), (side * 0.0228, y + reach, 0.0016)
+        return (side * 0.0090, y, 0.0118), (side * 0.0160, y + reach * 0.3, 0.0100), (side * 0.0190, y + reach, 0.0016)
+    return (side * 0.0078, y, 0.0112), (side * 0.0170, y + reach * 0.3, 0.0094), (side * 0.0200, y + reach, 0.0016)
 
 
 base.leg_points = leg_points
@@ -413,7 +415,7 @@ def build_head_scales(mb):
             mat = 'Salt' if y < -0.0570 and x < 0.0030 else 'Skin'
             blob(mb, (sx, y, surface_z(y, sx) - r * 0.4), (r, r, r * 0.9), ('bone', 'head'), mat, 4, 7)
     for side in (1, -1):
-        blob(mb, (side * 0.0071, -0.0488, 0.0080), (0.0011, 0.0015, 0.0015), ('bone', 'head'), 'Skin', 4, 8)
+        blob(mb, (side * 0.0080, -0.0488, 0.0137), (0.0012, 0.0017, 0.0017), ('bone', 'head'), 'Skin', 4, 8)
 
 
 def limb_tube(mb, a, b, r0, r1, part, t0, t1, mat='Skin', sides=8):
@@ -447,9 +449,13 @@ def build_legs(mb):
         for side in (1, -1):
             n = leg_name(side, front)
             root, knee, foot = leg_points(side, front)
-            r = 0.0028 if front else 0.0033
+            r = 0.0030 if front else 0.0035
             upper, lower = ('bone', 'upper_' + n), ('bone', 'lower_' + n)
-            limb_tube(mb, root, knee, r * 1.2, r * 0.8, upper, 0.0, 0.45, sides=10)
+            # The upper leg starts inside the body, and a ball centred on the shoulder or hip joint
+            # (so it looks the same however the leg swings) fills the join with the flank.
+            inner = Vector(root) + (Vector(root) - Vector(knee)).normalized() * r
+            limb_tube(mb, inner, knee, r * 1.2, r * 0.8, upper, 0.0, 0.45, sides=10)
+            blob(mb, root, (r * 1.35, r * 1.35, r * 1.35), upper, 'Skin', 6, 10)
             limb_tube(mb, knee, foot, r * 0.8, r * 0.55, lower, 0.45, 0.8, sides=10)
             blob(mb, knee, (r * 0.85, r * 0.85, r * 0.85), upper, 'Skin', 5, 8)  # round off the elbow/knee
             # The pad is what the game plants (its lowest 1.5 mm is the sole), so the toes leave it
@@ -471,11 +477,11 @@ def build_legs(mb):
 
 def build_eyes(mb):
     for side in (1, -1):
-        c = (side * 0.0066, -0.0572, 0.0114)
+        c = (side * 0.0069, -0.0572, 0.0167)
         blob(mb, c, (0.0018, 0.0018, 0.0018), ('bone', 'head'), 'Eye')
         blob(mb, (c[0] + side * 0.0009, c[1] - 0.0010, c[2] + 0.0008), (0.00045, 0.00045, 0.00045), ('bone', 'head'), 'Shine', 4, 6)
         # A heavy brow ridge over each eye.
-        blob(mb, (side * 0.0060, -0.0575, 0.0131), (0.0019, 0.0025, 0.0008), ('bone', 'head'), 'Skin', 4, 8)
+        blob(mb, (side * 0.0062, -0.0575, 0.0185), (0.0019, 0.0025, 0.0008), ('bone', 'head'), 'Skin', 4, 8)
 
 
 def build_mesh(rig, mats):
