@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { toonGradient } from '../render/toon';
+import { carvePond, nearPond, WATER_Y } from './pond';
 
 /** Side of the walkable square (m). The physics heightfield covers exactly this. */
 export const TERRAIN_SIZE = 4;
@@ -41,7 +42,8 @@ const smoothstep = (a: number, b: number, t: number) => {
 
 /**
  * Ground height (m) at a world position. Layered noise, damped to almost flat in the middle of the
- * clearing so there's an easy play area, with gentle swells further out and a bank rising at the rim.
+ * clearing so there's an easy play area, with gentle swells further out, a bank rising at the rim,
+ * and the pond carved in.
  */
 export function terrainHeight(x: number, z: number): number {
   const r = Math.hypot(x, z);
@@ -51,7 +53,7 @@ export function terrainHeight(x: number, z: number): number {
   const calm = 0.25 + 0.75 * smoothstep(0.35, 1.1, r);
   const t = Math.max(0, r - 1.5);
   const bank = t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1);
-  return (swell + bumps) * calm + grit + bank;
+  return carvePond(x, z, (swell + bumps) * calm + grit + bank);
 }
 
 /** Approximate surface normal from the height function, for colouring. */
@@ -65,6 +67,9 @@ function slopeAt(x: number, z: number): number {
 const GRASS = new THREE.Color(0x8fb36a);
 const MOSS = new THREE.Color(0x6f9a55);
 const DIRT = new THREE.Color(0xa88e68);
+/** Wet sand at the waterline, darkening to silt on the pond bed. */
+const SAND = new THREE.Color(0xc4b08a);
+const SILT = new THREE.Color(0x6e7a5c);
 
 /** Build the toon-shaded ground mesh and its Rapier heightfield collider, plus walls at the edge. */
 export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
@@ -76,11 +81,15 @@ export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const z = pos.getZ(i);
-    pos.setY(i, terrainHeight(x, z));
+    const y = terrainHeight(x, z);
+    pos.setY(i, y);
     // Moss in the hollows, bare dirt where the noise says so or the ground gets steep.
     const patch = valueNoise(x / 0.5 + 31, z / 0.5 - 17);
     c.copy(GRASS).lerp(MOSS, smoothstep(-0.2, 0.5, valueNoise(x / 0.8 - 5, z / 0.8 + 21)));
     c.lerp(DIRT, Math.max(smoothstep(0.25, 0.6, patch), smoothstep(0.35, 0.8, slopeAt(x, z))));
+    if (nearPond(x, z)) {
+      c.lerp(SAND, smoothstep(WATER_Y + 0.008, WATER_Y + 0.002, y)).lerp(SILT, smoothstep(WATER_Y - 0.01, WATER_Y - 0.06, y));
+    }
     c.toArray(colors, i * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));

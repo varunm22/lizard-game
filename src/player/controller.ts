@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
+import { WATER_Y, waterDepth } from '../world/pond';
 
 /**
  * The player's physics: a capsule lying along the lizard's body on Rapier's kinematic character
  * controller. Steering is
  * tank-style: left/right turns the lizard (in place when standing still), forward/back moves it
  * along its facing with acceleration. Vertical velocity (gravity, jumps) is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
+ * Once the whole body is under water it swims instead: see `stepSwim`.
  */
 /** Lays the capsule's long axis (Y) along the lizard's forward axis (+Z). */
 const LAY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
@@ -68,8 +70,13 @@ export class PlayerController {
   airTime = 0;
   /** Turn input this step, -1 (left) to 1 (right); the visual turns the head into it. */
   turning = 0;
-  /** True when the body itself turned this step (only while moving forward or back). */
+  /** True when the body itself turned this step (only while moving forward or back, or swimming). */
   bodyTurning = false;
+  /** Swimming: the whole body went under water and hasn't stood up out of it since. */
+  swimming = false;
+  /** Swimming pitch (radians, positive raises the snout): Space tilts the lizard up for a moment. */
+  swimPitch = 0;
+  prevSwimPitch = 0;
 
   /** The climb in progress. */
   private climb: { from: THREE.Vector3; to: THREE.Vector3; t: number; duration: number; top: number } | null = null;
@@ -80,6 +87,14 @@ export class PlayerController {
   private sinceJumpPressed = Infinity;
   private jumpHeld = false;
   private jumping = false;
+  /** Seconds left of the upward tilt Space started while swimming. */
+  private tiltTimer = 0;
+  /**
+   * Swimming velocity the stroke is aiming for (m/s), eased by drag. Kept apart from the velocity
+   * achieved: pressed against the sloping bed most of each stroke is absorbed, and easing from
+   * what got through would never build up enough speed to glide up and out.
+   */
+  private swim = new THREE.Vector3();
   private desired = new THREE.Vector3();
   private world: RAPIER.World;
   private rot = new THREE.Quaternion();
@@ -111,35 +126,29 @@ export class PlayerController {
   step(dt: number, input: InputState) {
     this.prevPosition.copy(this.position);
     this.prevYaw = this.yaw;
+    this.prevSwimPitch = this.swimPitch;
     this.landed = this.jumped = false;
     if (this.climb) {
       this.stepClimb(dt);
       return;
     }
+    // Walked or fell in deep enough to be wholly under: swim.
+    if (this.swimming || this.submerged() > 0) {
+      if (!this.swimming) {
+        this.swimming = true;
+        this.jumping = false;
+        this.tiltTimer = 0;
+        this.swim.copy(this.velocity);
+        // Snapping down onto the bed would drop a sinking swimmer the last centimetre at once.
+        this.kcc.disableSnapToGround();
+      }
+      this.stepSwim(dt, input);
+      return;
+    }
 
     // Turn: right input turns right, which is clockwise seen from above (yaw decreasing). The body
-    // only turns while moving forward or back; standing still, left/right just turns the head. The
-    // body is long, so a turn that would swing it into a rock or log is refused.
-    this.turning = input.move.x;
-    this.bodyTurning = false;
-    if (input.move.x !== 0 && input.move.y !== 0) {
-      const yaw = Math.atan2(Math.sin(this.yaw - input.move.x * M.turnRate * dt), Math.cos(this.yaw - input.move.x * M.turnRate * dt));
-      const blocked = this.world.intersectionWithShape(
-        this.position,
-        this.bodyRotation(yaw),
-        this.collider.shape,
-        undefined,
-        undefined,
-        undefined,
-        this.body,
-        this.turnBlocker,
-      );
-      if (!blocked) {
-        this.yaw = yaw;
-        this.bodyTurning = true;
-      }
-    }
-    this.body.setNextKinematicRotation(this.bodyRotation(this.yaw));
+    // only turns while moving forward or back; standing still, left/right just turns the head.
+    this.turn(dt, input.move.x, input.move.y !== 0);
 
     // Horizontal: accelerate toward forward/back input along the facing.
     const fx = Math.sin(this.yaw);
@@ -247,6 +256,115 @@ export class PlayerController {
     this.airTime = this.grounded ? 0 : this.airTime + dt;
   }
 
+  /** How far the top of the body is under the water surface (m); negative when any of it is out. */
+  private submerged(): number {
+    return waterDepth({ x: this.position.x, y: this.position.y + M.bodyRadius, z: this.position.z });
+  }
+
+  /**
+   * Turn by `input` (-1..1, right +) if `allowed`. The body is long, so a turn that would swing it
+   * into a rock or log is refused.
+   */
+  private turn(dt: number, input: number, allowed: boolean) {
+    this.turning = input;
+    this.bodyTurning = false;
+    if (input !== 0 && allowed) {
+      const yaw = Math.atan2(Math.sin(this.yaw - input * M.turnRate * dt), Math.cos(this.yaw - input * M.turnRate * dt));
+      const blocked = this.world.intersectionWithShape(
+        this.position,
+        this.bodyRotation(yaw),
+        this.collider.shape,
+        undefined,
+        undefined,
+        undefined,
+        this.body,
+        this.turnBlocker,
+      );
+      if (!blocked) {
+        this.yaw = yaw;
+        this.bodyTurning = true;
+      }
+    }
+    this.body.setNextKinematicRotation(this.bodyRotation(this.yaw));
+  }
+
+  /**
+   * Swimming: no gravity or jumps. Forward and back drive the lizard along its facing, left and
+   * right turn it even when it isn't moving, and water drag eases every change. Left alone it sinks
+   * slowly; Space tilts it snout-up for a second, rising (faster when also swimming forward). The
+   * top of the body never breaks the surface, and rocks and the bed still block it. It stops
+   * swimming by standing up out of the water on the shore, or by climbing out onto a rock.
+   */
+  private stepSwim(dt: number, input: InputState) {
+    this.turn(dt, input.move.x, true);
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const forward = input.move.y;
+
+    // Climbing only gets it out of the water: onto a top where its back would be out.
+    const outOfWater = WATER_Y + M.swimExitMargin - centreAboveFeet() - M.bodyRadius;
+    if (forward > 0 && this.blockedAhead && this.startClimb(fx, fz, false, outOfWater)) {
+      this.stopSwimming();
+      this.stepClimb(dt);
+      return;
+    }
+
+    const jumpPressed = input.jump && !this.jumpHeld;
+    this.jumpHeld = input.jump;
+    if (jumpPressed) this.tiltTimer = M.swimTiltTime;
+    this.tiltTimer = Math.max(0, this.tiltTimer - dt);
+    const tiltGoal = this.tiltTimer > 0 ? M.swimTilt : 0;
+    this.swimPitch += (tiltGoal - this.swimPitch) * (1 - Math.exp(-M.swimTiltRate * dt));
+    const up = this.swimPitch / M.swimTilt;
+
+    const speed = forward < 0 ? M.swimBackSpeed : input.run ? M.swimFastSpeed : M.swimSpeed;
+    const along = forward * speed;
+    const horizontal = along * Math.cos(this.swimPitch);
+    const rise = -M.sinkSpeed + (M.swimRiseSpeed + M.sinkSpeed) * up + Math.max(0, along) * Math.sin(this.swimPitch);
+    const drag = 1 - Math.exp(-M.swimDrag * dt);
+    this.swim.x += (horizontal * fx - this.swim.x) * drag;
+    this.swim.z += (horizontal * fz - this.swim.z) * drag;
+    this.vy += (rise - this.vy) * (1 - Math.exp(-M.swimVerticalDrag * dt));
+
+    this.desired.set(this.swim.x * dt, this.vy * dt, this.swim.z * dt);
+    // The back stays just under the surface.
+    const ceiling = WATER_Y - M.bodyRadius - this.position.y;
+    if (this.desired.y > ceiling) {
+      this.desired.y = Math.min(this.desired.y, Math.max(0, ceiling));
+      this.vy = Math.min(this.vy, 0);
+    }
+    this.kcc.computeColliderMovement(this.collider, this.desired);
+    const moved = this.kcc.computedMovement();
+    // Rapier counts ground a centimetre or two below as grounded; drifting down freely isn't.
+    this.grounded = this.kcc.computedGrounded() && this.desired.y <= 0 && moved.y > this.desired.y + 1e-5;
+    // Gliding down the bed, the controller can carry the body further than asked. Never move
+    // sideways faster than the stroke.
+    const sideways = Math.hypot(moved.x, moved.z);
+    const allowed = Math.hypot(this.desired.x, this.desired.z);
+    if (sideways > allowed) {
+      moved.x *= allowed / sideways;
+      moved.z *= allowed / sideways;
+    }
+    if (this.vy > 0 && moved.y < this.desired.y * 0.25) this.vy = 0;
+    this.position.x += moved.x;
+    this.position.y += moved.y;
+    this.position.z += moved.z;
+    this.body.setNextKinematicTranslation(this.position);
+    const wanted = this.desired.x * fx + this.desired.z * fz;
+    this.blockedAhead = forward > 0 && wanted > 0 && moved.x * fx + moved.z * fz < wanted * 0.3;
+    this.velocity.set(moved.x / dt, this.vy, moved.z / dt);
+    this.airTime = 0;
+
+    // Swum up the shore far enough to stand with its back out of the water: walking again.
+    if (this.grounded && this.submerged() < -M.swimExitMargin) this.stopSwimming();
+  }
+
+  private stopSwimming() {
+    this.swimming = false;
+    this.swimPitch = this.tiltTimer = this.vy = 0;
+    this.kcc.enableSnapToGround(M.snapToGround);
+  }
+
   /** Climbing in progress: the visual bends the body up over the rim. */
   get climbing(): boolean {
     return this.climb !== null;
@@ -257,8 +375,8 @@ export class PlayerController {
     return this.climb?.top ?? null;
   }
 
-  /** Start a climb onto what's ahead if it's the right height and there's room on top. */
-  private startClimb(fx: number, fz: number, perched: boolean): boolean {
+  /** Start a climb onto what's ahead if it's the right height, no lower than `minTop`, and there's room on top. */
+  private startClimb(fx: number, fz: number, perched: boolean, minTop = -Infinity): boolean {
     const feetY = this.position.y - centreAboveFeet();
     const from = feetY + CLIMB_MAX + 0.005;
     const lowest = perched ? feetY - PERCH_DROP : feetY + CLIMB_MIN;
@@ -274,7 +392,7 @@ export class PlayerController {
     // The body ends up with its hind feet past the rim, lying on the top found there.
     const over = rim + CLIMB_OVER;
     const top = topAt(over);
-    if (top === null) return false;
+    if (top === null || top < minTop) return false;
     const to = new THREE.Vector3(this.position.x + fx * over, top + centreAboveFeet() + 0.001, this.position.z + fz * over);
     if (this.world.intersectionWithShape(to, this.bodyRotation(this.yaw), this.collider.shape, undefined, undefined, undefined, this.body)) {
       return false;
@@ -335,6 +453,10 @@ export class PlayerController {
     return out;
   }
 
+  swimPitchAt(alpha: number): number {
+    return this.prevSwimPitch + (this.swimPitch - this.prevSwimPitch) * alpha;
+  }
+
   yawAt(alpha: number): number {
     const diff = Math.atan2(Math.sin(this.yaw - this.prevYaw), Math.cos(this.yaw - this.prevYaw));
     return this.prevYaw + diff * alpha;
@@ -352,6 +474,8 @@ export class PlayerController {
     this.vy = 0;
     this.climb = null;
     this.blockedAhead = false;
+    this.stopSwimming();
+    this.prevSwimPitch = 0;
     this.yaw = this.prevYaw = yaw;
     this.body.setTranslation(this.position, true);
     this.body.setRotation(this.bodyRotation(yaw), true);

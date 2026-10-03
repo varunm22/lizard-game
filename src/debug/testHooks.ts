@@ -33,7 +33,21 @@ export interface GameTestHooks {
    */
   feet: () => { leg: string; gap: number }[];
   /** Feet position, facing, ground speed and movement state of the player (physics feet, not as drawn). */
-  player: () => { x: number; y: number; z: number; yaw: number; speed: number; grounded: boolean; climbing: boolean; state: string };
+  player: () => {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    speed: number;
+    grounded: boolean;
+    climbing: boolean;
+    swimming: boolean;
+    /** Swimming pitch, radians, positive snout-up. */
+    swimPitch: number;
+    state: string;
+  };
+  /** The pond's centre, the radius its water covers, and the height of its surface. */
+  pond: () => { x: number; z: number; reach: number; waterY: number };
   /** `faded` names the obstacles currently blocking the view of the lizard. */
   camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[] };
   /**
@@ -43,8 +57,8 @@ export interface GameTestHooks {
   setInput: (input: Partial<InputState> | null, forSteps?: number) => void;
   /** Pin the camera at this offset from the lizard's feet, looking at them (for screenshots); null releases it. */
   viewFrom: (offset: { x: number; y: number; z: number } | null) => void;
-  /** Place the player's feet on the ground at (x, z) facing `yaw`, with the camera behind. */
-  teleport: (x: number, z: number, yaw: number) => void;
+  /** Place the player's feet at (x, z) facing `yaw`, on the ground or at height `y`, with the camera behind. */
+  teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 
 declare global {

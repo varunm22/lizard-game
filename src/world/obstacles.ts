@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PALETTE } from '../render/scene';
 import { toonGradient } from '../render/toon';
 import { terrainHeight } from './terrain';
+import { POND } from './pond';
 
 export interface Obstacle {
   name: string;
@@ -18,7 +19,8 @@ export interface Obstacle {
  * a little into the terrain. Each collider is the convex hull of its own mesh, so what you see is
  * what you stand on, and the faceted tops give flat footing instead of a ball to slide off. Sized
  * against the jump (0.1 m): the pebble, mid rock and log can be jumped onto, the big rock only with a
- * well-timed running jump.
+ * well-timed running jump. Two more sit in the pond: one sunk well under the surface, and an
+ * island just low enough to climb out onto from the water.
  */
 export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacle[] {
   const obstacles: Obstacle[] = [];
@@ -49,6 +51,8 @@ export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacl
     ['rock-big', -0.45, -0.35, 0.09, 0.9, 0.04],
     ['rock-mid', 0.4, -0.5, 0.05, 0.7, 0.01],
     ['pebble', 0.25, 0.3, 0.025, 0.6, 0.006],
+    ['rock-sunk', POND.x + 0.06, POND.z - 0.04, 0.05, 0.6, 0.008],
+    ['rock-island', POND.x - 0.1, POND.z + 0.12, 0.07, 0.75, 0.01],
   ] as const) {
     const half = r * squash;
     const lift = half - sink;

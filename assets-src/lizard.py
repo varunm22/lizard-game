@@ -519,6 +519,30 @@ def jump(rig):
         key(rig, f, rot)
 
 
+# Swimming: legs folded back flat along the body, a travelling wave down the body and tail drives it.
+# Each leg's (upper sweep back, upper tilt, knee fold) in radians, found by fitting the feet to the
+# body's flanks: front feet by the belly, hind feet along the base of the tail.
+SWIM = dict(frames=20, legs={'front': (1.2, 0.15, 1.2), 'hind': (1.05, -0.15, 1.2)}, body=0.08, tail=0.32)
+
+
+def swim(rig, frames, legs, body, tail):
+    new_action(rig, 'swim')
+    for f in range(frames + 1):
+        w = 2 * math.pi * f / frames
+        rot = {
+            'neck': (0, 0, -body * 0.5 * math.cos(w + 0.6)),
+            'chest': (0, 0, body * 0.6 * math.cos(w)),
+            'hips': (0, 0, -body * math.cos(w - 0.6)),
+        }
+        for i, tb in enumerate(TAIL):
+            rot[tb] = (0, 0, tail * (0.5 + 0.35 * i) * math.cos(w - 0.9 * (i + 1)))
+        for leg in LEGS:
+            sweep, tilt, fold = legs['front' if leg.startswith('front') else 'hind']
+            rot['upper_' + leg] = (tilt, 0, leg_sign(leg) * sweep)
+            rot['lower_' + leg] = (fold, 0, 0)
+        key(rig, f, rot)
+
+
 def build_animations(rig):
     targets = setup_ik(rig)
     idle(rig, targets)
@@ -527,6 +551,7 @@ def build_animations(rig):
     jump(rig)
     pose_air(rig, 'fall', frames=16, legs_fwd=0.5, tail_up=0.25, head_up=0.15, wiggle=0.15)
     land(rig, targets)
+    swim(rig, **SWIM)
     # The IK helpers only exist to bake; drop them so the export is a plain FK rig.
     for leg in LEGS:
         pb = rig.pose.bones['lower_' + leg]
