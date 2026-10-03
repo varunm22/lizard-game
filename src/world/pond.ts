@@ -58,25 +58,6 @@ export function waterDepth(p: { x: number; y: number; z: number }): number {
 
 const UNDERWATER = new THREE.Color(0x3f8a8c);
 
-/** The water surface: a translucent sheet over the bowl, seen from above and below. */
-export function buildWater(scene: THREE.Scene): THREE.Mesh {
-  const mesh = new THREE.Mesh(
-    new THREE.CircleGeometry(POND_REACH, 64).rotateX(-Math.PI / 2),
-    new THREE.MeshToonMaterial({
-      color: 0x5aa9b5,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-  );
-  mesh.position.set(POND.x, WATER_Y, POND.z);
-  mesh.renderOrder = 1;
-  mesh.name = 'water';
-  scene.add(mesh);
-  return mesh;
-}
-
 /**
  * With the camera under the surface, swap the sky-coloured fog for close murky green, so the
  * pond reads as water from inside.

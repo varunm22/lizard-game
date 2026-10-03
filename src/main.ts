@@ -4,7 +4,9 @@ import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
 import { buildObstacles } from './world/obstacles';
-import { buildWater, POND, updateUnderwaterView, WATER_Y } from './world/pond';
+import { POND, updateUnderwaterView, WATER_Y } from './world/pond';
+import { Water } from './world/water';
+import { Splashes } from './world/splashes';
 import { Plants } from './world/plants';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
@@ -28,7 +30,8 @@ async function main() {
   const { renderer, scene, camera, sun } = createScene(document.body);
   buildTerrain(scene, world);
   const obstacles = buildObstacles(scene, world);
-  buildWater(scene);
+  const water = new Water(scene);
+  const splashes = new Splashes(water);
   // Plants grow anywhere a rock or log (or its rim) isn't: look down for one at the point and around it.
   const down = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
   const solid = obstacles.map((o) => o.mesh);
@@ -117,6 +120,7 @@ async function main() {
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
         .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz })),
     pond: () => ({ x: POND.x, z: POND.z, radius: POND.radius, depth: POND.depth, waterY: WATER_Y }),
+    ripples: () => water.ripples(),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;
@@ -130,6 +134,7 @@ async function main() {
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw));
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
+    splashes.update(player, dt);
     const state = states.update(
       {
         grounded: player.grounded,
@@ -168,6 +173,7 @@ async function main() {
     lizard.updateBodySpheres();
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     plants.update(pushers, frameDt);
+    water.update(frameDt);
     updateUnderwaterView(scene, camera);
     followSun(sun, feet);
   };
