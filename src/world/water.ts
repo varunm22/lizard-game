@@ -11,7 +11,7 @@ const RIPPLE_WAVELENGTH = 0.028;
 /** Height of a strength-1 ripple's rings (m). */
 const RIPPLE_HEIGHT = 0.003;
 /** A ripple lasts base + perStrength * strength seconds. */
-const RIPPLE_LIFE = { base: 1.8, perStrength: 1.6 };
+const RIPPLE_LIFE = { base: 1.4, perStrength: 1.2 };
 /** Grid cells across the water sheet: ~1.5 cm, enough for the waves; ripple rings are shaded per pixel. */
 const SEGMENTS = 160;
 
@@ -41,12 +41,12 @@ vec2 rippleHeight(vec2 p) {
     if (r.w <= 0.0 || age < 0.0 || age > life) continue;
     float d = distance(p, r.xy);
     float front = ${RIPPLE_SPEED.toFixed(3)} * age;
-    float width = 0.012 + 0.02 * r.w + 0.03 * age;
+    float width = 0.012 + 0.008 * r.w + 0.03 * age;
     float x = (d - front) / width;
     float t = age / life;
     float ring = exp(-x * x) * cos(${((2 * Math.PI) / RIPPLE_WAVELENGTH).toFixed(2)} * (d - front));
     h += ${RIPPLE_HEIGHT.toFixed(4)} * r.w * (1.0 - t) * (1.0 - t) / (1.0 + 6.0 * front) * ring;
-    crest = max(crest, (1.0 - t * t) * (0.55 + 0.45 * min(1.0, r.w)) * ring);
+    crest = max(crest, (1.0 - t * t) * (0.5 + 0.5 * min(1.0, r.w)) * ring);
   }
   return vec2(h, crest);
 }
@@ -100,8 +100,8 @@ export class Water {
           // Foam on ripple crests, and a faint glint along the swells' tops.
           float foam = smoothstep(0.42, 0.52, rings.y);
           float glint = smoothstep(0.0015, 0.0017, swell);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.98, 1.0), max(0.85 * foam, 0.2 * glint));
-          diffuseColor.a = mix(diffuseColor.a, 0.85, foam);`,
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.98, 1.0), max(0.5 * foam, 0.2 * glint));
+          diffuseColor.a = mix(diffuseColor.a, 0.7, foam);`,
         )
         .replace(
           '#include <normal_fragment_begin>',
@@ -120,7 +120,7 @@ export class Water {
     scene.add(this.mesh);
   }
 
-  /** Start a ripple at world (x, z), `delay` seconds from now; strength ~0.6 for a gentle touch up to 2 for a splash. */
+  /** Start a ripple at world (x, z), `delay` seconds from now; strength ~0.6 for a gentle touch up to 1.2 for a splash. */
   ripple(x: number, z: number, strength: number, delay = 0) {
     this.uniforms.uRipples.value[this.next].set(x - POND.x, z - POND.z, this.time + delay, strength);
     this.next = (this.next + 1) % MAX_RIPPLES;
