@@ -1,6 +1,6 @@
 /** One frame of player intent, already merged from keyboard, mouse and gamepad. */
 export interface InputState {
-  /** Stick-style move in camera space: x right, y forward, length 0..1. */
+  /** Steering: x turns (right +), y moves along the lizard's facing (forward +), each -1..1. */
   move: { x: number; y: number };
   run: boolean;
   /** Jump is held this frame. */
@@ -17,7 +17,7 @@ const STICK_RAD_PER_S = 2.5;
 
 /**
  * Keyboard (WASD or arrows, Shift run, Space jump, Q/E orbit), mouse (drag to orbit, wheel to zoom) and the
- * first connected gamepad (left stick move, right stick orbit, A jump, any shoulder or a full
+ * first connected gamepad (left stick turns and moves, right stick orbit, A jump, any shoulder or a full
  * stick push to run).
  */
 export class Input {
@@ -81,11 +81,6 @@ export class Input {
       run ||= pressed(4) || pressed(5) || pressed(6) || pressed(7) || Math.hypot(lx, ly) > 0.95;
     }
 
-    const len = Math.hypot(x, y);
-    if (len > 1) {
-      x /= len;
-      y /= len;
-    }
     const zoom = this.wheel;
     this.lookYaw = this.lookPitch = this.wheel = 0;
     return { move: { x, y }, run, jump, look: { yaw, pitch }, zoom };

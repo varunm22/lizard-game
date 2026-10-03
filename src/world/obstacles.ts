@@ -9,12 +9,15 @@ export interface Obstacle {
   position: THREE.Vector3;
   /** Height of its top above the ground beneath its centre (m). */
   height: number;
+  mesh: THREE.Mesh;
+  collider: RAPIER.Collider;
 }
 
 /**
  * Placeholder obstacles until the props step: a few rocks and a fallen log, fixed in place and sunk
- * a little into the terrain. Sized against the controller: the pebble can be stepped onto, the rest
- * need a jump (0.08 m).
+ * a little into the terrain. Each collider is the convex hull of its own mesh, so what you see is
+ * what you stand on, and the faceted tops give flat footing instead of a ball to slide off. Sized
+ * against the jump (0.08 m): the pebble, mid rock and log can be jumped onto; the big rock can't.
  */
 export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacle[] {
   const obstacles: Obstacle[] = [];
@@ -36,18 +39,22 @@ export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacl
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.name = name;
     scene.add(mesh);
-    world.createCollider(collider.setTranslation(pos.x, pos.y, pos.z).setRotation(rot).setFriction(0.9));
-    return pos;
+    const c = world.createCollider(collider.setTranslation(pos.x, pos.y, pos.z).setRotation(rot).setFriction(0.9));
+    return { position: pos, mesh, collider: c };
   };
 
-  for (const [name, x, z, r, sink] of [
-    ['rock-big', -0.45, -0.35, 0.09, 0.045],
-    ['rock-mid', 0.4, -0.5, 0.05, 0.015],
-    ['pebble', 0.25, 0.3, 0.025, 0.012],
+  // Rocks are squashed icosahedra: [name, x, z, radius, height scale, depth sunk into the ground].
+  for (const [name, x, z, r, squash, sink] of [
+    ['rock-big', -0.45, -0.35, 0.09, 0.9, 0.04],
+    ['rock-mid', 0.4, -0.5, 0.05, 0.7, 0.01],
+    ['pebble', 0.25, 0.3, 0.025, 0.6, 0.006],
   ] as const) {
-    const lift = r - sink;
-    const pos = place(name, new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), stone), RAPIER.ColliderDesc.ball(r), x, z, lift);
-    obstacles.push({ name, position: pos, height: lift + r });
+    const half = r * squash;
+    const lift = half - sink;
+    const geometry = new THREE.IcosahedronGeometry(r, 1).scale(1, squash, 1);
+    // Each obstacle gets its own material so the camera can fade it on its own.
+    const placed = place(name, new THREE.Mesh(geometry, stone.clone()), hull(geometry), x, z, lift);
+    obstacles.push({ name, ...placed, height: lift + half });
   }
 
   const logR = 0.035;
@@ -55,16 +62,24 @@ export function buildObstacles(scene: THREE.Scene, world: RAPIER.World): Obstacl
   const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.4);
   const lay = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
   const logRot = yaw.clone().multiply(lay);
-  const logPos = place(
+  // 14 sides laid on their side leave a flat face on top.
+  const logGeometry = new THREE.CylinderGeometry(logR, logR, logLen, 14);
+  const log = place(
     'log',
-    new THREE.Mesh(new THREE.CylinderGeometry(logR, logR, logLen, 14), bark),
-    RAPIER.ColliderDesc.capsule(logLen / 2 - logR, logR),
+    new THREE.Mesh(logGeometry, bark),
+    hull(logGeometry),
     0,
     -0.6,
     logR - 0.004,
     logRot,
   );
-  obstacles.push({ name: 'log', position: logPos, height: 2 * logR - 0.004 });
+  obstacles.push({ name: 'log', ...log, height: 2 * logR - 0.004 });
 
   return obstacles;
+}
+
+function hull(geometry: THREE.BufferGeometry): RAPIER.ColliderDesc {
+  const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(geometry.getAttribute('position').array));
+  if (!desc) throw new Error('convex hull failed');
+  return desc;
 }

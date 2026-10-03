@@ -13,6 +13,9 @@ export type LizardClip = (typeof LIZARD_CLIPS)[number];
 export const LIZARD_GAIT_SPEED = { walk: 0.09, run: 0.18 } as const;
 
 const ONE_SHOT: LizardClip[] = ['jump', 'land'];
+/** How a head turn splits between the neck and head bones. */
+const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
+const BONE_Z = new THREE.Vector3(0, 0, 1);
 
 /** The visual lizard: the skinned GLB plus its animation mixer. It never moves itself; callers place it. */
 export class LizardModel {
@@ -20,9 +23,17 @@ export class LizardModel {
   private mixer: THREE.AnimationMixer;
   private actions = new Map<LizardClip, THREE.AnimationAction>();
   current: LizardClip | undefined;
+  /** Sideways head turn layered over the clips (radians, positive turns the head to the lizard's right). */
+  headTurn = 0;
+  private turnBones: { bone: THREE.Object3D; rest: THREE.Quaternion; share: number }[] = [];
+  private q = new THREE.Quaternion();
 
   private constructor(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
     this.root = root;
+    for (const [name, share] of Object.entries(HEAD_TURN_SPLIT)) {
+      const bone = root.getObjectByName(name);
+      if (bone) this.turnBones.push({ bone, rest: bone.quaternion.clone(), share });
+    }
     this.mixer = new THREE.AnimationMixer(root);
     for (const clip of clips) {
       const action = this.mixer.clipAction(clip);
@@ -64,7 +75,11 @@ export class LizardModel {
   }
 
   update(dt: number) {
+    // Start from rest so the turn never accumulates on a bone the current clip doesn't key.
+    for (const t of this.turnBones) t.bone.quaternion.copy(t.rest);
     this.mixer.update(dt);
+    // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
+    for (const t of this.turnBones) t.bone.quaternion.multiply(this.q.setFromAxisAngle(BONE_Z, this.headTurn * t.share));
   }
 }
 

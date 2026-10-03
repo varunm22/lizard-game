@@ -4,10 +4,18 @@ import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
 
 /**
- * The player's physics: an upright capsule on Rapier's kinematic character controller. Horizontal
- * velocity comes from camera-relative input with acceleration; vertical velocity (gravity, jumps)
- * is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
+ * The player's physics: a capsule lying along the lizard's body on Rapier's kinematic character
+ * controller. Steering is
+ * tank-style: left/right turns the lizard (in place when standing still), forward/back moves it
+ * along its facing with acceleration. Vertical velocity (gravity, jumps) is integrated here. Rapier resolves collisions, slopes, steps and ground snapping.
  */
+/** Lays the capsule's long axis (Y) along the lizard's forward axis (+Z). */
+const LAY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+const UP = new THREE.Vector3(0, 1, 0);
+
+/** A step's downward move larger than this (m) is a fall, not walking down a slope. */
+const FREE_FALL_DROP = 0.002;
+
 export class PlayerController {
   readonly body: RAPIER.RigidBody;
   readonly collider: RAPIER.Collider;
@@ -28,6 +36,10 @@ export class PlayerController {
   jumped = false;
   /** Seconds since leaving the ground (0 while grounded). */
   airTime = 0;
+  /** Turn input this step, -1 (left) to 1 (right); the visual turns the head into it. */
+  turning = 0;
+  /** True when the body itself turned this step (only while moving forward or back). */
+  bodyTurning = false;
 
   private vy = 0;
   private sinceGrounded = Infinity;
@@ -35,6 +47,10 @@ export class PlayerController {
   private jumpHeld = false;
   private jumping = false;
   private desired = new THREE.Vector3();
+  private world: RAPIER.World;
+  private rot = new THREE.Quaternion();
+  /** Turning is checked against everything but the terrain, which the controller lifts the body off. */
+  private turnBlocker = (c: RAPIER.Collider) => c.shapeType() !== RAPIER.ShapeType.HeightField;
 
   constructor(world: RAPIER.World, feet: THREE.Vector3) {
     this.position.copy(feet).y += centreAboveFeet();
@@ -42,7 +58,9 @@ export class PlayerController {
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.position.x, this.position.y, this.position.z),
     );
-    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(M.capsuleHalfHeight, M.capsuleRadius), this.body);
+    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(M.bodyHalfLength, M.bodyRadius), this.body);
+    this.world = world;
+    this.body.setRotation(this.bodyRotation(this.yaw), true);
 
     const kcc = world.createCharacterController(M.skin);
     kcc.setUp({ x: 0, y: 1, z: 0 });
@@ -54,19 +72,44 @@ export class PlayerController {
     this.kcc = kcc;
   }
 
-  /** Advance one fixed step. `cameraYaw` is the yaw the camera looks along, so input is camera-relative. */
-  step(dt: number, input: InputState, cameraYaw: number) {
+  /** Advance one fixed step. */
+  step(dt: number, input: InputState) {
     this.prevPosition.copy(this.position);
     this.prevYaw = this.yaw;
     this.landed = this.jumped = false;
 
-    // Horizontal: accelerate toward the stick direction in camera space.
-    const fx = Math.sin(cameraYaw);
-    const fz = Math.cos(cameraYaw);
-    const speed = input.run ? M.runSpeed : M.walkSpeed;
-    const tx = (input.move.y * fx - input.move.x * fz) * speed;
-    const tz = (input.move.y * fz + input.move.x * fx) * speed;
-    const hasInput = input.move.x !== 0 || input.move.y !== 0;
+    // Turn: right input turns right, which is clockwise seen from above (yaw decreasing). The body
+    // only turns while moving forward or back; standing still, left/right just turns the head. The
+    // body is long, so a turn that would swing it into a rock or log is refused.
+    this.turning = input.move.x;
+    this.bodyTurning = false;
+    if (input.move.x !== 0 && input.move.y !== 0) {
+      const yaw = Math.atan2(Math.sin(this.yaw - input.move.x * M.turnRate * dt), Math.cos(this.yaw - input.move.x * M.turnRate * dt));
+      const blocked = this.world.intersectionWithShape(
+        this.position,
+        this.bodyRotation(yaw),
+        this.collider.shape,
+        undefined,
+        undefined,
+        undefined,
+        this.body,
+        this.turnBlocker,
+      );
+      if (!blocked) {
+        this.yaw = yaw;
+        this.bodyTurning = true;
+      }
+    }
+    this.body.setNextKinematicRotation(this.bodyRotation(this.yaw));
+
+    // Horizontal: accelerate toward forward/back input along the facing.
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const forward = input.move.y;
+    const speed = forward < 0 ? M.backSpeed : input.run ? M.runSpeed : M.walkSpeed;
+    const tx = forward * fx * speed;
+    const tz = forward * fz * speed;
+    const hasInput = forward !== 0;
     const accel = !this.grounded ? M.airAccel : hasInput ? M.groundAccel : M.groundDecel;
     let vx = this.velocity.x;
     let vz = this.velocity.z;
@@ -80,13 +123,6 @@ export class PlayerController {
     } else {
       vx += (dvx / dv) * maxDv;
       vz += (dvz / dv) * maxDv;
-    }
-
-    // Turn toward where we're asked to go (or moving), at a capped rate.
-    if (hasInput || Math.hypot(vx, vz) > 0.02) {
-      const want = hasInput ? Math.atan2(tx, tz) : Math.atan2(vx, vz);
-      const diff = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
-      this.yaw += THREE.MathUtils.clamp(diff, -M.turnRate * dt, M.turnRate * dt);
     }
 
     // Vertical: buffered, coyote-timed jumps and asymmetric gravity.
@@ -116,10 +152,23 @@ export class PlayerController {
     const moved = this.kcc.computedMovement();
     const wasGrounded = this.grounded;
     // Rapier still reports grounded on the step a jump leaves the floor; rising from a jump is airborne.
-    this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0);
+    // It also reports grounded early when falling fast, as soon as the ground is within this step's
+    // drop, while the capsule is still centimetres up. Taking that at face value zeroed the fall speed
+    // and left the lizard drifting the last few centimetres down at snap speed. Still falling freely
+    // (the whole drop was allowed) means not landed yet.
+    const fellFreely = this.desired.y < -FREE_FALL_DROP && moved.y <= this.desired.y + 1e-5;
+    this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0) && !fellFreely;
 
-    // Blocked going up (a ceiling) or landed: stop vertical speed so it doesn't build up.
-    if (this.vy > 0 && moved.y < this.desired.y - 1e-5) this.vy = 0;
+    // Standing still on a rounded or faceted edge (the rim of a log, the shoulder of a rock), the
+    // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
+    // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
+    if (this.grounded && wasGrounded && !hasInput && moved.y <= 0 && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
+      moved.x = moved.y = moved.z = 0;
+    }
+
+    // Blocked going up (a ceiling): stop vertical speed so it doesn't build up. Grazing a rounded
+    // side (the underside of a log against the snout) only slows the rise, so that keeps the jump.
+    if (this.vy > 0 && moved.y < this.desired.y * 0.25) this.vy = 0;
     this.position.x += moved.x;
     this.position.y += moved.y;
     this.position.z += moved.z;
@@ -150,11 +199,17 @@ export class PlayerController {
   }
 
   /** Teleport (tests and respawn). */
-  setFeet(feet: THREE.Vector3) {
+  setFeet(feet: THREE.Vector3, yaw = this.yaw) {
     this.position.copy(feet).y += centreAboveFeet();
     this.prevPosition.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.vy = 0;
+    this.yaw = this.prevYaw = yaw;
     this.body.setTranslation(this.position, true);
+    this.body.setRotation(this.bodyRotation(yaw), true);
+  }
+
+  private bodyRotation(yaw: number): THREE.Quaternion {
+    return this.rot.setFromAxisAngle(UP, yaw).multiply(LAY);
   }
 }
