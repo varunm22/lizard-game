@@ -14,7 +14,15 @@ import { FollowCamera } from './camera/followCamera';
 import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
 import type { GameTestHooks } from './debug/testHooks';
-import lizardUrl from './assets/lizard.glb?url';
+import classicUrl from './assets/lizard.glb?url';
+import marineIguanaUrl from './assets/marine_iguana.glb?url';
+
+/**
+ * Which look the lizard has. Both share one rig and set of clips; `?model=classic` in the URL
+ * brings back the original teal lizard (assets-src/lizard.py) without a rebuild.
+ */
+const MODELS = { 'marine-iguana': marineIguanaUrl, classic: classicUrl } as const;
+const DEFAULT_MODEL: keyof typeof MODELS = 'marine-iguana';
 
 /** Spawn on open ground, facing the log and the big rock. */
 const SPAWN = { x: 0.1, z: 0.05, yaw: Math.PI };
@@ -32,7 +40,8 @@ async function main() {
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
   const states = new MovementStateMachine();
 
-  const lizard = await LizardModel.load(lizardUrl);
+  const requested = new URLSearchParams(location.search).get('model');
+  const lizard = await LizardModel.load(MODELS[requested && requested in MODELS ? (requested as keyof typeof MODELS) : DEFAULT_MODEL]);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
 
