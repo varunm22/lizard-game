@@ -71,6 +71,8 @@ test('walking with W follows the ground and comes to rest; Shift runs', async ({
   expect(Math.abs(end.y - ground)).toBeLessThan(0.006);
   await steps(page, 30);
   expect((await player(page)).state).toBe('idle');
+  // Standing, every foot as drawn is on the ground: not floating on the physics skin, not sunk in.
+  for (const f of await page.evaluate(() => window.__game!.feet())) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.0015);
 
   await page.evaluate(() => window.__game!.setInput({ move: { x: 0, y: 1 }, run: true }, 90));
   await steps(page, 45);
@@ -168,24 +170,64 @@ test('jump: ~8 cm quick arc, lands flush, camera holds still; a tap hops lower',
   expect(tapPeak - start.y).toBeLessThan(0.05);
 });
 
-test('the log blocks walking without clipping or fading, and can be jumped over', async ({ page }) => {
+test('walking into the log climbs it, rearing up the face, drapes over the top and tips off the far side', async ({ page }) => {
   await boot(page);
   const log = await obstacle(page, 'log');
-  // South of the log's middle, facing -Z toward it.
-  await teleport(page, log.x, log.z + 0.25, Math.PI);
-  await page.keyboard.down('KeyW');
-  await steps(page, 120);
-  await page.keyboard.up('KeyW');
-  const blocked = await player(page);
-  // Stopped on the near side, with the snout (6 cm ahead of the body centre) still outside the log.
-  // The log lies yawed 0.4 rad, so measure square to its axis; the lizard may slide along it.
-  const across = (blocked.x - log.x) * Math.sin(0.4) + (blocked.z - log.z) * Math.cos(0.4);
-  expect(across).toBeGreaterThan(0.085);
-  // Nose up against the log with the camera behind: the log is in front, so it stays solid.
-  expect((await camera(page)).faded).not.toContain('log');
-  await page.screenshot({ path: 'test-results/screenshots/log-blocked.png' });
+  // South of the log's middle, facing -Z toward it, camera pinned to the side for the screenshots.
+  await teleport(page, log.x, log.z + 0.2, Math.PI);
+  await page.evaluate(() => window.__game!.viewFrom({ x: 0.22, y: 0.03, z: -0.02 }));
 
-  // Run up and jump over.
+  // Partway up: the front of the body is angled up the face while the hind feet are still down.
+  const rear = await page.evaluate(() => {
+    const g = window.__game!;
+    g.setInput({ move: { x: 0, y: 1 } }, 400);
+    for (let k = 0; k < 200 && !g.player().climbing; k++) g.advance(1, false);
+    g.advance(9);
+    return { climbing: g.player().climbing, spine: g.lizard().spine, feet: g.feet() };
+  });
+  expect(rear.climbing).toBe(true);
+  expect(rear.spine.chest).toBeGreaterThan(0.6);
+  for (const f of rear.feet.filter((f) => f.leg.startsWith('hind'))) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.004);
+  await page.screenshot({ path: 'test-results/screenshots/log-climb.png' });
+
+  // On top, let go: it lies across the log, hips and chest bent down either side, tail hanging.
+  await page.evaluate(() => {
+    const g = window.__game!;
+    for (let k = 0; k < 100 && g.player().climbing; k++) g.advance(1, false);
+    g.setInput(null);
+  });
+  await steps(page, 30);
+  const on = await player(page);
+  const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [log.x, log.z]);
+  expect(on.grounded).toBe(true);
+  expect(on.y).toBeGreaterThan(ground + log.height - 0.01);
+  const { spine } = await page.evaluate(() => window.__game!.lizard());
+  expect(spine.hips).toBeGreaterThan(0.15);
+  expect(spine.chest).toBeLessThan(-0.1);
+  expect(spine.tail[3]).toBeGreaterThan(0.5);
+  for (const f of await page.evaluate(() => window.__game!.feet())) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.004);
+  await page.screenshot({ path: 'test-results/screenshots/log-draped.png' });
+
+  // Walking on, the front goes over the edge and it drops off the far side rather than balancing.
+  await drive(page, { move: { x: 0, y: 1 } }, 40);
+  await steps(page, 20);
+  const off = await player(page);
+  expect(off.z).toBeLessThan(log.z - 0.06);
+  expect(off.grounded).toBe(true);
+  expect(off.y).toBeLessThan((await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [off.x, off.z])) + 0.01);
+});
+
+test('the big rock is too tall to climb, and the log can be jumped over', async ({ page }) => {
+  await boot(page);
+  const rock = await obstacle(page, 'rock-big');
+  await teleport(page, rock.x, rock.z + 0.2, Math.PI);
+  await drive(page, { move: { x: 0, y: 1 } }, 60);
+  const blocked = await player(page);
+  expect(blocked.climbing).toBe(false);
+  const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [blocked.x, blocked.z]);
+  expect(blocked.y).toBeLessThan(ground + 0.02);
+
+  const log = await obstacle(page, 'log');
   await teleport(page, log.x, log.z + 0.25, Math.PI);
   await driveUntilZBelow(page, { move: { x: 0, y: 1 }, run: true }, log.z + 0.12);
   await drive(page, { move: { x: 0, y: 1 }, run: true, jump: true }, 50);

@@ -46,6 +46,7 @@ async function main() {
   let frameInput: InputState = input.read(0);
   let lastState = states.state;
   const feet = new THREE.Vector3();
+  let viewOffset: THREE.Vector3 | null = null;
   const groundedFeet = new THREE.Vector3();
 
   const hooks: GameTestHooks = {
@@ -62,16 +63,35 @@ async function main() {
     lizard: () => {
       const head = lizard.root.getObjectByName('head')!;
       const local = lizard.root.worldToLocal(head.getWorldPosition(new THREE.Vector3()));
-      return { clips: lizard.clipNames, current: lizard.current, head: { x: local.x, y: local.y, z: local.z } };
+      const { hips, chest, tail } = visual.fit ?? { hips: 0, chest: 0, tail: [0, 0, 0, 0] };
+      return { clips: lizard.clipNames, current: lizard.current, head: { x: local.x, y: local.y, z: local.z }, spine: { hips, chest, tail } };
     },
+    feet: () =>
+      lizard.solePoints().map(({ leg, point }) => {
+        // Look down from just above the foot, so a log or rock overhanging it doesn't count.
+        const hit = world.castRay(new RAPIER.Ray({ x: point.x, y: point.y + 0.02, z: point.z }, { x: 0, y: -1, z: 0 }), 1, true, undefined, undefined, undefined, player.body);
+        return { leg, gap: hit ? hit.timeOfImpact - 0.02 : Infinity };
+      }),
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
-      return { x: f.x, y: f.y, z: f.z, yaw: player.yaw, speed: player.horizontalSpeed, grounded: player.grounded, state: states.state };
+      return {
+        x: f.x,
+        y: f.y,
+        z: f.z,
+        yaw: player.yaw,
+        speed: player.horizontalSpeed,
+        grounded: player.grounded,
+        climbing: player.climbing,
+        state: states.state,
+      };
     },
     camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded }),
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
+    },
+    viewFrom: (offset) => {
+      viewOffset = offset && new THREE.Vector3(offset.x, offset.y, offset.z);
     },
     teleport: (x, z, yaw) => {
       player.setFeet(new THREE.Vector3(x, terrainHeight(x, z), z), yaw);
@@ -90,6 +110,7 @@ async function main() {
         landed: player.landed,
         verticalSpeed: player.velocity.y,
         horizontalSpeed: player.horizontalSpeed,
+        climbing: player.climbing,
       },
       dt,
     );
@@ -109,6 +130,10 @@ async function main() {
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
     const groundedFeetY = player.grounded ? player.feetAt(1, groundedFeet).y : null;
     followCam.update(feet, groundedFeetY, player.yawAt(alpha), steering, frameDt);
+    if (viewOffset) {
+      camera.position.copy(feet).add(viewOffset);
+      camera.lookAt(feet);
+    }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     followSun(sun, feet);
   };

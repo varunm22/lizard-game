@@ -15,6 +15,8 @@ export interface PhysicsFacts {
   landed: boolean;
   verticalSpeed: number;
   horizontalSpeed: number;
+  /** Scrambling up onto something: walks, whatever the ground speed. */
+  climbing: boolean;
 }
 
 /**
@@ -37,7 +39,7 @@ export class MovementStateMachine {
       this.state = 'land';
     }
     this.landTimer -= dt;
-    const gait: MoveState = f.horizontalSpeed > RUN_MIN ? 'run' : f.horizontalSpeed > WALK_MIN ? 'walk' : 'idle';
+    const gait: MoveState = f.climbing ? 'walk' : f.horizontalSpeed > RUN_MIN ? 'run' : f.horizontalSpeed > WALK_MIN ? 'walk' : 'idle';
     // Landing gives way at once to a gait, or to idle when the squash is done.
     if (this.state !== 'land' || gait !== 'idle' || this.landTimer <= 0) this.state = gait;
     return this.state;

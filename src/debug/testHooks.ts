@@ -16,10 +16,24 @@ export interface GameTestHooks {
   groundAt: (x: number, z: number) => number | null;
   /** Obstacles with their current opacity (below 1 while faded for blocking the view). */
   obstacles: () => { name: string; x: number; y: number; z: number; height: number; opacity: number }[];
-  /** Clips, the playing clip, and the head bone's position in the lizard's own frame (+Z forward, +X its left). */
-  lizard: () => { clips: string[]; current: string | undefined; head: { x: number; y: number; z: number } };
-  /** Feet position, facing, ground speed and movement state of the player. */
-  player: () => { x: number; y: number; z: number; yaw: number; speed: number; grounded: boolean; state: string };
+  /**
+   * Clips, the playing clip, the head bone's position in the lizard's own frame (+Z forward, +X its
+   * left), and the spine fit: absolute pitch of the hips, chest and each tail bone (radians, positive
+   * raises the end nearer the snout).
+   */
+  lizard: () => {
+    clips: string[];
+    current: string | undefined;
+    head: { x: number; y: number; z: number };
+    spine: { hips: number; chest: number; tail: number[] };
+  };
+  /**
+   * Each foot's gap to the surface under it (m): the lowest point of its sole as drawn, minus the
+   * physics surface height there. Positive floats, negative sinks in.
+   */
+  feet: () => { leg: string; gap: number }[];
+  /** Feet position, facing, ground speed and movement state of the player (physics feet, not as drawn). */
+  player: () => { x: number; y: number; z: number; yaw: number; speed: number; grounded: boolean; climbing: boolean; state: string };
   /** `faded` names the obstacles currently blocking the view of the lizard. */
   camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[] };
   /**
@@ -27,6 +41,8 @@ export interface GameTestHooks {
    * steps, or until called with null when `forSteps` is 0. Camera look is not affected.
    */
   setInput: (input: Partial<InputState> | null, forSteps?: number) => void;
+  /** Pin the camera at this offset from the lizard's feet, looking at them (for screenshots); null releases it. */
+  viewFrom: (offset: { x: number; y: number; z: number } | null) => void;
   /** Place the player's feet on the ground at (x, z) facing `yaw`, with the camera behind. */
   teleport: (x: number, z: number, yaw: number) => void;
 }

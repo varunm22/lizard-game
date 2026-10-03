@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { toonify } from '../render/toon';
+import type { Point, SpineRig } from './spineFit';
 
 /** Animation clips baked by assets-src/lizard.py. */
 export const LIZARD_CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'land'] as const;
@@ -16,6 +17,17 @@ const ONE_SHOT: LizardClip[] = ['jump', 'land'];
 /** How a head turn splits between the neck and head bones. */
 const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
 const BONE_Z = new THREE.Vector3(0, 0, 1);
+/** Bones the spine fit pitches, parents before children. */
+export const BENT_BONES = ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'] as const;
+export type BentBone = (typeof BENT_BONES)[number];
+/**
+ * Points the rig has no joint for, in model space (+Z forward, Y up), from PROFILE in
+ * assets-src/lizard.py: the snout tip, the tail tip, and where the hind and front feet stand.
+ */
+const SNOUT = new THREE.Vector3(0, 0.008, 0.064);
+const TAIL_TIP = new THREE.Vector3(0, 0.0036, -0.092);
+const HIND_FOOT_Z = -0.014;
+const FRONT_FOOT_Z = 0.026;
 
 /** The visual lizard: the skinned GLB plus its animation mixer. It never moves itself; callers place it. */
 export class LizardModel {
@@ -27,9 +39,21 @@ export class LizardModel {
   headTurn = 0;
   private turnBones: { bone: THREE.Object3D; rest: THREE.Quaternion; share: number }[] = [];
   private q = new THREE.Quaternion();
+  /**
+   * Pitch layered over the clips for each bent bone, relative to its parent (radians, positive
+   * raises the bone's forward end). Set by the spine fit.
+   */
+  readonly bend: Record<BentBone, number> = { chest: 0, neck: 0, head: 0, tail1: 0, tail2: 0, tail3: 0, tail4: 0 };
+  /** Rest positions of the spine joints and feet, side-on (s forward, y up), for the spine fit. */
+  readonly rig: SpineRig;
+  private bentBones: { bone: THREE.Object3D; name: BentBone; rest: THREE.Quaternion; axis: THREE.Vector3 }[] = [];
+  /** For each leg, the skinned vertices that make up the sole of its foot. */
+  readonly soles = new Map<string, { mesh: THREE.SkinnedMesh; index: number }[]>();
 
   private constructor(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
     this.root = root;
+    this.findSoles();
+    this.rig = this.measureRig();
     for (const [name, share] of Object.entries(HEAD_TURN_SPLIT)) {
       const bone = root.getObjectByName(name);
       if (bone) this.turnBones.push({ bone, rest: bone.quaternion.clone(), share });
@@ -52,6 +76,23 @@ export class LizardModel {
     const gltf = url.startsWith('data:') ? await loader.parseAsync(dataUrlToBuffer(url), '') : await loader.loadAsync(url);
     toonify(gltf.scene);
     return new LizardModel(gltf.scene, gltf.animations);
+  }
+
+  /**
+   * World position of the lowest sole vertex of each foot, as currently posed. Skinning runs on the
+   * CPU here, so this is for tests and debugging, not every frame.
+   */
+  solePoints(): { leg: string; point: THREE.Vector3 }[] {
+    this.root.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    return [...this.soles].map(([leg, verts]) => {
+      let low: THREE.Vector3 | null = null;
+      for (const { mesh, index } of verts) {
+        mesh.getVertexPosition(index, v).applyMatrix4(mesh.matrixWorld);
+        if (!low || v.y < low.y) low = v.clone();
+      }
+      return { leg, point: low! };
+    });
   }
 
   get clipNames(): string[] {
@@ -77,9 +118,66 @@ export class LizardModel {
   update(dt: number) {
     // Start from rest so the turn never accumulates on a bone the current clip doesn't key.
     for (const t of this.turnBones) t.bone.quaternion.copy(t.rest);
+    for (const b of this.bentBones) b.bone.quaternion.copy(b.rest);
     this.mixer.update(dt);
+    // Pitch about the body's side-to-side axis, taken into each bone's own frame at rest.
+    for (const b of this.bentBones) b.bone.quaternion.multiply(this.q.setFromAxisAngle(b.axis, this.bend[b.name]));
     // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
     for (const t of this.turnBones) t.bone.quaternion.multiply(this.q.setFromAxisAngle(BONE_Z, this.headTurn * t.share));
+  }
+
+  private measureRig(): SpineRig {
+    this.root.updateMatrixWorld(true);
+    const rootInv = this.root.matrixWorld.clone().invert();
+    const at = (name: string): Point => {
+      const p = this.root.getObjectByName(name)!.getWorldPosition(new THREE.Vector3()).applyMatrix4(rootInv);
+      return { s: p.z, y: p.y };
+    };
+    const rootQ = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+    for (const name of BENT_BONES) {
+      const bone = this.root.getObjectByName(name);
+      if (!bone) continue;
+      // Raising the forward end is a rotation about the model's -X; express that axis in the bone's frame.
+      const boneQ = rootQ.clone().multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
+      const axis = new THREE.Vector3(-1, 0, 0).applyQuaternion(boneQ.invert());
+      this.bentBones.push({ bone, name, rest: bone.quaternion.clone(), axis });
+    }
+    return {
+      hips: at('tail1'),
+      chest: at('chest'),
+      neck: at('neck'),
+      head: at('head'),
+      snout: { s: SNOUT.z, y: SNOUT.y },
+      tail: [at('tail1'), at('tail2'), at('tail3'), at('tail4'), { s: TAIL_TIP.z, y: TAIL_TIP.y }],
+      hindFoot: { s: HIND_FOOT_Z, y: 0 },
+      frontFoot: { s: FRONT_FOOT_Z, y: 0 },
+    };
+  }
+
+  /** Sole = vertices bound mostly to a lower-leg bone and within 1.5 mm of that foot's lowest point at rest. */
+  private findSoles() {
+    const byLeg = new Map<string, { mesh: THREE.SkinnedMesh; index: number; y: number }[]>();
+    this.root.traverse((o) => {
+      const mesh = o as THREE.SkinnedMesh;
+      if (!mesh.isSkinnedMesh) return;
+      const pos = mesh.geometry.getAttribute('position');
+      const joints = mesh.geometry.getAttribute('skinIndex');
+      const weights = mesh.geometry.getAttribute('skinWeight');
+      for (let i = 0; i < pos.count; i++) {
+        for (let k = 0; k < 4; k++) {
+          const bone = mesh.skeleton.bones[joints.getComponent(i, k)];
+          if (weights.getComponent(i, k) > 0.5 && bone.name.startsWith('lower_')) {
+            const leg = bone.name.slice(6);
+            if (!byLeg.has(leg)) byLeg.set(leg, []);
+            byLeg.get(leg)!.push({ mesh, index: i, y: pos.getY(i) });
+          }
+        }
+      }
+    });
+    for (const [leg, verts] of byLeg) {
+      const low = Math.min(...verts.map((v) => v.y));
+      this.soles.set(leg, verts.filter((v) => v.y < low + 0.0015).map(({ mesh, index }) => ({ mesh, index })));
+    }
   }
 }
 
