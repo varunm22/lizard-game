@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
-import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
+import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, IGNORE_STEMS, IGNORE_STEMS_AND_IGUANAS, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
-import { ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
+import { lavaCover, ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
@@ -14,6 +14,7 @@ import { Plants, type PlantKind } from './world/plants';
 import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
+import { Iguanas } from './creatures/iguana';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -48,14 +49,16 @@ async function main() {
   const regrowth = new Regrowth(route, plants);
   const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants);
 
-  const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
+  const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), (PLAYER_GROUP << 16) | 0xffff);
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
+  player.stillGroups = IGNORE_IGUANAS;
   const states = new MovementStateMachine();
 
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
-  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard);
+  const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
+  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -74,7 +77,7 @@ async function main() {
   const groundedFeet = new THREE.Vector3();
   const tickFeet = new THREE.Vector3();
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
-  const pushers = [...lizard.bodySpheres, cameraPusher];
+  const pushers = [...lizard.bodySpheres, ...iguanas.bodySpheres, cameraPusher];
 
   const hooks: GameTestHooks = {
     ready: false,
@@ -94,7 +97,7 @@ async function main() {
         opacity: (o.mesh.material as THREE.Material).opacity,
       })),
     groundAt: (x, z, from = 5) => {
-      const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
+      const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
       return hit ? from - hit.timeOfImpact : null;
     },
     lizard: () => {
@@ -143,16 +146,60 @@ async function main() {
     tortoise: () => ({ ...tortoise.position, state: tortoise.state, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),
     crabs: () =>
-      crabs.list.map((c) => ({ x: c.pos.x, y: c.pos.y, z: c.pos.z, yaw: c.yaw, state: c.state, clip: c.clip, onPile: c.home.pile, hops: c.hops })),
+      crabs.list.map((c) => ({
+        x: c.pos.x,
+        y: c.pos.y,
+        z: c.pos.z,
+        yaw: c.yaw,
+        state: c.state,
+        clip: c.clip,
+        onPile: c.home.pile,
+        hops: c.hops,
+        grooming: crabs.groomingWhom(c),
+      })),
     crabClips: () => [...crabs.clips],
+    iguanas: () =>
+      iguanas.list.map((ig) => {
+        const f = ig.body.feetAt(1, new THREE.Vector3());
+        const meal = ig.meal;
+        return {
+          x: f.x,
+          y: f.y,
+          z: f.z,
+          yaw: ig.body.yaw,
+          home: { ...ig.home },
+          activity: ig.activity,
+          state: ig.states.state,
+          clip: ig.model.current,
+          grounded: ig.body.grounded,
+          swimming: ig.body.swimming,
+          sneezing: ig.sneezing,
+          sneezes: ig.sneezes,
+          bites: ig.bites,
+          meals: ig.meals,
+          meal: meal && { id: meal.id, x: meal.x, y: meal.y, z: meal.z },
+          touch: meal && ig.touch(meal),
+          lava: lavaCover(f.x, f.z),
+          mate: ig.mate === player ? ('player' as const) : ig.mate ? iguanas.list.findIndex((o) => o.body === ig.mate) : null,
+        };
+      }),
+    iguanaDo: (i, action) => {
+      const ig = iguanas.list[i];
+      if (action === 'feed') ig.feed();
+      else if (action === 'move') ig.moveOn();
+      else ig.sneeze();
+    },
+    saltSpray: () => iguanas.spray.live,
+    lava: lavaCover,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),
     crabPlace: (i, x, z, y = 1) => crabs.list[i].place(x, y, z),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
     shoreX,
     rockPiles: () => ROCK_PILES.map((p) => ({ name: p.name, z: p.z, x0: shoreX(p.z) + p.from, x1: shoreX(p.z) + p.to, peak: p.peak })),
     algae: (near) =>
-      (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z })),
+      (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     removeAlgae: (id) => algae.remove(id),
+    sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
@@ -168,6 +215,7 @@ async function main() {
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
+    iguanas.step(dt);
     crabs.step(dt);
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
@@ -198,6 +246,7 @@ async function main() {
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
     tortoise.update(alpha, frameDt);
     visual.update(states.state, alpha, frameDt);
+    iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
     // Swimming, the camera follows the lizard up and down as if it were on the ground.

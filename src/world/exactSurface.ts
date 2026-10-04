@@ -10,6 +10,12 @@ import RAPIER from '@dimforge/rapier3d-compat';
  * triangle mesh instead, which is exact and still knows inside from out.
  */
 const exact = new Map<number, RAPIER.TriMesh>();
+/**
+ * How far each registered hull reaches from its collider's origin (m). Every ray cast onto a Rapier
+ * shape copies the whole mesh into the physics engine first, which made those casts most of a
+ * step's cost; a ray that passes wide of this sphere can't hit the hull and skips the cast.
+ */
+const reach = new Map<number, number>();
 
 export interface SurfaceHit {
   timeOfImpact: number;
@@ -24,7 +30,18 @@ const drawn = new Map<number, { pos: RAPIER.Vector; rot: RAPIER.Rotation }>();
 export function registerExactSurface(collider: RAPIER.Collider) {
   const indices = collider.indices();
   if (!indices) return;
-  exact.set(collider.handle, new RAPIER.TriMesh(collider.vertices(), indices, RAPIER.TriMeshFlags.ORIENTED));
+  const vertices = collider.vertices();
+  exact.set(collider.handle, new RAPIER.TriMesh(vertices, indices, RAPIER.TriMeshFlags.ORIENTED));
+  let r = 0;
+  for (let i = 0; i < vertices.length; i += 3) r = Math.max(r, Math.hypot(vertices[i], vertices[i + 1], vertices[i + 2]));
+  reach.set(collider.handle, r);
+}
+
+/** Whether the ray's first `length` metres pass within `r` of `c`. */
+function nearRay(ray: RAPIER.Ray, length: number, c: RAPIER.Vector, r: number): boolean {
+  const { origin: o, dir: d } = ray;
+  const t = Math.max(0, Math.min(length, (c.x - o.x) * d.x + (c.y - o.y) * d.y + (c.z - o.z) * d.z));
+  return Math.hypot(o.x + d.x * t - c.x, o.y + d.y * t - c.y, o.z + d.z * t - c.z) <= r;
 }
 
 /**
@@ -64,6 +81,7 @@ export function castSurfaceRay(
     const c = world.getCollider(handle);
     if (!c || c.parent()?.handle === exclude.handle || !passes(c.collisionGroups(), groups)) continue;
     const { pos, rot } = surfacePose(c);
+    if (!nearRay(ray, best ? best.timeOfImpact : maxToi, pos, reach.get(handle)!)) continue;
     const s = shape.castRayAndGetNormal(ray, pos, rot, best ? best.timeOfImpact : maxToi, true);
     if (s && (!best || s.timeOfImpact < best.timeOfImpact)) best = { timeOfImpact: s.timeOfImpact, normal: s.normal, exact: true };
   }

@@ -16,9 +16,10 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
     const { waterY } = g.ocean();
     // How far each is off the surface under it (looking from just above it: it may be in under the
     // ledge of a slab), and above the sea. Rays onto a rock's convex hull come out a few mm apart from
-    // different heights, so "on the rock" is within a few mm (it stands 7 mm tall).
+    // different heights, so "on the rock" is within a few mm (it stands 7 mm tall). Standing at a
+    // rock's edge on its legs, the ray straight down can miss the rock, so it also looks 8 mm round it.
     const check = () =>
-      g.crabs().map((c) => ({ gap: c.y - g.groundAt(c.x, c.z, c.y + 0.03)!, dry: c.y - waterY, state: c.state, x: c.x, z: c.z, onPile: c.onPile, hops: c.hops }));
+      g.crabs().map((c) => ({ gap: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => c.y - g.groundAt(c.x + dx * 0.008, c.z + dz * 0.008, c.y + 0.03)!).reduce((a, b) => (Math.abs(a) < Math.abs(b) ? a : b)), dry: c.y - waterY, state: c.state, x: c.x, z: c.z, onPile: c.onPile, hops: c.hops }));
     const start = check();
     let worstGap = 0;
     let wettest = Infinity;
@@ -27,7 +28,8 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
       g.advance(60, false);
       for (const c of check()) {
         states.add(c.state);
-        if (c.state !== 'hop') worstGap = Math.max(worstGap, Math.abs(c.gap));
+        // Up on an iguana's back grooming it, it isn't on the rock.
+        if (c.state !== 'hop' && c.state !== 'groom') worstGap = Math.max(worstGap, Math.abs(c.gap));
         wettest = Math.min(wettest, c.dry);
       }
     }
@@ -155,7 +157,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
     let waited = 0;
     for (; waited < 2400 && i < 0; waited += 30) {
       g.advance(30, false);
-      i = g.crabs().findIndex((c) => c.state === 'groom');
+      i = g.crabs().findIndex((c) => c.state === 'groom' && c.grooming === 'player');
     }
     if (i < 0) return { waited, groomed: false };
     g.advance(120, false);
