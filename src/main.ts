@@ -105,6 +105,7 @@ async function main() {
         return { leg, gap: hit ? hit.timeOfImpact - 0.02 : Infinity };
       }),
     clearance: () => visual.clearance.depths(),
+    clearancePoints: () => visual.clearance.points().map((p) => lizard.root.worldToLocal(p)),
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
       return {

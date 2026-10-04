@@ -7,6 +7,7 @@ import type { MoveState } from './state';
 import { fitSpine, type SpineFit } from './spineFit';
 import { LegReach } from './legReach';
 import { BodyClearance } from './bodyClearance';
+import { castSurfaceRay } from '../world/exactSurface';
 
 /** How fast the side-to-side tilt eases onto a new ground slope (per second, exponential). */
 const TILT_RATE = 12;
@@ -162,19 +163,19 @@ export class LizardVisual {
     this.model.update(dt);
     this.reach += ((standing ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
     this.legs.apply((x, y, z) => this.footGround(x, y, z), this.reach);
-    this.clearance.apply();
+    this.clearance.apply(dt);
   }
 
   /** The surface just under a foot, or null if it's out of the leg's reach. */
   private footGround(x: number, y: number, z: number): number | null {
     this.footRay.origin = { x, y: y + FOOT_PROBE, z };
-    const hit = this.world.castRay(this.footRay, 2 * FOOT_PROBE, true, undefined, IGNORE_STEMS, undefined, this.player.body);
+    const hit = castSurfaceRay(this.world, this.footRay, 2 * FOOT_PROBE, IGNORE_STEMS, this.player.body);
     return hit && hit.timeOfImpact > 0 ? y + FOOT_PROBE - hit.timeOfImpact : null;
   }
 
   private cast(x: number, z: number) {
     this.ray.origin = { x, y: this.feet.y + this.sampleUp, z };
-    return this.world.castRayAndGetNormal(this.ray, this.sampleUp + SAMPLE_DOWN, true, undefined, IGNORE_STEMS, undefined, this.player.body);
+    return castSurfaceRay(this.world, this.ray, this.sampleUp + SAMPLE_DOWN, IGNORE_STEMS, this.player.body);
   }
 
   /** Eased surface height at `s` along the body, linear between samples. */

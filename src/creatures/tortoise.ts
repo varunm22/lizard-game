@@ -4,6 +4,7 @@ import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
+import { registerExactSurface } from '../world/exactSurface';
 import type { Plant, Plants } from '../world/plants';
 import type { PlayerController } from '../player/controller';
 import { centreAboveFeet } from '../player/movement';
@@ -115,6 +116,7 @@ export class Tortoise {
     this.world = world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
     this.collider = world.createCollider(RAPIER.ColliderDesc.convexHull(shellHull(this.extras))!, this.body);
+    registerExactSurface(this.collider);
     this.along = start;
     this.untilRest = this.spell(WALK_SPELL);
     this.pose();
