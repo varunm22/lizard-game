@@ -296,9 +296,10 @@ class Crab {
         if (this.safeFor >= SAFE_TIME) this.enter('idle');
         break;
       case 'groom':
-        // Riding its back as it breathes; off as soon as it moves, or once it's done.
-        this.host!.back(this.pos);
+        // Riding its back as it breathes; off as soon as it moves, or once it's done. Off from where
+        // it is, before following the back: if the host got up mid-hop, that may be well out of reach.
         if (!this.host!.calm || this.stateTime >= this.spellLength) this.hopOff();
+        else this.host!.back(this.pos);
         break;
     }
     this.fit();
