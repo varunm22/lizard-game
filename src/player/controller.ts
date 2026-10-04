@@ -281,10 +281,7 @@ export class PlayerController {
     this.blockedAhead = forward > 0 && wanted > 0 && moved.x * fx + moved.z * fz < wanted * 0.3;
 
     // Keep the velocity actually achieved, so walls absorb momentum instead of storing it.
-    // Standing still on something that carries it, what moved it was the controller pushing it back
-    // out of the shell as the shell bobbed up under it, not the lizard walking.
-    if (this.riding && !hasInput) this.velocity.set(0, this.vy, 0);
-    else this.velocity.set(moved.x / dt, this.vy, moved.z / dt);
+    this.velocity.set(moved.x / dt, this.vy, moved.z / dt);
     if (this.grounded) this.velocity.y = moved.y / dt;
 
     if (this.grounded && !wasGrounded && this.airTime > 0.05) this.landed = true;
