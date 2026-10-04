@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
-import { WATER_Y, waterDepth } from '../world/pond';
+import { WATER_Y, waterDepth } from '../world/shore';
 import { IGNORE_STEMS } from '../world/terrain';
 
 /**

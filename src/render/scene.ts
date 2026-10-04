@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 
 export const PALETTE = {
-  sky: 0xcfe6d8,
-  ground: 0x8fb36a,
-  stone: 0xb7ad9c,
-  bark: 0x8a6446,
+  sky: 0xc6e4ef,
+  ground: 0xa7ae62,
+  /** Weathered volcanic rock inland; fresh black basalt by the sea. */
+  stone: 0x8a827a,
+  basalt: 0x3b3735,
+  bark: 0x7d6650,
 };
 
 /** Distance fog in the open air (m): starts past the clearing, hides the world's edge. */
@@ -17,8 +19,11 @@ export interface SceneContext {
   sun: THREE.DirectionalLight;
 }
 
-/** Where the sun sits relative to the point it lights; the shadow box follows the player. */
-const SUN_OFFSET = new THREE.Vector3(1.5, 3, 1);
+/**
+ * Where the sun sits relative to the point it lights; the shadow box follows the player. High enough
+ * to be above the forest canopy, so the trees dapple the ground in their shade.
+ */
+const SUN_OFFSET = new THREE.Vector3(2.5, 5, 1.7);
 
 export function createScene(container: HTMLElement): SceneContext {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -41,11 +46,12 @@ export function createScene(container: HTMLElement): SceneContext {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.001;
   const s = sun.shadow.camera;
   s.left = s.bottom = -1;
   s.right = s.top = 1;
   s.near = 0.1;
-  s.far = 8;
+  s.far = 12;
   scene.add(sun, sun.target);
 
   window.addEventListener('resize', () => {

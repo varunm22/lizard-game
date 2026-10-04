@@ -3,8 +3,11 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
-import { buildObstacles } from './world/obstacles';
-import { POND, updateUnderwaterView, WATER_Y } from './world/pond';
+import { buildObstacles, covers } from './world/obstacles';
+import { buildProps } from './world/props';
+import { Algae } from './world/algae';
+import { SPAWN } from './world/layout';
+import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
 import { Plants } from './world/plants';
@@ -19,9 +22,7 @@ import { createHud } from './hud';
 import type { GameTestHooks } from './debug/testHooks';
 import lizardUrl from './assets/lizard.glb?url';
 import plantsUrl from './assets/plants.glb?url';
-
-/** Spawn on open ground, facing the log and the big rock. */
-const SPAWN = { x: 0.1, z: 0.05, yaw: Math.PI };
+import propsUrl from './assets/props.glb?url';
 
 async function main() {
   await RAPIER.init();
@@ -29,18 +30,14 @@ async function main() {
 
   const { renderer, scene, camera, sun } = createScene(document.body);
   buildTerrain(scene, world);
-  const obstacles = buildObstacles(scene, world);
+  const landmarks = buildObstacles(scene, world);
+  const props = await buildProps(propsUrl, scene, world, landmarks);
+  const obstacles = [...landmarks, ...props.obstacles];
+  const algae = new Algae(scene, props.algae, obstacles);
   const water = new Water(scene);
   const splashes = new Splashes(water);
-  // Plants grow anywhere a rock or log (or its rim) isn't: look down for one at the point and around it.
-  const down = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
-  const solid = obstacles.map((o) => o.mesh);
-  scene.updateMatrixWorld();
-  const open = (x: number, z: number) =>
-    [[0, 0], [0.015, 0], [-0.015, 0], [0, 0.015], [0, -0.015]].every(([dx, dz]) => {
-      down.ray.origin.set(x + dx, 5, z + dz);
-      return down.intersectObjects(solid, false).length === 0;
-    });
+  // Plants grow anywhere a rock, log or tree (or its rim) isn't.
+  const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, SPAWN);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
@@ -75,7 +72,16 @@ async function main() {
     physicsSteps: 0,
     terrainHeight,
     obstacles: () =>
-      obstacles.map((o) => ({ name: o.name, ...o.position, height: o.height, opacity: (o.mesh.material as THREE.Material).opacity })),
+      obstacles.map((o) => ({
+        name: o.name,
+        kind: o.kind,
+        x: o.position.x,
+        y: o.position.y,
+        z: o.position.z,
+        height: o.height,
+        radius: o.radius,
+        opacity: (o.mesh.material as THREE.Material).opacity,
+      })),
     groundAt: (x, z) => {
       const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
       return hit ? 5 - hit.timeOfImpact : null;
@@ -119,7 +125,11 @@ async function main() {
       plants.all
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
         .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz })),
-    pond: () => ({ x: POND.x, z: POND.z, radius: POND.radius, depth: POND.depth, waterY: WATER_Y }),
+    ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
+    shoreX,
+    algae: (near) =>
+      (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z })),
+    removeAlgae: (id) => algae.remove(id),
     ripples: () => water.ripples(),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
@@ -174,6 +184,7 @@ async function main() {
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     plants.update(pushers, frameDt);
     water.update(frameDt);
+    algae.update(frameDt);
     updateUnderwaterView(scene, camera);
     followSun(sun, feet);
   };

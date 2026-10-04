@@ -39,9 +39,6 @@ C = {
     'daisy_eye': srgb('#f2b632'),
     'poppy': srgb('#ec6a3c'),
     'poppy_eye': srgb('#3a2a24'),
-    'reed_base': srgb('#5b8f4a'),
-    'reed_tip': srgb('#a9c46c'),
-    'cattail': srgb('#7a4b2c'),
 }
 
 
@@ -191,25 +188,6 @@ def flower(rng, petal, eye, petals, height):
     return mb
 
 
-def reed(rng):
-    """A clump of long leaves around a cattail stalk; stands at the pond's edge, about 25 cm tall."""
-    mb = MeshBuilder()
-    for i in range(5):
-        a = 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / 5
-        d = (math.cos(a), math.sin(a))
-        h = rng.uniform(0.16, 0.24)
-        pts = curve((d[0] * 0.003, d[1] * 0.003, 0), d, h, h * rng.uniform(0.2, 0.35), 6)
-        blade(mb, pts, 0.007, C['reed_base'], C['reed_tip'], (-d[1], d[0]))
-    stalk = curve((0, 0, 0), (1, 0), 0.26, 0.01, 6)
-    tube(mb, stalk, 0.0015, 0.001, C['reed_base'], C['reed_base'])
-    head = curve(stalk[-2], (1, 0), 0.03, 0.002, 2)
-    head = [(p[0], p[1], p[2] + 0.002) for p in head]
-    rings = tube(mb, head, 0.004, 0.004, C['cattail'], C['cattail'], sides=6)
-    dome(mb, head[-1], 0.004, 0.003, C['cattail'], sides=6)
-    dome(mb, head[0], 0.004, 0.002, C['cattail'], sides=6, up=False)
-    return mb
-
-
 def make_object(name, mb, mat):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(mb.verts, [], mb.faces)
@@ -235,7 +213,6 @@ def main():
         'fern': fern(rng),
         'daisy': flower(rng, C['daisy'], C['daisy_eye'], 9, 0.13),
         'poppy': flower(rng, C['poppy'], C['poppy_eye'], 5, 0.16),
-        'reed': reed(rng),
     }
     for i, (name, mb) in enumerate(kinds.items()):
         obj = make_object(name, mb, mat)

@@ -52,9 +52,9 @@ test('walking with W follows the ground and comes to rest; Shift runs', async ({
   await page.waitForFunction(() => window.__game?.ready === true);
   const laneX = await page.evaluate(() => {
     const ps = window.__game!.plants();
-    const near = (x: number) => ps.filter((p) => Math.abs(p.x - x) < 0.06 && p.z > 0.15 && p.z < 1.5).length;
+    const near = (x: number) => ps.filter((p) => Math.abs(p.x - x) < 0.06 && p.z > 0.15 && p.z < 1.3).length;
     let best = 0.6;
-    for (let x = 0.4; x <= 1.0; x += 0.01) if (near(x) < near(best)) best = x;
+    for (let x = -0.6; x <= 1.0; x += 0.01) if (near(x) < near(best)) best = x;
     return near(best) === 0 ? best : null;
   });
   expect(laneX).not.toBeNull();

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "assets": "python3 assets-src/lizard.py && python3 assets-src/plants.py",
+    "assets": "python3 assets-src/lizard.py && python3 assets-src/plants.py && python3 assets-src/props.py",
     "build:preview": "tsc --noEmit && vite build --mode preview"
   },
   "dependencies": {
