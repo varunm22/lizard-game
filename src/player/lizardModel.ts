@@ -43,7 +43,15 @@ export class LizardModel {
   current: LizardClip | undefined;
   /** Sideways head turn layered over the clips (radians, positive turns the head to the lizard's right). */
   headTurn = 0;
-  private turnBones: { bone: THREE.Object3D; rest: THREE.Quaternion; share: number }[] = [];
+  private turnBones: { bone: THREE.Object3D; share: number }[] = [];
+  /**
+   * Every bone's rotation as the clips alone leave it, last frame. The mixer only writes a bone when
+   * its clip value changes, so a bone the code turns after the mixer (bends, head turn, leg reach,
+   * clearance) is put back to this first: back to its rest pose instead, it stayed there for every
+   * frame a clip held still (the tail snapped straight for a few frames at each end of its sway), and
+   * left alone the turns would pile up frame on frame.
+   */
+  private clipPose: { bone: THREE.Object3D; q: THREE.Quaternion }[] = [];
   private q = new THREE.Quaternion();
   /**
    * Pitch layered over the clips for each bent bone, relative to its parent (radians, positive
@@ -52,7 +60,7 @@ export class LizardModel {
   readonly bend: Record<BentBone, number> = { chest: 0, neck: 0, head: 0, tail1: 0, tail2: 0, tail3: 0, tail4: 0 };
   /** Rest positions of the spine joints and feet, side-on (s forward, y up), for the spine fit. */
   readonly rig: SpineRig;
-  private bentBones: { bone: THREE.Object3D; name: BentBone; rest: THREE.Quaternion; axis: THREE.Vector3 }[] = [];
+  private bentBones: { bone: THREE.Object3D; name: BentBone; axis: THREE.Vector3 }[] = [];
   /** For each leg, the skinned vertices that make up the sole of its foot. */
   readonly soles = new Map<string, { mesh: THREE.SkinnedMesh; index: number }[]>();
   /** For each leg, its upper and lower bones and the centre of its sole in the lower bone's frame, at rest. */
@@ -80,8 +88,11 @@ export class LizardModel {
     this.rig = this.measureRig();
     for (const [name, share] of Object.entries(HEAD_TURN_SPLIT)) {
       const bone = root.getObjectByName(name);
-      if (bone) this.turnBones.push({ bone, rest: bone.quaternion.clone(), share });
+      if (bone) this.turnBones.push({ bone, share });
     }
+    root.traverse((o) => {
+      if ((o as THREE.Bone).isBone) this.clipPose.push({ bone: o, q: o.quaternion.clone() });
+    });
     this.mixer = new THREE.AnimationMixer(root);
     for (const clip of clips) {
       const action = this.mixer.clipAction(clip);
@@ -147,10 +158,9 @@ export class LizardModel {
   }
 
   update(dt: number) {
-    // Start from rest so the turn never accumulates on a bone the current clip doesn't key.
-    for (const t of this.turnBones) t.bone.quaternion.copy(t.rest);
-    for (const b of this.bentBones) b.bone.quaternion.copy(b.rest);
+    for (const c of this.clipPose) c.bone.quaternion.copy(c.q);
     this.mixer.update(dt);
+    for (const c of this.clipPose) c.q.copy(c.bone.quaternion);
     // Pitch about the body's side-to-side axis, taken into each bone's own frame at rest.
     for (const b of this.bentBones) b.bone.quaternion.multiply(this.q.setFromAxisAngle(b.axis, this.bend[b.name]));
     // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
@@ -184,7 +194,7 @@ export class LizardModel {
       // Raising the forward end is a rotation about the model's -X; express that axis in the bone's frame.
       const boneQ = rootQ.clone().multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
       const axis = new THREE.Vector3(-1, 0, 0).applyQuaternion(boneQ.invert());
-      this.bentBones.push({ bone, name, rest: bone.quaternion.clone(), axis });
+      this.bentBones.push({ bone, name, axis });
     }
     return {
       hips: at('tail1'),

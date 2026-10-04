@@ -192,47 +192,45 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
   expect(errors).toEqual([]);
 });
 
-test('riding still, the tail and feet hold steady on the bobbing shell', async ({ page }) => {
+test('standing still, on the ground or riding, the tail and feet hold steady', async ({ page }) => {
   const errors = await boot(page);
-  const steadiness = await page.evaluate(() => {
+  const worst = await page.evaluate(() => {
     const g = window.__game!;
-    // How much each kept-clear point (tail, then feet) jerks from frame to frame, in the lizard's own
-    // frame: the size of its second difference, worst and mean, over 10 s.
-    const watch = () => {
+    // The biggest jump of any kept-clear point (tail, then feet) in the lizard's own frame from one
+    // frame to the next (the size of its second difference), played at a 144 Hz display's rate, so
+    // the frames fall between physics steps as they do on screen.
+    const watch = (secs: number) => {
       const frames: { x: number; y: number; z: number }[][] = [];
-      for (let s = 0; s < 600; s++) {
-        g.advance(1, false);
+      for (let s = 0; s < secs * 144; s++) {
+        g.frame(1 / 144);
         frames.push(g.clearancePoints());
       }
-      const n = frames[0].length;
-      const worst = new Array(n).fill(0);
-      const mean = new Array(n).fill(0);
+      let most = 0;
       for (let f = 1; f + 1 < frames.length; f++) {
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < frames[f].length; i++) {
           const [a, b, c] = [frames[f - 1][i], frames[f][i], frames[f + 1][i]];
-          const d = Math.hypot(a.x - 2 * b.x + c.x, a.y - 2 * b.y + c.y, a.z - 2 * b.z + c.z);
-          worst[i] = Math.max(worst[i], d);
-          mean[i] += d / frames.length;
+          most = Math.max(most, Math.hypot(a.x - 2 * b.x + c.x, a.y - 2 * b.y + c.y, a.z - 2 * b.z + c.z));
         }
       }
-      return { worst, mean };
+      return most;
     };
-    // Standing still on the flat ground first, for the idle clip's own sway; then on the shell's crown.
     g.teleport(0, 0, 0);
     g.advance(60, false);
-    const flat = watch();
+    const ground = watch(4);
+    // On the crown of the shell while the tortoise walks, eats, and lies down for a rest.
     const t = g.tortoise();
     g.teleport(t.x, t.z, t.yaw, t.y + 0.16);
     g.advance(60, false);
-    const riding = watch();
-    return { flat, riding, state: g.player().state };
+    const walking = watch(5);
+    g.tortoiseDo('eat');
+    const eating = watch(5);
+    g.tortoiseDo('rest');
+    const resting = watch(5);
+    return { ground, walking, eating, resting, state: g.player().state };
   });
-  expect(steadiness.state).toBe('idle');
-  const tail = steadiness.riding.mean.slice(0, 8);
-  const feet = steadiness.riding.worst.slice(8);
-  // The tail sways as it does on the ground, no more (it used to jerk about 7 times as much at the tip)...
-  tail.forEach((m, i) => expect(m, `tail point ${i}`).toBeLessThan(steadiness.flat.mean[i] * 1.5 + 0.0001));
-  // ...and no foot jumps from one frame to the next (they used to by over a centimetre).
-  feet.forEach((w, i) => expect(w, `foot ${i}`).toBeLessThan(0.003));
+  expect(worst.state).toBe('idle');
+  // Nothing jumps by more than a millimetre. The idle tail used to snap straight for a few frames
+  // every 1.5 s (11 mm), on the ground too; on the shell, feet jumped by up to a centimetre.
+  for (const when of ['ground', 'walking', 'eating', 'resting'] as const) expect(worst[when], when).toBeLessThan(0.001);
   expect(errors).toEqual([]);
 });

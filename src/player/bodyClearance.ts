@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { IGNORE_STEMS } from '../world/terrain';
-import { exactShape } from '../world/exactSurface';
+import { exactShape, surfacePose } from '../world/exactSurface';
 import type { LizardModel } from './lizardModel';
 
 /**
@@ -251,7 +251,8 @@ export class BodyClearance {
       this.ball,
       (c) => {
         const exact = exactShape(c);
-        const hit = exact ? exact.projectPoint(c.translation(), c.rotation(), p, false) : c.projectPoint(p, false);
+        const pose = exact && surfacePose(c);
+        const hit = pose ? exact.projectPoint(pose.pos, pose.rot, p, false) : c.projectPoint(p, false);
         if (!hit) return true;
         const dx = hit.point.x - p.x;
         const dy = hit.point.y - p.y;
@@ -268,7 +269,7 @@ export class BodyClearance {
           // Just inside a convex hull, the projection can come out through its far side (down through
           // the bottom of a shell the point is grazing). Up to the top is the move when that's shorter.
           this.up.origin = p;
-          const toTop = exact ? exact.castRay(this.up, c.translation(), c.rotation(), LOOK_UP, false) : c.castRay(this.up, LOOK_UP, false);
+          const toTop = pose ? exact.castRay(this.up, pose.pos, pose.rot, LOOK_UP, false) : c.castRay(this.up, LOOK_UP, false);
           if (toTop >= 0 && toTop + r < need) {
             need = toTop + r;
             ox = 0;

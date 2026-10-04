@@ -9,6 +9,13 @@ import { LegReach } from './legReach';
 import { BodyClearance } from './bodyClearance';
 import { castSurfaceRay } from '../world/exactSurface';
 
+/**
+ * On the tortoise's shell, how fast the drawn body's height over the shell eases to the physics
+ * body's (per second). The physics body jostles on the bobbing shell by a fraction of a millimetre
+ * from step to step, and is a step out from the shell as drawn between steps; the drawn body sits
+ * steady on the drawn shell instead and moves with it exactly.
+ */
+const SHELL_SETTLE_RATE = 4;
 /** How fast the side-to-side tilt eases onto a new ground slope (per second, exponential). */
 const TILT_RATE = 12;
 /** Steepest side-to-side tilt the body follows; beyond it the lizard stays more upright. */
@@ -77,6 +84,8 @@ export class LizardVisual {
   private reach = 1;
   private swimLift = 0;
   private footRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  /** On the shell, the drawn feet's eased height over it; null when not standing on it. */
+  private shellGap: number | null = null;
   /** The spine fit drawn last frame. */
   fit: SpineFit | null = null;
 
@@ -92,6 +101,7 @@ export class LizardVisual {
   update(state: MoveState, alpha: number, dt: number) {
     const p = this.player;
     p.feetAt(alpha, this.feet);
+    this.settleOnShell(dt);
     const yaw = p.yawAt(alpha);
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
@@ -166,6 +176,20 @@ export class LizardVisual {
     this.clearance.apply(dt);
   }
 
+  /** On the shell, draw the feet at an eased height over it instead of the physics body's. */
+  private settleOnShell(dt: number) {
+    const p = this.player;
+    const hit = p.grounded && !p.swimming ? this.castFrom(this.feet.x, this.feet.y + SAMPLE_UP, this.feet.z, SAMPLE_UP + SAMPLE_DOWN) : null;
+    if (!hit?.exact) {
+      this.shellGap = null;
+      return;
+    }
+    const surface = this.feet.y + SAMPLE_UP - hit.timeOfImpact;
+    const gap = this.feet.y - surface;
+    this.shellGap = this.shellGap === null ? gap : this.shellGap + (gap - this.shellGap) * (1 - Math.exp(-SHELL_SETTLE_RATE * dt));
+    this.feet.y = surface + this.shellGap;
+  }
+
   /** The surface just under a foot, or null if it's out of the leg's reach. */
   private footGround(x: number, y: number, z: number): number | null {
     this.footRay.origin = { x, y: y + FOOT_PROBE, z };
@@ -174,8 +198,12 @@ export class LizardVisual {
   }
 
   private cast(x: number, z: number) {
-    this.ray.origin = { x, y: this.feet.y + this.sampleUp, z };
-    return castSurfaceRay(this.world, this.ray, this.sampleUp + SAMPLE_DOWN, IGNORE_STEMS, this.player.body);
+    return this.castFrom(x, this.feet.y + this.sampleUp, z, this.sampleUp + SAMPLE_DOWN);
+  }
+
+  private castFrom(x: number, y: number, z: number, length: number) {
+    this.ray.origin = { x, y, z };
+    return castSurfaceRay(this.world, this.ray, length, IGNORE_STEMS, this.player.body);
   }
 
   /** Eased surface height at `s` along the body, linear between samples. */

@@ -10,6 +10,12 @@ export interface GameTestHooks {
    * renders slowly, so tests use this instead of waiting for frames.
    */
   advance: (n: number, draw?: boolean) => void;
+  /**
+   * Stop real time and play one frame of `frameDt` seconds as the real-time loop would: the physics
+   * steps it owes, then the views at the interpolated in-between point. Drawn only if `draw`. For
+   * checking what the game looks like at a display's own frame rate, not just at whole steps.
+   */
+  frame: (frameDt: number, draw?: boolean) => void;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
   /** Height of the first physics surface under (x, z), found by a downward ray, or null. */

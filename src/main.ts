@@ -75,6 +75,7 @@ async function main() {
   const hooks: GameTestHooks = {
     ready: false,
     advance: () => {},
+    frame: () => {},
     physicsSteps: 0,
     terrainHeight,
     obstacles: () =>
@@ -182,6 +183,8 @@ async function main() {
     followCam.applyInput(frameInput);
   };
   const updateViews = (alpha: number, frameDt: number) => {
+    // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
+    tortoise.update(alpha, frameDt);
     visual.update(states.state, alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
@@ -196,7 +199,6 @@ async function main() {
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
-    tortoise.update(alpha, frameDt);
     plants.update(pushers, frameDt);
     water.update(frameDt);
     algae.update(frameDt);
@@ -228,6 +230,15 @@ async function main() {
       tick(FIXED_DT);
       updateViews(1, FIXED_DT);
     }
+    if (drawFrame) draw();
+  };
+  let accumulator = 0;
+  hooks.frame = (frameDt, drawFrame = false) => {
+    stopLoop?.();
+    stopLoop = null;
+    readInput(frameDt);
+    for (accumulator += frameDt; accumulator >= FIXED_DT; accumulator -= FIXED_DT) tick(FIXED_DT);
+    updateViews(accumulator / FIXED_DT, frameDt);
     if (drawFrame) draw();
   };
 }

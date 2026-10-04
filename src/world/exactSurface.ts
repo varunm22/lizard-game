@@ -11,11 +11,34 @@ import RAPIER from '@dimforge/rapier3d-compat';
  */
 const exact = new Map<number, RAPIER.TriMesh>();
 
+export interface SurfaceHit {
+  timeOfImpact: number;
+  normal: RAPIER.Vector;
+  /** On a registered collider (the tortoise shell). */
+  exact: boolean;
+}
+/** Where each registered collider is drawn this frame, when that differs from its physics pose. */
+const drawn = new Map<number, { pos: RAPIER.Vector; rot: RAPIER.Rotation }>();
+
 /** Answer surface queries against `collider` (a convex hull) with its hull as a triangle mesh. */
 export function registerExactSurface(collider: RAPIER.Collider) {
   const indices = collider.indices();
   if (!indices) return;
   exact.set(collider.handle, new RAPIER.TriMesh(collider.vertices(), indices, RAPIER.TriMeshFlags.ORIENTED));
+}
+
+/**
+ * Query `collider` where it is drawn this frame rather than where the last physics step left it. A
+ * moving collider is drawn between its last two steps, and so is a lizard riding it: fitting the
+ * drawn lizard to the collider's step pose instead puts the two a little out of step every frame.
+ */
+export function setDrawnPose(collider: RAPIER.Collider, pos: RAPIER.Vector, rot: RAPIER.Rotation) {
+  drawn.set(collider.handle, { pos: { x: pos.x, y: pos.y, z: pos.z }, rot: { x: rot.x, y: rot.y, z: rot.z, w: rot.w } });
+}
+
+/** The pose to query `collider`'s exact shape at: where it's drawn, else its physics pose. */
+export function surfacePose(collider: RAPIER.Collider): { pos: RAPIER.Vector; rot: RAPIER.Rotation } {
+  return drawn.get(collider.handle) ?? { pos: collider.translation(), rot: collider.rotation() };
 }
 
 /** The exact shape to query in place of `collider`'s own, if it has one. */
@@ -24,8 +47,9 @@ export function exactShape(collider: RAPIER.Collider): RAPIER.TriMesh | undefine
 }
 
 /**
- * Like `world.castRayAndGetNormal`, but registered colliders are hit on their exact shape. Returns
- * the time of impact and normal of the nearest hit, or null.
+ * Like `world.castRayAndGetNormal`, but registered colliders are hit on their exact shape, where
+ * they're drawn. Returns the time of impact and normal of the nearest hit, and whether it was on a
+ * registered collider, or null.
  */
 export function castSurfaceRay(
   world: RAPIER.World,
@@ -33,14 +57,15 @@ export function castSurfaceRay(
   maxToi: number,
   groups: number,
   exclude: RAPIER.RigidBody,
-): { timeOfImpact: number; normal: RAPIER.Vector } | null {
+): SurfaceHit | null {
   const hit = world.castRayAndGetNormal(ray, maxToi, true, undefined, groups, undefined, exclude, (c) => !exact.has(c.handle));
-  let best: { timeOfImpact: number; normal: RAPIER.Vector } | null = hit && { timeOfImpact: hit.timeOfImpact, normal: hit.normal };
+  let best: SurfaceHit | null = hit && { timeOfImpact: hit.timeOfImpact, normal: hit.normal, exact: false };
   for (const [handle, shape] of exact) {
     const c = world.getCollider(handle);
     if (!c || c.parent()?.handle === exclude.handle || !passes(c.collisionGroups(), groups)) continue;
-    const s = shape.castRayAndGetNormal(ray, c.translation(), c.rotation(), best ? best.timeOfImpact : maxToi, true);
-    if (s && (!best || s.timeOfImpact < best.timeOfImpact)) best = { timeOfImpact: s.timeOfImpact, normal: s.normal };
+    const { pos, rot } = surfacePose(c);
+    const s = shape.castRayAndGetNormal(ray, pos, rot, best ? best.timeOfImpact : maxToi, true);
+    if (s && (!best || s.timeOfImpact < best.timeOfImpact)) best = { timeOfImpact: s.timeOfImpact, normal: s.normal, exact: true };
   }
   return best;
 }
