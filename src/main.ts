@@ -51,11 +51,11 @@ async function main() {
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
   const states = new MovementStateMachine();
-  const crabs = await Crabs.load(crabUrl, scene, world, algae, player);
 
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
+  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);

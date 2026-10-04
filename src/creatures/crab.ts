@@ -9,18 +9,21 @@ import { inOcean, shoreX, WATER_Y } from '../world/shore';
 import { ROCK_PILES } from '../world/layout';
 import type { Algae } from '../world/algae';
 import type { PlayerController } from '../player/controller';
+import type { LizardModel } from '../player/lizardModel';
 
 /**
  * Sally Lightfoot crabs (assets-src/crab.py) on the lava shore and the rock piles. Each scuttles
  * sideways from spot to spot round its home, stops to graze (at a patch of algae when there's one
  * above the water nearby), now and then shows off with its claws raised, and hops up and down any
  * step it can't walk. When the lizard comes close it runs for it, and if it can't get away it drops
- * flat and waits for the lizard to go. Crabs stay out of the sea.
+ * flat and waits for the lizard to go. Crabs stay out of the sea. A lizard that lies still for a while
+ * stops being frightening: the nearest crab walks over, hops onto its back and grooms it (the
+ * graze clip, picking at its skin) until the lizard moves, when it jumps off.
  *
  * They're drawn, not simulated: no collider, just a kinematic point kept on whatever surface is under
  * it by downward rays, and tilted to the rock under its legs.
  */
-export type CrabState = 'idle' | 'walk' | 'graze' | 'display' | 'flee' | 'hop' | 'duck';
+export type CrabState = 'idle' | 'walk' | 'graze' | 'display' | 'flee' | 'hop' | 'duck' | 'groom';
 
 /** Steps up to this (m) it walks over; higher ones, up to HOP_MAX, it hops. Higher still is a wall. */
 const STEP_UP = 0.005;
@@ -55,6 +58,21 @@ const SNOUT = 0.08;
 const BODY_HALF = 0.048;
 const BODY_CLEAR = 0.025;
 const BODY_LEVEL = 0.04;
+/** The lizard counts as lying still after this long without moving or turning (s); then crabs don't fear it. */
+const CALM = 4;
+/** A crab this near a still lizard (m), and at most this far above or below it, may come to groom it. */
+const GROOM_REACH = 0.5;
+const GROOM_LEVEL = 0.1;
+/** It walks up to this far from the lizard's spine (m), then hops onto its back. */
+const BESIDE = 0.035;
+/** It grooms this long at most (s, from-to), then hops off. */
+const GROOM_SPELL = [15, 30] as const;
+/** After a walk to the lizard that's blocked on the way, it won't try again for this long (s). */
+const GROOM_REST = 20;
+/** A still lizard looks around for a crab to groom it this often (s). */
+const GROOM_LOOK = 1;
+/** Hopping off, it lands this far out to the side of the lizard (m). */
+const HOP_OFF = 0.06;
 /** Two crabs keep at least this far apart (m), about a leg span; nearer, each steps half the overlap aside. */
 const CRAB_SPACE = 0.03;
 /** Where it feels the rock under its legs, either side and fore and aft (m), to tilt the body. */
@@ -124,6 +142,10 @@ class Crab {
   private safeFor = 0;
   /** Sent somewhere by a test: it goes there whatever its home, and doesn't wander off on the way. */
   private sent = false;
+  /** Walking up to the lizard to groom it. */
+  private toLizard = false;
+  /** It won't come to groom the lizard for this much longer (s). */
+  private groomRest = 0;
 
   constructor(
     source: THREE.Object3D,
@@ -169,12 +191,28 @@ class Crab {
    * Mid-hop it's in the air and can't be pushed.
    */
   nudge(dx: number, dz: number) {
-    if (this.state === 'hop') return;
+    if (this.state === 'hop' || this.state === 'groom') return;
     const x = this.pos.x + dx;
     const z = this.pos.z + dz;
     const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX);
     if (h === null || h - this.pos.y > HOP_MAX || this.pos.y - h > DROP_MAX || !this.crabs.dryAt(x, z, h)) return;
     this.pos.set(x, h, z);
+  }
+
+  /** On its way to groom the lizard, or up there doing it. */
+  get grooming() {
+    return this.toLizard || this.state === 'groom' || (this.state === 'hop' && this.hop!.then === 'groom');
+  }
+
+  /** Free to be asked over to groom the lizard: going about its own business. */
+  get idleish() {
+    return !this.sent && this.groomRest <= 0 && (this.state === 'idle' || this.state === 'graze' || this.state === 'walk' || this.state === 'display');
+  }
+
+  /** Walk to (x, z), beside the lizard, then hop up onto its back. */
+  approach(x: number, z: number) {
+    this.toLizard = true;
+    this.moveTo(x, z, 'walk');
   }
 
   /** Walk to (x, z) (tests). */
@@ -187,8 +225,10 @@ class Crab {
     this.prevPos.copy(this.pos);
     this.prevRot.copy(this.rot);
     this.stateTime += dt;
+    this.groomRest -= dt;
     const near = Math.min(...lizard.map((p) => Math.hypot(p.x - this.pos.x, p.z - this.pos.z)));
-    if (near < ALARM && !this.sent && this.state !== 'flee' && this.state !== 'hop' && this.state !== 'duck') this.flee(lizard[0]);
+    const startled = this.state === 'flee' || this.state === 'hop' || this.state === 'duck' || this.state === 'groom';
+    if (near < ALARM && !this.sent && !this.crabs.calm && !startled) this.flee(lizard[0]);
 
     switch (this.state) {
       case 'idle':
@@ -210,6 +250,11 @@ class Crab {
       case 'duck':
         this.safeFor = near > SAFE ? this.safeFor + dt : 0;
         if (this.safeFor >= SAFE_TIME) this.enter('idle');
+        break;
+      case 'groom':
+        // Riding its back as it breathes; off as soon as it moves, or once it's done.
+        this.crabs.back(this.pos);
+        if (!this.crabs.calm || this.stateTime >= this.spellLength) this.hopOff();
         break;
     }
     this.fit();
@@ -237,6 +282,7 @@ class Crab {
 
   /** Run directly away from the lizard, or the clearest way near that. */
   private flee(from: THREE.Vector3) {
+    this.toLizard = false;
     const away = Math.atan2(this.pos.x - from.x, this.pos.z - from.z);
     for (const turn of [0, 0.5, -0.5, 1, -1, 1.5, -1.5]) {
       const a = away + turn;
@@ -263,6 +309,7 @@ class Crab {
     const dist = Math.hypot(dx, dz);
     if (dist < 0.01) {
       this.sent = false;
+      if (this.toLizard) return this.hopOn();
       return this.enter(this.state === 'walk' && this.rand() < 0.6 ? 'graze' : 'idle');
     }
     // Turn so its side faces the target. Its left is (cos yaw, -sin yaw).
@@ -289,6 +336,8 @@ class Crab {
   /** Can't go on: if it's running from the lizard it drops flat, otherwise it thinks again. */
   private blocked() {
     this.sent = false;
+    if (this.toLizard) this.groomRest = GROOM_REST;
+    this.toLizard = false;
     this.enter(this.state === 'flee' ? 'duck' : 'idle');
   }
 
@@ -317,6 +366,35 @@ class Crab {
     this.enter('hop');
   }
 
+  /** From beside the lizard, up onto its back. */
+  private hopOn() {
+    this.toLizard = false;
+    this.hop = { from: this.pos.clone(), to: this.crabs.back(new THREE.Vector3()), side: this.side, then: 'groom' };
+    this.hops++;
+    this.enter('hop');
+  }
+
+  /** Down off the lizard's back, out to one side of it (or straight down if neither side will do). */
+  private hopOff() {
+    const left = this.crabs.lizardLeft();
+    let to: THREE.Vector3 | null = null;
+    for (const s of [1, -1]) {
+      const x = this.pos.x + left.x * s * HOP_OFF;
+      const z = this.pos.z + left.z * s * HOP_OFF;
+      const h = this.crabs.surface(x, z, this.pos.y);
+      if (h !== null && this.pos.y - h < DROP_MAX && this.crabs.dryAt(x, z, h + STEP_UP)) {
+        to = new THREE.Vector3(x, h, z);
+        break;
+      }
+    }
+    to ??= new THREE.Vector3(this.pos.x, this.crabs.surface(this.pos.x, this.pos.z, this.pos.y) ?? this.pos.y, this.pos.z);
+    // Leaping to whichever of its sides faces that way.
+    const side = (to.x - this.pos.x) * Math.cos(this.yaw) - (to.z - this.pos.z) * Math.sin(this.yaw) >= 0 ? 1 : -1;
+    this.hop = { from: this.pos.clone(), to, side, then: 'idle' };
+    this.hops++;
+    this.enter('hop');
+  }
+
   /** Follow the leap: crouched until take-off, through the air, then the landing in place. */
   private leap() {
     const hop = this.hop!;
@@ -335,7 +413,8 @@ class Crab {
       this.pos.copy(hop.to);
       this.hop = null;
       // Carry on where it was going (it turns and picks a side again).
-      this.moveTo(this.target.x, this.target.y, hop.then === 'flee' ? 'flee' : 'walk');
+      if (hop.then === 'groom' || hop.then === 'idle') this.enter(hop.then);
+      else this.moveTo(this.target.x, this.target.y, hop.then === 'flee' ? 'flee' : 'walk');
     }
   }
 
@@ -343,7 +422,8 @@ class Crab {
   private fit() {
     const forward = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const left = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    if (this.state !== 'hop') {
+    // In the air, or on the lizard's back, it stays level.
+    if (this.state !== 'hop' && this.state !== 'groom') {
       const h = (f: number, s: number) => {
         const y = this.crabs.surface(this.pos.x + forward.x * f + left.x * s, this.pos.z + forward.z * f + left.z * s, this.pos.y + STEP_UP);
         // Nothing there, or the foot of a step higher than it'd stand on: take it as level.
@@ -368,11 +448,12 @@ class Crab {
     this.stateTime = 0;
     if (state === 'idle') this.spellLength = this.spell(IDLE_SPELL);
     if (state === 'graze') this.spellLength = this.spell(GRAZE_SPELL);
+    if (state === 'groom') this.spellLength = this.spell(GROOM_SPELL);
     if (state === 'duck') this.safeFor = 0;
     if (state === 'hop') {
       this.play(this.hop!.side > 0 ? 'hop_left' : 'hop_right');
       this.current!.timeScale = this.hop!.then === 'flee' ? HOP_HURRY : 1;
-    } else if (state !== 'walk' && state !== 'flee') this.play(state);
+    } else if (state !== 'walk' && state !== 'flee') this.play(state === 'groom' ? 'graze' : state);
   }
 
   private spell([a, b]: readonly [number, number]) {
@@ -402,6 +483,11 @@ export class Crabs {
   private ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   private lizard = [new THREE.Vector3(), new THREE.Vector3()];
   private settled = false;
+  /** How long the lizard has lain still (s), where it was last step, and the crab grooming it (or on its way). */
+  private stillFor = 0;
+  private lastFeet = new THREE.Vector3();
+  private groomer: Crab | null = null;
+  private lookIn = 0;
 
   private constructor(
     gltf: Awaited<ReturnType<typeof loadGltf>>,
@@ -409,6 +495,7 @@ export class Crabs {
     private world: RAPIER.World,
     private algae: Algae,
     private player: PlayerController,
+    private lizardModel: LizardModel,
   ) {
     const source = gltf.scene;
     toonify(source);
@@ -424,8 +511,23 @@ export class Crabs {
     }
   }
 
-  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, algae: Algae, player: PlayerController) {
-    return new Crabs(await loadGltf(url), scene, world, algae, player);
+  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, algae: Algae, player: PlayerController, lizard: LizardModel) {
+    return new Crabs(await loadGltf(url), scene, world, algae, player, lizard);
+  }
+
+  /** The lizard has lain still long enough that crabs don't fear it. */
+  get calm() {
+    return this.stillFor >= CALM;
+  }
+
+  /** The top of the lizard's back, as drawn. */
+  back(out: THREE.Vector3) {
+    return this.lizardModel.back(out);
+  }
+
+  /** The lizard's left, in the ground plane. */
+  lizardLeft() {
+    return { x: Math.cos(this.player.yaw), z: -Math.sin(this.player.yaw) };
   }
 
   /** Height of the surface under (x, z) at or below `below` (plus a little), or null. Ignores the lizard. */
@@ -471,9 +573,52 @@ export class Crabs {
     const [feet, snout] = this.lizard;
     this.player.feetAt(1, feet);
     snout.set(feet.x + Math.sin(this.player.yaw) * SNOUT, feet.y, feet.z + Math.cos(this.player.yaw) * SNOUT);
+    this.watchLizard(dt, feet);
     for (const c of this.list) c.step(dt, this.lizard);
     this.clearLizard(feet);
     this.spaceOut();
+  }
+
+  /** Keep track of how long the lizard has lain still, and once it's calm send the nearest crab over to groom it. */
+  private watchLizard(dt: number, feet: THREE.Vector3) {
+    const p = this.player;
+    const moved = feet.distanceTo(this.lastFeet) > 0.001;
+    const still = !moved && p.grounded && !p.swimming && !p.bodyTurning && p.horizontalSpeed < 0.01;
+    this.lastFeet.copy(feet);
+    this.stillFor = still ? this.stillFor + dt : 0;
+    if (this.groomer && !this.groomer.grooming) this.groomer = null;
+    this.lookIn -= dt;
+    if (!this.calm || this.groomer || this.lookIn > 0) return;
+    this.lookIn = GROOM_LOOK;
+    // The nearest crab with a clear way to the spot beside the middle of its body, on the crab's side.
+    const back = this.back(new THREE.Vector3());
+    const left = this.lizardLeft();
+    const near = this.list
+      .filter((c) => c.idleish && Math.abs(c.pos.y - feet.y) < GROOM_LEVEL && Math.hypot(c.pos.x - feet.x, c.pos.z - feet.z) < GROOM_REACH)
+      .sort((a, b) => a.pos.distanceTo(feet) - b.pos.distanceTo(feet));
+    for (const c of near) {
+      const s = (c.pos.x - back.x) * left.x + (c.pos.z - back.z) * left.z >= 0 ? 1 : -1;
+      const x = back.x + left.x * s * BESIDE;
+      const z = back.z + left.z * s * BESIDE;
+      if (!this.clearWay(c.pos, x, z)) continue;
+      c.approach(x, z);
+      this.groomer = c;
+      return;
+    }
+  }
+
+  /** A crab at `from` could walk (and hop) straight to (x, z): no wall, drop or sea on the way. */
+  private clearWay(from: THREE.Vector3, x: number, z: number) {
+    const n = Math.ceil(Math.hypot(x - from.x, z - from.z) / 0.01);
+    let y = from.y;
+    for (let i = 1; i <= n; i++) {
+      const px = from.x + ((x - from.x) * i) / n;
+      const pz = from.z + ((z - from.z) * i) / n;
+      const h = this.surface(px, pz, y + HOP_MAX);
+      if (h === null || h - y > HOP_MAX || y - h > DROP_MAX || !this.dryAt(px, pz, h + STEP_UP)) return false;
+      y = h;
+    }
+    return true;
   }
 
   /** A crab under the lizard's body (one it walked over while the crab was ducked, say) is pushed out from under it. */
@@ -481,7 +626,7 @@ export class Crabs {
     const fx = Math.sin(this.player.yaw);
     const fz = Math.cos(this.player.yaw);
     for (const c of this.list) {
-      if (Math.abs(c.pos.y - feet.y) > BODY_LEVEL) continue;
+      if (c.state === 'groom' || c.state === 'hop' || Math.abs(c.pos.y - feet.y) > BODY_LEVEL) continue;
       // Nearest point on the body's spine, then straight out from it.
       const along = Math.max(-BODY_HALF, Math.min(BODY_HALF, (c.pos.x - feet.x) * fx + (c.pos.z - feet.z) * fz));
       const ox = c.pos.x - (feet.x + fx * along);

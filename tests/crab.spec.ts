@@ -124,6 +124,76 @@ test('a crab under the lizard is pushed out from under it, and two crabs never s
   expect(errors).toEqual([]);
 });
 
+test('once the lizard lies still a crab comes and grooms it, riding its back, and hops off when it moves', async ({ page }) => {
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const { waterY } = g.ocean();
+    // Lizard 25 cm from a crab on the lava (just out of alarm range), its side toward it, with open
+    // rock between them (no boulder in the way).
+    const open = (c: { x: number; y: number; z: number }, a: number) => {
+      let y = c.y;
+      for (let d = 0.01; d <= 0.3; d += 0.01) {
+        const h = g.groundAt(c.x + Math.sin(a) * d, c.z + Math.cos(a) * d, y + 0.05)!;
+        if (Math.abs(h - y) > 0.01 || h < waterY + 0.003) return false;
+        y = h;
+      }
+      return true;
+    };
+    let spot: { x: number; z: number; yaw: number } | null = null;
+    for (const c of g.crabs().filter((k) => !k.onPile)) {
+      for (let k = 0; k < 8 && !spot; k++) {
+        const a = (k * Math.PI) / 4;
+        if (open(c, a)) spot = { x: c.x + Math.sin(a) * 0.25, z: c.z + Math.cos(a) * 0.25, yaw: a + Math.PI / 2 };
+      }
+      if (spot) break;
+    }
+    if (!spot) return { waited: 0, groomed: false };
+    g.teleport(spot.x, spot.z, spot.yaw);
+    let i = -1;
+    let waited = 0;
+    for (; waited < 2400 && i < 0; waited += 30) {
+      g.advance(30, false);
+      i = g.crabs().findIndex((c) => c.state === 'groom');
+    }
+    if (i < 0) return { waited, groomed: false };
+    g.advance(120, false);
+    const p = g.player();
+    const up = g.crabs()[i];
+    // A close look at it up there.
+    g.viewFrom({ x: -0.07, y: 0.06, z: 0.09 }, up);
+    g.advance(1);
+    return {
+      i,
+      waited,
+      groomed: true,
+      up: { state: up.state, clip: up.clip, height: up.y - p.y, fromFeet: Math.hypot(up.x - p.x, up.z - p.z) },
+    };
+  });
+  await page.screenshot({ path: 'test-results/screenshots/crab-groom.png' });
+  // Off it goes when the lizard walks on.
+  const off = await page.evaluate((i) => {
+    const g = window.__game!;
+    g.viewFrom(null);
+    g.setInput({ move: { x: 0, y: 1 } }, 60);
+    g.advance(120, false);
+    const c = g.crabs()[i];
+    return { state: c.state, gap: c.y - g.groundAt(c.x, c.z, c.y + 0.03)! };
+  }, run.i ?? 0);
+
+  expect(run.groomed).toBe(true);
+  // It's up on the lizard's back, picking at its skin, still there two seconds on.
+  expect(run.up!.state).toBe('groom');
+  expect(run.up!.clip).toBe('graze');
+  expect(run.up!.height).toBeGreaterThan(0.015);
+  expect(run.up!.fromFeet).toBeLessThan(0.05);
+  // Once the lizard moves it has hopped down onto the rock.
+  expect(off.state).not.toBe('groom');
+  expect(Math.abs(off.gap)).toBeLessThan(0.006);
+  expect(errors).toEqual([]);
+});
+
 test('a crab climbs a rock pile to the crest, hopping up its steps', async ({ page }) => {
   const errors = await boot(page);
   const run = await page.evaluate(() => {
