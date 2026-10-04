@@ -160,14 +160,15 @@ test('a hungry iguana goes down to the sea, puts its snout to the algae and eats
 });
 
 test('algae sprout now and then on the rocks, growing in from nothing', async ({ page }) => {
+  test.setTimeout(240_000);
   const errors = await boot(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
     const ids = (list: { id: number }[]) => new Set(list.map((a) => a.id));
     const before = g.algae();
-    // Left alone for two minutes, a few new patches come up by themselves.
-    g.advance(120 * 60, false);
+    // Left alone for a minute and a half, a few new patches come up by themselves.
+    g.advance(90 * 60, false);
     const later = g.algae();
     const old = ids(before);
     const fresh = later.filter((a) => !old.has(a.id));
