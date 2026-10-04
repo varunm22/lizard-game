@@ -113,6 +113,8 @@ export class PlayerController {
   private carried = { x: 0, y: 0, z: 0, yaw: 0 };
   /** Carried this step: riding something that moves. */
   private riding = false;
+  /** Collision groups standing still checks against (Rapier's packed membership and filter); default everything. */
+  stillGroups: number | undefined = undefined;
   /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
   speedScale = 1;
   private world: RAPIER.World;
@@ -237,7 +239,10 @@ export class PlayerController {
     this.vy = Math.max(this.vy - g * dt, -M.maxFallSpeed);
 
     this.desired.set(vx * dt, ((vy0 + this.vy) / 2) * dt, vz * dt);
-    this.kcc.computeColliderMovement(this.collider, this.desired);
+    // Standing still, bodies passing close by (the other iguanas) are left out: near a moving
+    // kinematic body the controller lets a lizard on a slope slip, and nothing should nudge a still one.
+    const still = this.grounded && !hasInput && Math.hypot(vx, vz) < 1e-3;
+    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, still ? this.stillGroups : undefined);
     const moved = this.kcc.computedMovement();
     const wasGrounded = this.grounded;
     // Rapier still reports grounded on the step a jump leaves the floor; rising from a jump is airborne.

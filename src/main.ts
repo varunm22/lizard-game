@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
-import { buildTerrain, IGNORE_STEMS, IGNORE_STEMS_AND_IGUANAS, terrainHeight } from './world/terrain';
+import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, IGNORE_STEMS, IGNORE_STEMS_AND_IGUANAS, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
-import { ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
+import { lavaCover, ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
@@ -49,14 +49,15 @@ async function main() {
   const regrowth = new Regrowth(route, plants);
   const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants);
 
-  const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
+  const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), (PLAYER_GROUP << 16) | 0xffff);
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
+  player.stillGroups = IGNORE_IGUANAS;
   const states = new MovementStateMachine();
 
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
-  const iguanas = await Iguanas.load(lizardUrl, scene, world, obstacles, algae, plants, water);
+  const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ig.body));
 
   const fade = new OccluderFade(world, obstacles);
@@ -167,10 +168,18 @@ async function main() {
           bites: ig.bites,
           meals: ig.meals,
           meal: meal && { x: meal.x, y: meal.y, z: meal.z },
+          lava: lavaCover(f.x, f.z),
+          mate: ig.mate === player ? ('player' as const) : ig.mate ? iguanas.list.findIndex((o) => o.body === ig.mate) : null,
         };
       }),
-    iguanaDo: (i, action) => (action === 'feed' ? iguanas.list[i].feed() : iguanas.list[i].sneeze()),
+    iguanaDo: (i, action) => {
+      const ig = iguanas.list[i];
+      if (action === 'feed') ig.feed();
+      else if (action === 'move') ig.moveOn();
+      else ig.sneeze();
+    },
     saltSpray: () => iguanas.spray.live,
+    lava: lavaCover,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),
     crabPlace: (i, x, z, y = 1) => crabs.list[i].place(x, y, z),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),

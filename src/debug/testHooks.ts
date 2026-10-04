@@ -121,7 +121,7 @@ export interface GameTestHooks {
    * The other marine iguanas: where each one's feet are, its facing, its home on the shore, what it's
    * doing (basking, shuffling to a new spot, going to food, grazing, going back to land), its movement
    * state and clip, whether it's on the ground or swimming, whether it's sneezing now, counts of its
-   * sneezes, bites and meals, and the algae patch it's going to or grazing.
+   * sneezes, bites and meals, the algae patch it's going to or grazing, and the ground under it.
    */
   iguanas: () => {
     x: number;
@@ -139,9 +139,18 @@ export interface GameTestHooks {
     bites: number;
     meals: number;
     meal: { x: number; y: number; z: number } | null;
+    /** How much the ground under it is bare black lava, 0 (sand, soil) to 1. */
+    lava: number;
+    /** Who it's going to bask beside: 'player', an iguana's index, or null. */
+    mate: 'player' | number | null;
   }[];
-  /** Send iguana i to feed as soon as it can, or make it sneeze when next on land and still. */
-  iguanaDo: (i: number, action: 'feed' | 'sneeze') => void;
+  /**
+   * Send iguana i to feed as soon as it can, make it get up and find somewhere else to bask, or make
+   * it sneeze when next on land and still.
+   */
+  iguanaDo: (i: number, action: 'feed' | 'move' | 'sneeze') => void;
+  /** How much the ground at (x, z) is bare black lava, 0 to 1. */
+  lava: (x: number, z: number) => number;
   /** Salt spray droplets in the air. */
   saltSpray: () => number;
   /** The sea: height of its surface, and how deep the open sea floor lies below it. */

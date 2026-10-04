@@ -26,6 +26,8 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
     expect(ig.swimming).toBe(false);
     expect(ig.activity).toBe('bask');
     expect(ig.clip).toBe('idle');
+    // On bare black lava, not the beach.
+    expect(ig.lava).toBeGreaterThan(0.8);
   }
 
   // A sneeze: the head comes up and jerks down, and a puff of salt spray comes out of the nose.
@@ -81,6 +83,7 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
     if (later.fed.includes(i) || ig.activity !== 'bask') continue;
     expect(ig.swimming).toBe(false);
     expect(Math.abs(ig.z - ig.home.z)).toBeLessThan(0.3);
+    expect(ig.lava).toBeGreaterThan(0.8);
     // Broadside: facing within about 25° of square to the sun.
     expect(Math.abs(Math.cos(ig.yaw - sunYaw))).toBeLessThan(0.45);
   }
@@ -155,5 +158,117 @@ test('a hungry iguana goes down to the sea, grazes algae, and comes back out to 
   expect(back).toBe(true);
   expect(trip.end.x).toBeLessThan(trip.shoreX);
   expect(trip.end.y).toBeGreaterThan(waterY);
+  expect(errors).toEqual([]);
+});
+
+test('an iguana on its way goes round the lizard lying across its path instead of walking into it', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    // Send it off to feed, and once it's walking, lie the lizard across its way 20 cm ahead.
+    g.iguanaDo(0, 'feed');
+    let ig = g.iguanas()[0];
+    for (let k = 0; k < 900 && !(ig.activity === 'to_food' && ig.state === 'walk' && !ig.swimming); k++) {
+      g.advance(1, false);
+      ig = g.iguanas()[0];
+    }
+    g.advance(30, false);
+    ig = g.iguanas()[0];
+    const dx = Math.sin(ig.yaw);
+    const dz = Math.cos(ig.yaw);
+    const start = { x: ig.x, z: ig.z };
+    const px = ig.x + dx * 0.2;
+    const pz = ig.z + dz * 0.2;
+    g.teleport(px, pz, ig.yaw + Math.PI / 2);
+    const p = g.player();
+    // The lizard's body as a segment, snout to hips (its capsule's straight part, and the caps).
+    const lx = Math.sin(p.yaw);
+    const lz = Math.cos(p.yaw);
+    const gap = (x: number, z: number) => {
+      const t = Math.max(-0.06, Math.min(0.06, (x - p.x) * lx + (z - p.z) * lz));
+      return Math.hypot(x - (p.x + lx * t), z - (p.z + lz * t));
+    };
+    let closest = Infinity;
+    let past = false;
+    for (let k = 0; k < 600 && !past; k++) {
+      g.advance(1, false);
+      ig = g.iguanas()[0];
+      // Its own body too: from its hips to its snout.
+      const fx = Math.sin(ig.yaw);
+      const fz = Math.cos(ig.yaw);
+      for (const s of [-0.06, 0, 0.06]) closest = Math.min(closest, gap(ig.x + fx * s, ig.z + fz * s));
+      past = (ig.x - start.x) * dx + (ig.z - start.z) * dz > 0.32;
+    }
+    const after = g.player();
+    return { closest, past, pushed: Math.hypot(after.x - p.x, after.z - p.z), activity: ig.activity };
+  });
+  // It got past the lizard without touching it (two bodies 12 mm in radius touch at 24 mm) or pushing it.
+  expect(run.past).toBe(true);
+  expect(run.closest).toBeGreaterThan(0.035);
+  expect(run.pushed).toBeLessThan(0.002);
+  expect(errors).toEqual([]);
+});
+
+test('an iguana looking for somewhere to bask comes and lies down beside the lizard basking nearby', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const ig0 = g.iguanas()[0];
+    // A bare stretch of black lava 25-60 cm along the shore from it, no rock, log or cactus near.
+    const yaw = ig0.yaw;
+    let spot: { x: number; z: number } | null = null;
+    for (const d of [0.25, -0.25, 0.3, -0.3, 0.35, -0.35, 0.4, -0.4, 0.45, -0.45, 0.5, -0.5, 0.55, -0.55, 0.6, -0.6]) {
+      const z = ig0.z + d;
+      for (const up of [0.15, 0.2, 0.25, 0.1, 0.3]) {
+        const x = g.shoreX(z) - up;
+        const ok = [-0.1, -0.05, 0, 0.05, 0.1].every((s) => {
+          const px = x + Math.sin(yaw) * s;
+          const pz = z + Math.cos(yaw) * s;
+          for (const side of [-0.06, 0, 0.06]) {
+            const qx = px + Math.cos(yaw) * side;
+            const qz = pz - Math.sin(yaw) * side;
+            if (g.lava(qx, qz) < 0.9 || Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) > 0.003) return false;
+          }
+          return true;
+        });
+        // With room all round to come and lie alongside.
+        const roomy = g.obstacles().every((o) => Math.hypot(o.x - x, o.z - z) > o.radius + 0.09);
+        if (ok && roomy) {
+          spot = { x, z };
+          break;
+        }
+      }
+      if (spot) break;
+    }
+    if (!spot) throw new Error('no bare lava near the iguana');
+    g.teleport(spot.x, spot.z, yaw);
+    g.advance(30, false);
+    g.iguanaDo(0, 'move');
+    let ig = g.iguanas()[0];
+    let mate: string | number | null = null;
+    for (let k = 0; k < 1500; k++) {
+      g.advance(1, false);
+      ig = g.iguanas()[0];
+      mate ??= ig.mate;
+      if (k > 300 && ig.activity === 'bask' && ig.state === 'idle') break;
+    }
+    g.advance(240, false);
+    ig = g.iguanas()[0];
+    const p = g.player();
+    g.viewFrom({ x: -0.18, y: 0.14, z: 0.12 }, { x: (ig.x + p.x) / 2, y: p.y + 0.02, z: (ig.z + p.z) / 2 });
+    g.advance(2);
+    return { mate, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
+  });
+  await page.screenshot({ path: 'test-results/screenshots/iguana-bask-together.png' });
+  // It went to the lizard, and lies alongside it, the same way round, on the lava.
+  expect(run.mate).toBe('player');
+  expect(run.ig.activity).toBe('bask');
+  expect(run.apart).toBeLessThan(0.07);
+  expect(Math.abs(Math.cos(run.ig.yaw - run.p.yaw))).toBeGreaterThan(0.9);
+  expect(run.ig.lava).toBeGreaterThan(0.8);
   expect(errors).toEqual([]);
 });
