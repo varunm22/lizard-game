@@ -18,7 +18,10 @@ export interface GameTestHooks {
   frame: (frameDt: number, draw?: boolean) => void;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
-  /** Height of the first physics surface under (x, z), found by a downward ray from `from` (default 5 m), or null. */
+  /**
+   * Height of the first physics surface under (x, z), found by a downward ray from `from` (default 5 m),
+   * or null. It sees neither the player nor the other iguanas.
+   */
   groundAt: (x: number, z: number, from?: number) => number | null;
   /**
    * Obstacles (rocks, logs, trees, cactus) with their footprint radius and current opacity (below 1
@@ -114,6 +117,33 @@ export interface GameTestHooks {
   crabGo: (i: number, x: number, z: number) => void;
   /** Put crab i down at (x, z), on the first surface below `y` (default 1 m). */
   crabPlace: (i: number, x: number, z: number, y?: number) => void;
+  /**
+   * The other marine iguanas: where each one's feet are, its facing, its home on the shore, what it's
+   * doing (basking, shuffling to a new spot, going to food, grazing, going back to land), its movement
+   * state and clip, whether it's on the ground or swimming, whether it's sneezing now, counts of its
+   * sneezes, bites and meals, and the algae patch it's going to or grazing.
+   */
+  iguanas: () => {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    home: { x: number; z: number };
+    activity: string;
+    state: string;
+    clip: string | undefined;
+    grounded: boolean;
+    swimming: boolean;
+    sneezing: boolean;
+    sneezes: number;
+    bites: number;
+    meals: number;
+    meal: { x: number; y: number; z: number } | null;
+  }[];
+  /** Send iguana i to feed as soon as it can, or make it sneeze when next on land and still. */
+  iguanaDo: (i: number, action: 'feed' | 'sneeze') => void;
+  /** Salt spray droplets in the air. */
+  saltSpray: () => number;
   /** The sea: height of its surface, and how deep the open sea floor lies below it. */
   ocean: () => { waterY: number; depth: number };
   /** X of the waterline at a given z (the sea is to the east, +X). */

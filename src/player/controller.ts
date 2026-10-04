@@ -121,13 +121,16 @@ export class PlayerController {
   /** Turning is checked against everything but the terrain, which the controller lifts the body off. */
   private turnBlocker = (c: RAPIER.Collider) => c.shapeType() !== RAPIER.ShapeType.HeightField;
 
-  constructor(world: RAPIER.World, feet: THREE.Vector3) {
+  /** `groups` are the body's collision groups (Rapier's packed membership and filter); default everything. */
+  constructor(world: RAPIER.World, feet: THREE.Vector3, groups?: number) {
     this.position.copy(feet).y += centreAboveFeet();
     this.prevPosition.copy(this.position);
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.position.x, this.position.y, this.position.z),
     );
-    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(M.bodyHalfLength, M.bodyRadius), this.body);
+    const shape = RAPIER.ColliderDesc.capsule(M.bodyHalfLength, M.bodyRadius);
+    if (groups !== undefined) shape.setCollisionGroups(groups);
+    this.collider = world.createCollider(shape, this.body);
     this.world = world;
     this.body.setRotation(this.bodyRotation(this.yaw), true);
 

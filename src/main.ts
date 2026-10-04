@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
-import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
+import { buildTerrain, IGNORE_STEMS, IGNORE_STEMS_AND_IGUANAS, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
@@ -14,6 +14,7 @@ import { Plants, type PlantKind } from './world/plants';
 import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
+import { Iguanas } from './creatures/iguana';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -55,7 +56,8 @@ async function main() {
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
-  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard);
+  const iguanas = await Iguanas.load(lizardUrl, scene, world, obstacles, algae, plants, water);
+  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ig.body));
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -74,7 +76,7 @@ async function main() {
   const groundedFeet = new THREE.Vector3();
   const tickFeet = new THREE.Vector3();
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
-  const pushers = [...lizard.bodySpheres, cameraPusher];
+  const pushers = [...lizard.bodySpheres, ...iguanas.bodySpheres, cameraPusher];
 
   const hooks: GameTestHooks = {
     ready: false,
@@ -94,7 +96,7 @@ async function main() {
         opacity: (o.mesh.material as THREE.Material).opacity,
       })),
     groundAt: (x, z, from = 5) => {
-      const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
+      const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
       return hit ? from - hit.timeOfImpact : null;
     },
     lizard: () => {
@@ -145,6 +147,30 @@ async function main() {
     crabs: () =>
       crabs.list.map((c) => ({ x: c.pos.x, y: c.pos.y, z: c.pos.z, yaw: c.yaw, state: c.state, clip: c.clip, onPile: c.home.pile, hops: c.hops })),
     crabClips: () => [...crabs.clips],
+    iguanas: () =>
+      iguanas.list.map((ig) => {
+        const f = ig.body.feetAt(1, new THREE.Vector3());
+        const meal = ig.meal;
+        return {
+          x: f.x,
+          y: f.y,
+          z: f.z,
+          yaw: ig.body.yaw,
+          home: { ...ig.home },
+          activity: ig.activity,
+          state: ig.states.state,
+          clip: ig.model.current,
+          grounded: ig.body.grounded,
+          swimming: ig.body.swimming,
+          sneezing: ig.sneezing,
+          sneezes: ig.sneezes,
+          bites: ig.bites,
+          meals: ig.meals,
+          meal: meal && { x: meal.x, y: meal.y, z: meal.z },
+        };
+      }),
+    iguanaDo: (i, action) => (action === 'feed' ? iguanas.list[i].feed() : iguanas.list[i].sneeze()),
+    saltSpray: () => iguanas.spray.live,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),
     crabPlace: (i, x, z, y = 1) => crabs.list[i].place(x, y, z),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
@@ -168,6 +194,7 @@ async function main() {
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
+    iguanas.step(dt);
     crabs.step(dt);
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
@@ -198,6 +225,7 @@ async function main() {
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
     tortoise.update(alpha, frameDt);
     visual.update(states.state, alpha, frameDt);
+    iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
     // Swimming, the camera follows the lizard up and down as if it were on the ground.

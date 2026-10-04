@@ -4,7 +4,7 @@ import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
-import { IGNORE_STEMS } from '../world/terrain';
+import { IGNORE_STEMS_AND_IGUANAS } from '../world/terrain';
 import { inOcean, shoreX, WATER_Y } from '../world/shore';
 import { ROCK_PILES } from '../world/layout';
 import type { Algae } from '../world/algae';
@@ -482,6 +482,7 @@ export class Crabs {
   readonly clips: string[];
   private ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   private lizard = [new THREE.Vector3(), new THREE.Vector3()];
+  private otherFeet = new THREE.Vector3();
   private settled = false;
   /** How long the lizard has lain still (s), where it was last step, and the crab grooming it (or on its way). */
   private stillFor = 0;
@@ -496,6 +497,7 @@ export class Crabs {
     private algae: Algae,
     private player: PlayerController,
     private lizardModel: LizardModel,
+    private others: PlayerController[],
   ) {
     const source = gltf.scene;
     toonify(source);
@@ -511,8 +513,9 @@ export class Crabs {
     }
   }
 
-  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, algae: Algae, player: PlayerController, lizard: LizardModel) {
-    return new Crabs(await loadGltf(url), scene, world, algae, player, lizard);
+  /** `others` are the other iguanas' bodies: crabs look past them, and get out from under them. */
+  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, algae: Algae, player: PlayerController, lizard: LizardModel, others: PlayerController[] = []) {
+    return new Crabs(await loadGltf(url), scene, world, algae, player, lizard, others);
   }
 
   /** The lizard has lain still long enough that crabs don't fear it. */
@@ -530,11 +533,11 @@ export class Crabs {
     return { x: Math.cos(this.player.yaw), z: -Math.sin(this.player.yaw) };
   }
 
-  /** Height of the surface under (x, z) at or below `below` (plus a little), or null. Ignores the lizard. */
+  /** Height of the surface under (x, z) at or below `below` (plus a little), or null. Ignores the lizard and the other iguanas. */
   surface(x: number, z: number, below: number): number | null {
     const from = below + RAY_HEAD;
     this.ray.origin = { x, y: from, z };
-    const hit = this.world.castRay(this.ray, from + 1, true, undefined, IGNORE_STEMS, undefined, this.player.body);
+    const hit = this.world.castRay(this.ray, from + 1, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, this.player.body);
     return hit ? from - hit.timeOfImpact : null;
   }
 
@@ -575,7 +578,8 @@ export class Crabs {
     snout.set(feet.x + Math.sin(this.player.yaw) * SNOUT, feet.y, feet.z + Math.cos(this.player.yaw) * SNOUT);
     this.watchLizard(dt, feet);
     for (const c of this.list) c.step(dt, this.lizard);
-    this.clearLizard(feet);
+    this.clearBody(feet, this.player.yaw);
+    for (const o of this.others) this.clearBody(o.feetAt(1, this.otherFeet), o.yaw);
     this.spaceOut();
   }
 
@@ -621,10 +625,13 @@ export class Crabs {
     return true;
   }
 
-  /** A crab under the lizard's body (one it walked over while the crab was ducked, say) is pushed out from under it. */
-  private clearLizard(feet: THREE.Vector3) {
-    const fx = Math.sin(this.player.yaw);
-    const fz = Math.cos(this.player.yaw);
+  /**
+   * A crab under an iguana's body with its feet at `feet` facing `yaw` (the lizard's, one it walked over
+   * while the crab was ducked, say) is pushed out from under it.
+   */
+  private clearBody(feet: THREE.Vector3, yaw: number) {
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
     for (const c of this.list) {
       if (c.state === 'groom' || c.state === 'hop' || Math.abs(c.pos.y - feet.y) > BODY_LEVEL) continue;
       // Nearest point on the body's spine, then straight out from it.

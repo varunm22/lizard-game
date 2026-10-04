@@ -18,6 +18,8 @@ export const LIZARD_SWIM_SPEED = 0.14;
 const ONE_SHOT: LizardClip[] = ['jump', 'land'];
 /** How a head turn splits between the neck and head bones. */
 const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
+/** How a nod splits between the neck and head bones. */
+const NOD_SPLIT: Partial<Record<string, number>> = { neck: 0.4, head: 0.6 };
 const BONE_Z = new THREE.Vector3(0, 0, 1);
 /** Bones the spine fit pitches, parents before children. */
 export const BENT_BONES = ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'] as const;
@@ -43,6 +45,8 @@ export class LizardModel {
   current: LizardClip | undefined;
   /** Sideways head turn layered over the clips (radians, positive turns the head to the lizard's right). */
   headTurn = 0;
+  /** Nod layered over the clips and the spine fit (radians, positive raises the snout). */
+  nod = 0;
   private turnBones: { bone: THREE.Object3D; share: number }[] = [];
   /**
    * Every bone's rotation as the clips alone leave it, last frame. The mixer only writes a bone when
@@ -172,7 +176,10 @@ export class LizardModel {
     this.mixer.update(dt);
     for (const c of this.clipPose) c.q.copy(c.bone.quaternion);
     // Pitch about the body's side-to-side axis, taken into each bone's own frame at rest.
-    for (const b of this.bentBones) b.bone.quaternion.multiply(this.q.setFromAxisAngle(b.axis, this.bend[b.name]));
+    for (const b of this.bentBones) {
+      const pitch = this.bend[b.name] + this.nod * (NOD_SPLIT[b.name] ?? 0);
+      b.bone.quaternion.multiply(this.q.setFromAxisAngle(b.axis, pitch));
+    }
     // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
     for (const t of this.turnBones) t.bone.quaternion.multiply(this.q.setFromAxisAngle(BONE_Z, this.headTurn * t.share));
   }

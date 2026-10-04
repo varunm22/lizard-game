@@ -21,6 +21,10 @@ export const EDGE_WALL_GROUP = 0x0002;
 export const PLANT_STEM_GROUP = 0x0004;
 /** Query filter for looking for the surface under or ahead of the lizard: everything but plant stems. */
 export const IGNORE_STEMS = (0xffff << 16) | (0xffff & ~PLANT_STEM_GROUP);
+/** The other marine iguanas' bodies (src/creatures/iguana.ts): solid, but small animals' rays look past them. */
+export const IGUANA_GROUP = 0x0008;
+/** Queries that see neither plant stems nor the other iguanas. */
+export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP;
 
 /**
  * Ground height (m) at a world position. Layered noise, damped to almost flat in the middle of the
