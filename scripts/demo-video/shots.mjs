@@ -2,7 +2,7 @@
  * The shot list for the demo video. Each shot runs inside the page against `window.__game`:
  * `setup(g, d)` places the lizard and camera, then `frame(g, d, i)` runs once per video frame
  * (30 fps) to steer it; the recorder advances physics two fixed steps (1/30 s) after each call.
- * `d` is a scratch object for the shot. Shots whose hooks are missing at an older commit are
+ * `d` is a scratch object for the shot; setting `d.caption` in setup overrides the caption. Shots whose hooks are missing at an older commit are
  * skipped, and each picks its spot from the live world (obstacles, plants, shore) rather than
  * hard-coded positions where it can, so the list keeps working as the world changes.
  *
@@ -112,6 +112,7 @@ export const SHOTS = [
         g.teleport(g.shoreX(d.z) - 0.4, d.z, Math.PI / 2);
       } else if (g.pond) {
         const p = g.pond();
+        d.caption = 'Wading into the pond for a swim';
         g.teleport(p.x - p.radius - 0.25, p.z + 0.1, Math.PI / 2);
       } else return false;
       g.viewFrom(null);

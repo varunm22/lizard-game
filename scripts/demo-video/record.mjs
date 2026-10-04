@@ -93,7 +93,7 @@ try {
       continue;
     }
     const frames = Math.round(shot.seconds * FPS);
-    await page.evaluate(([caption, first]) => window.__demoOverlay(caption, first), [shot.caption, frame === 0]);
+    await page.evaluate(([caption, first]) => window.__demoOverlay(window.__demo.caption ?? caption, first), [shot.caption, frame === 0]);
     process.stdout.write(`  ${shot.name}: ${frames} frames `);
     for (let i = 0; i < frames; i++) {
       await page.evaluate(
