@@ -6,6 +6,7 @@ import type { PlayerController } from './controller';
 import type { MoveState } from './state';
 import { fitSpine, type SpineFit } from './spineFit';
 import { LegReach } from './legReach';
+import { BodyClearance } from './bodyClearance';
 
 /** How fast the side-to-side tilt eases onto a new ground slope (per second, exponential). */
 const TILT_RATE = 12;
@@ -13,9 +14,9 @@ const TILT_RATE = 12;
 const MAX_TILT = (35 * Math.PI) / 180;
 /**
  * The surface is sampled at these points along the body (m from the physics centre, + toward the
- * snout), tail tip to snout. The spine fit interpolates between them.
+ * snout), tail tip (-0.1245) to snout. The spine fit interpolates between them.
  */
-const SAMPLES = Array.from({ length: 12 }, (_, i) => -0.095 + (i * 0.165) / 11);
+const SAMPLES = Array.from({ length: 14 }, (_, i) => -0.125 + (i * 0.195) / 13);
 /**
  * Rays start this far above the physics feet height. Within the capsule's footprint nothing can sit
  * between there and the body, so whatever a ray hits is under the lizard, not beside it.
@@ -71,6 +72,7 @@ export class LizardVisual {
   private hindSlope = 0;
   private sampleUp = SAMPLE_UP;
   private legs: LegReach;
+  readonly clearance: BodyClearance;
   private reach = 1;
   private swimLift = 0;
   private footRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
@@ -83,6 +85,7 @@ export class LizardVisual {
     private world: RAPIER.World,
   ) {
     this.legs = new LegReach(model);
+    this.clearance = new BodyClearance(model, world, player.body);
   }
 
   update(state: MoveState, alpha: number, dt: number) {
@@ -159,6 +162,7 @@ export class LizardVisual {
     this.model.update(dt);
     this.reach += ((standing ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
     this.legs.apply((x, y, z) => this.footGround(x, y, z), this.reach);
+    this.clearance.apply();
   }
 
   /** The surface just under a foot, or null if it's out of the leg's reach. */

@@ -104,6 +104,7 @@ async function main() {
         const hit = world.castRay(new RAPIER.Ray({ x: point.x, y: point.y + 0.02, z: point.z }, { x: 0, y: -1, z: 0 }), 1, true, undefined, IGNORE_STEMS, undefined, player.body);
         return { leg, gap: hit ? hit.timeOfImpact - 0.02 : Infinity };
       }),
+    clearance: () => visual.clearance.depths(),
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
       return {

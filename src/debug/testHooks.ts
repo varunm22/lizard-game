@@ -35,6 +35,11 @@ export interface GameTestHooks {
    * physics surface height there. Positive floats, negative sinks in.
    */
   feet: () => { leg: string; gap: number }[];
+  /**
+   * How deep each point the drawn body keeps clear is inside a rock, log or the ground (m, 0 when
+   * clear): two points on each tail bone from the hips back, then each foot.
+   */
+  clearance: () => number[];
   /** Feet position, facing, ground speed and movement state of the player (physics feet, not as drawn). */
   player: () => {
     x: number;
