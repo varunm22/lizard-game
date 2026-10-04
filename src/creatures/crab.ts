@@ -117,7 +117,7 @@ function homes(): { x: number; z: number; pile: boolean }[] {
     out.push({ x: x0 + (x1 - x0) * 0.5, z: p.z - p.width * 0.2, pile: true });
     out.push({ x: x0 + (x1 - x0) * 0.75, z: p.z + p.width * 0.1, pile: true });
   }
-  for (const z of [-0.85, -1.1, -1.35, -1.7, -1.95, -3.0, -3.2, -3.5, 2.85, 3.0, 3.45, 3.65]) out.push({ x: shoreX(z) - 0.1, z, pile: false });
+  for (const z of [-0.85, -1.1, -1.35, -1.7, -1.95, -3.0, -3.2, -3.5, 2.85, 3.0, -2.3, -2.6]) out.push({ x: shoreX(z) - 0.1, z, pile: false });
   return out;
 }
 
@@ -423,16 +423,24 @@ class Crab {
     const left = this.host!.left();
     this.host = null;
     let to: THREE.Vector3 | null = null;
-    for (const s of [1, -1]) {
-      const x = this.pos.x + left.x * s * HOP_OFF;
-      const z = this.pos.z + left.z * s * HOP_OFF;
-      const h = this.crabs.surface(x, z, this.pos.y);
-      if (h !== null && this.pos.y - h < DROP_MAX && this.crabs.dryAt(x, z, h + STEP_UP)) {
+    // Either side, or failing those (its host heading into the sea), back toward land, which is to -x.
+    const ways = [
+      { x: left.x, z: left.z },
+      { x: -left.x, z: -left.z },
+      { x: -1, z: 0 },
+      { x: -2, z: 0 },
+    ];
+    for (const w of ways) {
+      const x = this.pos.x + w.x * HOP_OFF;
+      const z = this.pos.z + w.z * HOP_OFF;
+      // Looking down from well above its back, so a rock beside the host is landed on, not hopped into.
+      const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX);
+      if (h !== null && h < this.pos.y + 0.01 && this.pos.y - h < DROP_MAX && this.crabs.dryAt(x, z, h + STEP_UP)) {
         to = new THREE.Vector3(x, h, z);
         break;
       }
     }
-    to ??= new THREE.Vector3(this.pos.x, this.crabs.surface(this.pos.x, this.pos.z, this.pos.y) ?? this.pos.y, this.pos.z);
+    to ??= new THREE.Vector3(this.pos.x, this.crabs.surface(this.pos.x, this.pos.z, this.pos.y + HOP_MAX) ?? this.pos.y, this.pos.z);
     // Leaping to whichever of its sides faces that way.
     const side = (to.x - this.pos.x) * Math.cos(this.yaw) - (to.z - this.pos.z) * Math.sin(this.yaw) >= 0 ? 1 : -1;
     this.hop = { from: this.pos.clone(), to, side, then: 'idle' };

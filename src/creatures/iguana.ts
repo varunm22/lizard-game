@@ -413,7 +413,7 @@ class Iguana {
     const { flat, dy } = this.toFronds(food);
     const touching = Math.hypot(flat, dy) < TOUCH * 1.5;
     // Nose in until its snout is in the fronds; in the water, kick up to them or sink down onto them.
-    if (flat > TOUCH) this.steer(food, b.swimming ? 0.25 : 0.2);
+    if (flat > TOUCH * 0.5) this.noseIn(food);
     if (b.swimming && dy > 0.004 && (this.kick -= dt) <= 0) {
       this.input.jump = true;
       this.kick = KICK_GAP;
@@ -423,8 +423,26 @@ class Iguana {
     if (this.nextBite > 0 || !touching) return;
     this.biteT = 0;
     this.bites++;
+    this.timer = NOSE_IN;
     this.nextBite = this.between(BITE_GAP);
     if (this.herd.bite(food)) this.grazedPatch();
+  }
+
+  /**
+   * Edge the snout onto the patch: turn to face it and creep forward or back so the drawn snout comes
+   * over it, slowly, so it doesn't overshoot (swimming, a full stroke would carry it right past).
+   */
+  private noseIn(p: AlgaePatch) {
+    const b = this.body;
+    const s = this.model.bodySpheres[0];
+    const diff = wrap(Math.atan2(p.x - this.feet.x, p.z - this.feet.z) - b.yaw);
+    const reach = Math.hypot(s.x - this.feet.x, s.z - this.feet.z);
+    const gap = Math.hypot(p.x - this.feet.x, p.z - this.feet.z) * Math.cos(diff) - reach;
+    this.input.move.x = clamp(-diff * 2.5, -1, 1);
+    let go = clamp(gap * 10, -0.3, 0.3);
+    // On land the body only turns while moving.
+    if (!b.swimming && Math.abs(diff) > 0.1 && Math.abs(go) < 0.12) go = gap < 0 ? -0.12 : 0.12;
+    this.input.move.y = go;
   }
 
   /** It ate the patch: maybe on to another nearby, otherwise back to land with a full belly. */
