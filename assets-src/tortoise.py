@@ -271,6 +271,30 @@ class MeshBuilder:
         self.face_uvs.append(uvs)
 
 
+def dome_point(th, s):
+    """Point on the carapace at outline angle th, a fraction s of the way from the crown to the rim."""
+    ox, oy = outline(th)
+    zr = rim_z(th)
+    return (s * ox * SHELL_W, CROWN_Y * (1 - s) + s * oy * SHELL_L, zr + (SHELL_TOP - zr) * (1 - s ** 2.2) ** 0.5)
+
+
+def lip_point(th):
+    """The outermost point of the lip that rolls under the carapace's edge."""
+    ox, oy = outline(th)
+    flare = 1.025 + 0.02 * max(0.0, -math.cos(th)) ** 2
+    return (flare * ox * SHELL_W, flare * oy * SHELL_L, rim_z(th) - 0.004)
+
+
+def shell_hull_points():
+    """The carapace's outside for the game's solid shell, in glTF space (x, up, toward the head):
+    the crown, rings down the dome and the lip. The game adds the plastron underneath."""
+    pts = [(0.0, CROWN_Y, SHELL_TOP)]
+    for k in range(32):
+        th = 2 * math.pi * k / 32
+        pts += [dome_point(th, s) for s in (0.3, 0.55, 0.75, 0.9)] + [lip_point(th)]
+    return [round(v, 5) for x, y, z in pts for v in (x, z, -y)]
+
+
 def build_carapace(mb):
     """The dome as rings from the crown out to the rim, then a lip that rolls under. UVs follow arc
     length down each meridian so the scutes on the steep sides aren't stretched."""
@@ -283,10 +307,9 @@ def build_carapace(mb):
         zr = rim_z(th)
         pts = [(0.0, 0.0, SHELL_TOP)]
         for s in ss:
-            pts.append((s * ox * SHELL_W, CROWN_Y * (1 - s) + s * oy * SHELL_L, zr + (SHELL_TOP - zr) * (1 - s ** 2.2) ** 0.5))
+            pts.append(dome_point(th, s))
         # Lip: out and down a little, then tucked back under.
-        flare = 1.025 + 0.02 * max(0.0, -math.cos(th)) ** 2
-        pts.append((flare * ox * SHELL_W, flare * oy * SHELL_L, zr - 0.004))
+        pts.append(lip_point(th))
         pts.append((0.975 * ox * SHELL_W, 0.975 * oy * SHELL_L, zr - 0.009))
         arc = [0.0]
         for a, b in zip(pts[:rings], pts[1:rings + 1]):
@@ -815,6 +838,7 @@ def export(rig):
     rig['shell_top'] = SHELL_TOP
     rig['shell_half_extents'] = [SHELL_W, SHELL_L]
     rig['rest_drop'] = DROP
+    rig['shell_hull'] = shell_hull_points()
     bpy.ops.export_scene.gltf(
         filepath=os.path.abspath(OUT), export_format='GLB', export_yup=True, export_apply=False,
         export_animations=True, export_animation_mode='NLA_TRACKS', export_skins=True, export_morph=False,

@@ -167,10 +167,16 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
       maxSpeed = Math.max(maxSpeed, g.player().speed);
     }
     const end = { t: g.tortoise(), at: local() };
-    return { start, end, states: [...states], maxSpeed, travelled: end.t.along - start.t.along };
+    // It lies down with the lizard still aboard.
+    g.tortoiseDo('rest');
+    g.advance(240, false);
+    const resting = { t: g.tortoise(), at: local() };
+    return { start, end, resting, states: [...states], maxSpeed, travelled: end.t.along - start.t.along };
   });
-  // Up on the shell, and the tortoise kept walking with it aboard.
-  expect(ride.start.at.up).toBeGreaterThan(0.1);
+  // Up on the crown of the shell (0.128 m up, standing), not sunk into it, and the tortoise kept
+  // walking with it aboard.
+  expect(ride.start.at.up).toBeGreaterThan(0.124);
+  expect(ride.start.at.up).toBeLessThan(0.136);
   expect(ride.travelled).toBeGreaterThan(0.2);
   // It went along for the ride: still in the same spot on the shell, facing the same way...
   expect(Math.abs(ride.end.at.along - ride.start.at.along)).toBeLessThan(0.01);
@@ -179,5 +185,9 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
   // ...and standing still the whole time, not walking on the spot.
   expect(ride.states).toEqual(['idle']);
   expect(ride.maxSpeed).toBeLessThan(0.02);
+  // When the tortoise lies down, the lizard goes down with the shell, still in its spot.
+  expect(ride.resting.t.state).toBe('rest');
+  expect(ride.end.at.up - ride.resting.at.up).toBeGreaterThan(0.015);
+  expect(Math.abs(ride.resting.at.along - ride.end.at.along)).toBeLessThan(0.01);
   expect(errors).toEqual([]);
 });

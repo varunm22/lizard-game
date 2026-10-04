@@ -111,6 +111,8 @@ export class PlayerController {
   private desired = new THREE.Vector3();
   /** Movement handed over by whatever the lizard stands on (the tortoise's shell), applied next step. */
   private carried = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** Carried this step: riding something that moves. */
+  private riding = false;
   /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
   speedScale = 1;
   private world: RAPIER.World;
@@ -247,8 +249,10 @@ export class PlayerController {
     // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
     // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
     // (The controller keeps its skin off a sloping face by lifting a few microns while it slides, so
-    // a lift that small still counts as creeping down, not climbing.)
-    if (this.grounded && wasGrounded && !hasInput && moved.y <= GRIP_LIFT && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
+    // a lift that small still counts as creeping down, not climbing. Riding something that rises and
+    // falls under it, like the tortoise's shell, the controller nudges it up off the surface now and
+    // then; holding on, it stays put on it.)
+    if (this.grounded && wasGrounded && !hasInput && (moved.y <= GRIP_LIFT || this.riding) && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
       moved.x = moved.y = moved.z = 0;
     }
 
@@ -293,7 +297,8 @@ export class PlayerController {
 
   private applyCarry() {
     const c = this.carried;
-    if (c.x === 0 && c.y === 0 && c.z === 0 && c.yaw === 0) return;
+    this.riding = c.x !== 0 || c.y !== 0 || c.z !== 0 || c.yaw !== 0;
+    if (!this.riding) return;
     this.position.x += c.x;
     this.position.y += c.y;
     this.position.z += c.z;

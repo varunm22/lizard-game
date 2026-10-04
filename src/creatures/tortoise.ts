@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
-import { rng, smoothstep } from '../world/noise';
+import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import type { Plant, Plants } from '../world/plants';
 import type { PlayerController } from '../player/controller';
@@ -43,6 +43,8 @@ const FRONT_REACH = 0.04;
 const ON_TOP = 0.05;
 /** How far below a rider's feet the shell may curve away and still be carrying it (m). */
 const RIDER_PROBE = 0.02;
+/** Rising faster than this (m/s), a lizard on the shell is jumping off, not riding. */
+const RIDER_LEAP = 0.1;
 
 interface Extras {
   gait_speed: number;
@@ -50,6 +52,8 @@ interface Extras {
   shell_top: number;
   shell_half_extents: [number, number];
   rest_drop: number;
+  /** Points on the outside of the carapace (x, y, z triples), standing, feet at y = 0. */
+  shell_hull: number[];
 }
 
 export class Tortoise {
@@ -78,6 +82,10 @@ export class Tortoise {
   private prevRot = new THREE.Quaternion();
   private basis = new THREE.Matrix4();
   private world: RAPIER.World;
+  /** The bone the shell is skinned to, its height in the rest pose, and how far the clips raise it now. */
+  private shellBone: THREE.Object3D;
+  private standingHeight: number;
+  private lift = 0;
   private riderRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
   private constructor(
@@ -93,6 +101,10 @@ export class Tortoise {
     const rig = this.root.getObjectByName('Tortoise');
     if (!rig) throw new Error('tortoise.glb has no Tortoise armature');
     this.extras = rig.userData as Extras;
+    const shellBone = this.root.getObjectByName('body');
+    if (!shellBone) throw new Error('tortoise.glb has no body bone');
+    this.shellBone = shellBone;
+    this.standingHeight = this.shellHeight();
     this.mixer = new THREE.AnimationMixer(this.root);
     this.actions = Object.fromEntries(gltf.animations.map((c) => [c.name, this.mixer.clipAction(c)]));
     for (const name of ['eat', 'lie_down', 'get_up']) {
@@ -209,9 +221,9 @@ export class Tortoise {
         }
         break;
     }
-    // The shell (and so the solid body) sinks onto the ground while it lies down.
-    const lying = this.lying();
-    const next = { x: this.pos.x, y: this.pos.y - this.extras.rest_drop * lying, z: this.pos.z };
+    // The solid shell rises and falls with the drawn one: bobbing as it walks, sunk onto the ground
+    // while it lies down.
+    const next = { x: this.pos.x, y: this.pos.y + this.lift, z: this.pos.z };
     if (rider) this.carry(player, next);
     this.body.setNextKinematicTranslation(next);
     this.body.setNextKinematicRotation(this.rot);
@@ -219,7 +231,9 @@ export class Tortoise {
 
   /** The lizard is standing on the shell: just under the middle of its body is the shell, not the ground. */
   private carrying(player: PlayerController): boolean {
-    if (!player.grounded || player.swimming) return false;
+    // Not only while grounded: when the shell bobs down a little faster than the lizard falls, it's
+    // still riding. Jumping off isn't.
+    if (player.swimming || player.climbing || player.velocity.y > RIDER_LEAP) return false;
     this.riderRay.origin = player.position;
     const reach = centreAboveFeet() + RIDER_PROBE;
     const hit = this.world.castRay(this.riderRay, reach, true, undefined, undefined, undefined, undefined, (c) => c.handle === this.collider.handle);
@@ -241,6 +255,13 @@ export class Tortoise {
     this.root.position.lerpVectors(this.prevPos, this.pos, alpha);
     this.root.quaternion.slerpQuaternions(this.prevRot, this.rot, alpha);
     this.mixer.update(frameDt);
+    this.lift = this.shellHeight() - this.standingHeight;
+  }
+
+  /** Height of the body bone (which carries the shell) above the feet, as drawn now. */
+  private shellHeight() {
+    this.root.updateMatrixWorld(true);
+    return this.root.worldToLocal(this.shellBone.getWorldPosition(new THREE.Vector3())).y;
   }
 
   private spell([a, b]: readonly [number, number]) {
@@ -263,15 +284,6 @@ export class Tortoise {
     next.reset().setEffectiveWeight(1).fadeIn(CROSSFADE).play();
     this.current?.fadeOut(CROSSFADE);
     this.current = next;
-  }
-
-  /** How far down onto its plastron it is: 0 standing, 1 lying. */
-  private lying(): number {
-    const t = this.stateTime;
-    if (this.state === 'lie_down') return smoothstep(0, this.duration('lie_down'), t);
-    if (this.state === 'rest') return 1;
-    if (this.state === 'get_up') return 1 - smoothstep(0, this.duration('get_up'), t);
-    return 0;
   }
 
   /** A plant at its mouth worth stopping for, or null. */
@@ -347,20 +359,13 @@ export class Tortoise {
  */
 function shellHull(x: Extras): Float32Array {
   const [w, l] = x.shell_half_extents;
-  const top = x.shell_top;
-  const pts: number[] = [];
-  const rings: [number, number][] = [
-    [0.02, 0.85],
-    [0.03, 1.0],
-    [top * 0.6, 0.85],
-    [top * 0.85, 0.55],
-  ];
-  for (const [y, s] of rings) {
+  // The carapace as the model script measured it, then the plastron underneath.
+  const pts = [...x.shell_hull];
+  for (const [y, s] of [[0.02, 0.85], [0.03, 1.0]]) {
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * 2 * Math.PI;
       pts.push(Math.sin(a) * w * s, y, Math.cos(a) * l * s);
     }
   }
-  pts.push(0, top, -0.016);
   return new Float32Array(pts);
 }
