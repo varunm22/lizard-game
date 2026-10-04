@@ -23,6 +23,16 @@ export const BEACH_PATH = { z0: 0.95, z1: 1.3, from: -0.5 };
  */
 export const TORTOISE_ROUTE = { x: -0.3, z: 2.1, rx: 0.75, rz: 0.65 };
 
+/**
+ * Big piles of lava slabs on the rocky shore, each running from the lava out into the sea: z of its
+ * spine, where it starts and ends as distance east of the waterline (m), how high its crest stands
+ * above the water and how wide it is (half-width, m). Built by `rockPiles.ts`.
+ */
+export const ROCK_PILES = [
+  { name: 'pile-south', z: -2.45, from: -0.55, to: 0.8, peak: 0.28, width: 0.4 },
+  { name: 'pile-north', z: 3.3, from: -0.45, to: 0.65, peak: 0.24, width: 0.34 },
+] as const;
+
 /** How wooded (x, z) is, 0 to 1: forest west of x = -1.3 and north of z = -1.3, with ragged edges. */
 export function forestCover(x: number, z: number): number {
   const ragged = valueNoise(x / 0.7 + 5, z / 0.7 - 9, 21) * 0.35;

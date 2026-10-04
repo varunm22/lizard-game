@@ -95,6 +95,11 @@ export interface GameTestHooks {
   ocean: () => { waterY: number; depth: number };
   /** X of the waterline at a given z (the sea is to the east, +X). */
   shoreX: (z: number) => number;
+  /**
+   * The rock piles running out into the sea: each runs east along z from x0 on the lava to x1 in the
+   * water, its crest `peak` above the sea surface. Their slabs are obstacles named after the pile.
+   */
+  rockPiles: () => { name: string; z: number; x0: number; x1: number; peak: number }[];
   /** Algae patches still growing, or only those within r of (x, y, z), nearest first. */
   algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number }[];
   /** Remove (eat) the algae patch with this id; false if there's none. */

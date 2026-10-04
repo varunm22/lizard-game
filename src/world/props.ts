@@ -7,13 +7,14 @@ import { BEACH_PATH, forestCover, lavaCover, sandCover, shoreDistance, SPAWN } f
 import { rockyShore, WATER_Y } from './shore';
 import { TERRAIN_SIZE, terrainHeight } from './terrain';
 import { covers, hull, type Obstacle } from './obstacles';
+import { buildRockPiles } from './rockPiles';
 
 /**
  * Scatters the island's props from assets-src/props.py: trees through the forest and along the back
  * of the coast, fallen logs and mossy rocks under the trees, black lava boulders over the beach, the
- * rocky shore and the sea floor off it, and lava cactus on the bare lava. Each one inside the walls
- * is solid (an obstacle the camera fades out when it's in the way); trees beyond the walls are only a
- * backdrop for the fog.
+ * rocky shore and the sea floor off it, two rock piles running out into the sea (`rockPiles.ts`), and
+ * lava cactus on the bare lava. Each one inside the walls is solid (an obstacle the camera fades out
+ * when it's in the way); trees beyond the walls are only a backdrop for the fog.
  */
 const SEED = 41;
 
@@ -166,6 +167,17 @@ export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.
     add({ name: `log-${obstacles.length}`, kind: 'log', position: mesh.position, height: y + 2 * r - terrainHeight(x, z), radius: r, axis, mesh, collider });
     placed++;
   }
+
+  // Rock piles out into the sea on the rocky shore, before the loose boulders so those keep clear.
+  const slabs = [...kit.geometry.keys()].filter((n) => n.startsWith('slab_')).sort();
+  for (const o of buildRockPiles(
+    { geometry: slabs.map(need), extent: slabs.map((n) => kit.extras.get(n) as { top: number; bottom: number }) },
+    scene,
+    world,
+    rng(SEED + 7),
+    material,
+  ))
+    obstacles.push(o);
 
   // Rocks: lava boulders, each a convex hull, sunk a little into whatever they sit on.
   const rockVariants = [...kit.geometry.keys()].filter((n) => n.startsWith('rock_'));

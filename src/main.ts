@@ -6,7 +6,7 @@ import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
-import { SPAWN, TORTOISE_ROUTE } from './world/layout';
+import { ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
@@ -137,6 +137,7 @@ async function main() {
     tortoiseDo: (action) => tortoise.request(action),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
     shoreX,
+    rockPiles: () => ROCK_PILES.map((p) => ({ name: p.name, z: p.z, x0: shoreX(p.z) + p.from, x1: shoreX(p.z) + p.to, peak: p.peak })),
     algae: (near) =>
       (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z })),
     removeAlgae: (id) => algae.remove(id),
