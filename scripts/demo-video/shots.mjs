@@ -15,7 +15,7 @@
 export const SHOTS = [
   {
     name: 'walk',
-    caption: 'A marine iguana, out for a walk',
+    caption: 'Out for a walk',
     seconds: 3,
     setup: (g, d) => {
       const s = g.player();
