@@ -249,11 +249,16 @@ export class PlayerController {
     // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
     // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
     // (The controller keeps its skin off a sloping face by lifting a few microns while it slides, so
-    // a lift that small still counts as creeping down, not climbing. Riding something that rises and
-    // falls under it, like the tortoise's shell, the controller nudges it up off the surface now and
-    // then; holding on, it stays put on it.)
-    if (this.grounded && wasGrounded && !hasInput && (moved.y <= GRIP_LIFT || this.riding) && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
-      moved.x = moved.y = moved.z = 0;
+    // a lift that small still counts as creeping down, not climbing.)
+    if (this.grounded && wasGrounded && !hasInput) {
+      if (this.riding) {
+        // Riding something that rises and falls under it, like the tortoise's shell, the controller
+        // lifts it back off the surface as it comes up, by up to half a millimetre a step. Keep that
+        // lift, but hold on where it stands rather than sliding with it.
+        if (Math.hypot(moved.x, moved.z) < M.gripCreep * dt) moved.x = moved.z = 0;
+      } else if (moved.y <= GRIP_LIFT && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
+        moved.x = moved.y = moved.z = 0;
+      }
     }
 
     // Sliding down a rounded side (coming off the log) turns the drop into sideways motion, several
