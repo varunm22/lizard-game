@@ -107,10 +107,21 @@ export interface GameTestHooks {
   tortoiseDo: (action: 'eat' | 'rest') => void;
   /**
    * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
-   * sideways), what it's doing and the clip playing, whether it lives on a rock pile, and how many
-   * hops it has made.
+   * sideways), what it's doing and the clip playing, whether it lives on a rock pile, how many hops
+   * it has made, and who it's grooming.
    */
-  crabs: () => { x: number; y: number; z: number; yaw: number; state: string; clip: string | undefined; onPile: boolean; hops: number }[];
+  crabs: () => {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    state: string;
+    clip: string | undefined;
+    onPile: boolean;
+    hops: number;
+    /** Who it's grooming or on its way to groom: 'player', another iguana's index, or null. */
+    grooming: 'player' | number | null;
+  }[];
   /** The crab's animation clips. */
   crabClips: () => string[];
   /** Send crab i walking to (x, z); it ignores the lizard until it gets there or is stopped. */
@@ -138,7 +149,9 @@ export interface GameTestHooks {
     sneezes: number;
     bites: number;
     meals: number;
-    meal: { x: number; y: number; z: number } | null;
+    meal: { id: number; x: number; y: number; z: number } | null;
+    /** How far its drawn snout is from the fronds of that patch (m), or null. */
+    touch: number | null;
     /** How much the ground under it is bare black lava, 0 (sand, soil) to 1. */
     lava: number;
     /** Who it's going to bask beside: 'player', an iguana's index, or null. */
@@ -162,10 +175,12 @@ export interface GameTestHooks {
    * water, its crest `peak` above the sea surface. Their slabs are obstacles named after the pile.
    */
   rockPiles: () => { name: string; z: number; x0: number; x1: number; peak: number }[];
-  /** Algae patches still growing, or only those within r of (x, y, z), nearest first. */
-  algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number }[];
+  /** Algae patches still growing, or only those within r of (x, y, z), nearest first; `grown` is how far in (0 to 1). */
+  algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
   /** Remove (eat) the algae patch with this id; false if there's none. */
   removeAlgae: (id: number) => boolean;
+  /** Sprout a new algae patch on a bare site on the rocks now; its id, or null if there's no room. */
+  sproutAlgae: () => number | null;
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
   ripples: () => { x: number; z: number; age: number; strength: number }[];
   /** `faded` names the obstacles currently blocking the view of the lizard. */

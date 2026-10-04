@@ -27,7 +27,8 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
       g.advance(60, false);
       for (const c of check()) {
         states.add(c.state);
-        if (c.state !== 'hop') worstGap = Math.max(worstGap, Math.abs(c.gap));
+        // Up on an iguana's back grooming it, it isn't on the rock.
+        if (c.state !== 'hop' && c.state !== 'groom') worstGap = Math.max(worstGap, Math.abs(c.gap));
         wettest = Math.min(wettest, c.dry);
       }
     }
@@ -155,7 +156,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
     let waited = 0;
     for (; waited < 2400 && i < 0; waited += 30) {
       g.advance(30, false);
-      i = g.crabs().findIndex((c) => c.state === 'groom');
+      i = g.crabs().findIndex((c) => c.state === 'groom' && c.grooming === 'player');
     }
     if (i < 0) return { waited, groomed: false };
     g.advance(120, false);

@@ -10,8 +10,9 @@ import type { Obstacle } from './obstacles';
  * Seaweed on the rocky shore, the marine iguana's food: red turf on the lava at and just below the
  * waterline, sea lettuce further down, on the boulders and on the rough sea floor off the lava.
  * Drawn, not simulated: no colliders, the lizard swims through it. Every patch is its own entity
- * with an id, so a later eating mechanic can find what's in reach (`near`) and take a patch away
- * (`remove`); the rest of the game never holds on to a patch.
+ * with an id: grazers find what's in reach (`near`), bite it down (`bite`) and take it away
+ * (`remove`); the rest of the game never holds on to a patch. Now and then a new patch sprouts on a
+ * bare site on the rocks and grows in (`sprout`).
  */
 export type AlgaeKind = 'green' | 'red';
 
@@ -39,49 +40,84 @@ const kindAt = (depth: number, r: number): AlgaeKind => (r < (depth < 0.1 ? 0.7 
 
 /**
  * Batches are per kind and per TILE of shore (m), so the camera and the shadow box skip the ones out
- * of view; each is one instanced mesh, where `slots[i]` is the patch drawn by instance i.
+ * of view; each is one instanced mesh, where `slots[i]` is the patch drawn by instance i. A batch has
+ * room for every site in its tile, bare ones included, so patches can sprout there later.
  */
 const TILE = 1;
 
+/** Besides the first patches, this many spare sites per boulder and on the floor where new ones can sprout. */
+const SPARE_PER_ROCK = 6;
+const SPARE_FLOOR = 90;
+const SPARE_SEED = 54;
+/** A new patch sprouts on a bare site every so often (s, from-to), and grows in over this long (s). */
+const SPROUT_GAP = [10, 30] as const;
+const GROW_TIME = 40;
+/** Never closer than this to a patch already growing (m). */
+const SPROUT_GAP_M = 0.025;
+/** A bitten patch shrinks, down to this share of its size just before the last bite takes it. */
+const BITTEN_MIN = 0.35;
+
+interface Site extends Placement {
+  batch: Batch;
+  /** The patch growing here, if any. */
+  patch: AlgaePatch | null;
+}
+
+interface Entry {
+  patch: AlgaePatch;
+  site: Site;
+  /** How far it has grown in (0 to 1), and how much of it is left uneaten (0 to 1). */
+  grown: number;
+  left: number;
+}
+
 interface Batch {
   mesh: THREE.InstancedMesh;
-  slots: AlgaePatch[];
+  slots: Entry[];
 }
 
 export class Algae {
-  private byId = new Map<number, { patch: AlgaePatch; batch: Batch }>();
+  private byId = new Map<number, Entry>();
+  private sites: Site[] = [];
+  private growing = new Set<Entry>();
+  private nextId = 1;
+  private rand = rng(SEED + 2);
+  private nextSprout: number;
 
   private uniforms = { uTime: { value: 0 } };
   private m = new THREE.Matrix4();
+  private s = new THREE.Vector3();
+  private c = new THREE.Color();
 
   /** `rocks` are the obstacles algae may grow on; only their tops near or under the water get any. */
   constructor(scene: THREE.Scene, geometry: Record<AlgaeKind, THREE.BufferGeometry>, rocks: readonly Obstacle[]) {
-    const placements = place(rocks);
+    const first = place(rocks, SEED, PER_ROCK_MAX, FLOOR_PATCHES);
+    const spare = place(rocks, SPARE_SEED, SPARE_PER_ROCK, SPARE_FLOOR);
     const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
     this.sway(material);
-    const groups = new Map<string, Placement[]>();
-    for (const p of placements) {
-      const key = `${p.kind},${Math.floor(p.position.x / TILE)},${Math.floor(p.position.z / TILE)}`;
-      groups.set(key, [...(groups.get(key) ?? []), p]);
+    const key = (p: Placement) => `${p.kind},${Math.floor(p.position.x / TILE)},${Math.floor(p.position.z / TILE)}`;
+    const groups = new Map<string, { first: Placement[]; spare: Placement[] }>();
+    for (const [list, which] of [[first, 'first'], [spare, 'spare']] as const) {
+      for (const p of list) {
+        const g = groups.get(key(p)) ?? { first: [], spare: [] };
+        g[which].push(p);
+        groups.set(key(p), g);
+      }
     }
-    let nextId = 1;
-    const tint = new THREE.Color();
-    for (const [key, group] of groups) {
-      const kind = group[0].kind;
-      const mesh = new THREE.InstancedMesh(geometry[kind], material, group.length);
-      mesh.name = `algae-${key}`;
+    for (const [k, g] of groups) {
+      const all = [...g.first, ...g.spare];
+      const mesh = new THREE.InstancedMesh(geometry[all[0].kind], material, all.length);
+      mesh.name = `algae-${k}`;
       mesh.receiveShadow = true;
       const batch: Batch = { mesh, slots: [] };
-      group.forEach((p, i) => {
-        const patch: AlgaePatch = { id: nextId++, kind, x: p.position.x, y: p.position.y, z: p.position.z };
-        mesh.setMatrixAt(i, p.matrix);
-        mesh.setColorAt(i, tint.setScalar(p.shade));
-        batch.slots.push(patch);
-        this.byId.set(patch.id, { patch, batch });
-      });
+      // Bound every site, bare ones too, so a patch sprouting later is never culled.
+      all.forEach((p, i) => mesh.setMatrixAt(i, p.matrix));
       mesh.computeBoundingSphere();
+      for (const p of all) this.sites.push({ ...p, batch, patch: null });
+      for (const site of this.sites.slice(-all.length, this.sites.length - g.spare.length)) this.grow(site, 1);
       scene.add(mesh);
     }
+    this.nextSprout = this.between(SPROUT_GAP);
   }
 
   /** Every patch still growing. */
@@ -94,6 +130,11 @@ export class Algae {
     return this.byId.get(id)?.patch;
   }
 
+  /** How far a patch has grown in (0 just sprouted, 1 full grown), or 0 if it's gone. */
+  grown(id: number): number {
+    return this.byId.get(id)?.grown ?? 0;
+  }
+
   /** Patches whose holdfast is within `r` of (x, y, z), nearest first. */
   near(x: number, y: number, z: number, r: number): AlgaePatch[] {
     const d = (p: AlgaePatch) => (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
@@ -103,36 +144,95 @@ export class Algae {
   }
 
   /**
+   * Take a bite of a patch: it shrinks by `share` of its full size, and the bite that leaves none
+   * removes it. Returns true when that bite ate the last of it.
+   */
+  bite(id: number, share: number): boolean {
+    const entry = this.byId.get(id);
+    if (!entry) return false;
+    entry.left -= share;
+    if (entry.left <= 1e-6) return this.remove(id);
+    this.write(entry.site.batch, entry.site.batch.slots.indexOf(entry));
+    return false;
+  }
+
+  /**
    * Take a patch away for good (eaten). Its instance is replaced by the batch's last one, so drawing
-   * stays one packed instanced mesh. Returns false if there was no such patch.
+   * stays one packed instanced mesh, and its site is bare again for a new patch to sprout on later.
+   * Returns false if there was no such patch.
    */
   remove(id: number): boolean {
     const entry = this.byId.get(id);
     if (!entry) return false;
-    const { batch, patch } = entry;
+    const { batch } = entry.site;
     const { mesh, slots } = batch;
-    const i = slots.indexOf(patch);
+    const i = slots.indexOf(entry);
     const last = slots.length - 1;
     if (i !== last) {
-      mesh.getMatrixAt(last, this.m);
-      mesh.setMatrixAt(i, this.m);
-      if (mesh.instanceColor) {
-        const c = new THREE.Color();
-        mesh.getColorAt(last, c);
-        mesh.setColorAt(i, c);
-        mesh.instanceColor.needsUpdate = true;
-      }
       slots[i] = slots[last];
+      this.write(batch, i);
     }
     slots.pop();
     mesh.count = slots.length;
-    mesh.instanceMatrix.needsUpdate = true;
+    entry.site.patch = null;
+    this.growing.delete(entry);
     this.byId.delete(id);
     return true;
   }
 
+  /**
+   * Sprout a new patch on a bare site at random, away from those already there, which then grows in
+   * over a while. Happens on its own every so often; returns the new patch, or null if no site is free.
+   */
+  sprout(): AlgaePatch | null {
+    const living = [...this.byId.values()].map((e) => e.patch);
+    const free = this.sites.filter(
+      (s) => !s.patch && !living.some((p) => (p.x - s.position.x) ** 2 + (p.y - s.position.y) ** 2 + (p.z - s.position.z) ** 2 < SPROUT_GAP_M ** 2),
+    );
+    if (!free.length) return null;
+    return this.grow(free[Math.floor(this.rand() * free.length)], 0).patch;
+  }
+
   update(dt: number) {
     this.uniforms.uTime.value += dt;
+    if ((this.nextSprout -= dt) <= 0) {
+      this.nextSprout = this.between(SPROUT_GAP);
+      this.sprout();
+    }
+    for (const e of this.growing) {
+      e.grown = Math.min(1, e.grown + dt / GROW_TIME);
+      if (e.grown >= 1) this.growing.delete(e);
+      this.write(e.site.batch, e.site.batch.slots.indexOf(e));
+    }
+  }
+
+  /** Start a patch on a bare site, `grown` of the way in. */
+  private grow(site: Site, grown: number): Entry {
+    const p = site.position;
+    const patch: AlgaePatch = { id: this.nextId++, kind: site.kind, x: p.x, y: p.y, z: p.z };
+    const entry: Entry = { patch, site, grown, left: 1 };
+    site.patch = patch;
+    this.byId.set(patch.id, entry);
+    site.batch.slots.push(entry);
+    site.batch.mesh.count = site.batch.slots.length;
+    if (grown < 1) this.growing.add(entry);
+    this.write(site.batch, site.batch.slots.length - 1);
+    return entry;
+  }
+
+  /** Draw instance i of a batch as its patch: the site's pose, scaled by how grown and how eaten it is. */
+  private write(batch: Batch, i: number) {
+    const e = batch.slots[i];
+    const k = smooth(e.grown) * (BITTEN_MIN + (1 - BITTEN_MIN) * e.left);
+    this.m.copy(e.site.matrix).scale(this.s.setScalar(Math.max(k, 0.02)));
+    batch.mesh.setMatrixAt(i, this.m);
+    batch.mesh.setColorAt(i, this.c.setScalar(e.site.shade));
+    batch.mesh.instanceMatrix.needsUpdate = true;
+    batch.mesh.instanceColor!.needsUpdate = true;
+  }
+
+  private between([a, b]: readonly [number, number]) {
+    return a + (b - a) * this.rand();
   }
 
   /** Fronds under water sway gently with the swell, more toward their tips; those out of it stay still. */
@@ -163,13 +263,14 @@ interface Placement {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+const smooth = (x: number) => x * x * (3 - 2 * x);
 
 /**
  * Where algae grow: on the upward faces of boulders in the splash zone and below, and over the
  * rough lava sea floor and the ledge at the waterline. Deterministic, like the rest of the island.
  */
-function place(rocks: readonly Obstacle[]): Placement[] {
-  const rand = rng(SEED);
+function place(rocks: readonly Obstacle[], seed: number, perRockMax: number, floorPatches: number): Placement[] {
+  const rand = rng(seed);
   const out: Placement[] = [];
   const wet = (y: number) => y < WATER_Y + SPLASH_ZONE && y > WATER_Y - MAX_DEPTH;
   const add = (position: THREE.Vector3, normal: THREE.Vector3) => {
@@ -193,7 +294,7 @@ function place(rocks: readonly Obstacle[]): Placement[] {
     if (rock.kind !== 'rock' || rock.position.y - rock.radius > WATER_Y + SPLASH_ZONE) continue;
     rock.mesh.updateMatrixWorld();
     normal.getNormalMatrix(rock.mesh.matrixWorld);
-    const tries = Math.min(PER_ROCK_MAX, Math.round(Math.PI * rock.radius ** 2 * PER_ROCK_DENSITY));
+    const tries = Math.min(perRockMax, Math.round(Math.PI * rock.radius ** 2 * PER_ROCK_DENSITY));
     for (let k = 0; k < tries; k++) {
       const a = rand() * 2 * Math.PI;
       const d = rock.radius * 0.85 * Math.sqrt(rand());
@@ -207,7 +308,7 @@ function place(rocks: readonly Obstacle[]): Placement[] {
   }
 
   // The lava sea floor, and the ledge at the waterline.
-  for (let i = 0, placed = 0; i < FLOOR_PATCHES * 20 && placed < FLOOR_PATCHES; i++) {
+  for (let i = 0, placed = 0; i < floorPatches * 20 && placed < floorPatches; i++) {
     const z = -4 + 8 * rand();
     const x = 1 + 3 * rand();
     const s = shoreDistance(x, z);

@@ -58,7 +58,7 @@ async function main() {
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
-  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ig.body));
+  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -146,7 +146,17 @@ async function main() {
     tortoise: () => ({ ...tortoise.position, state: tortoise.state, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),
     crabs: () =>
-      crabs.list.map((c) => ({ x: c.pos.x, y: c.pos.y, z: c.pos.z, yaw: c.yaw, state: c.state, clip: c.clip, onPile: c.home.pile, hops: c.hops })),
+      crabs.list.map((c) => ({
+        x: c.pos.x,
+        y: c.pos.y,
+        z: c.pos.z,
+        yaw: c.yaw,
+        state: c.state,
+        clip: c.clip,
+        onPile: c.home.pile,
+        hops: c.hops,
+        grooming: crabs.groomingWhom(c),
+      })),
     crabClips: () => [...crabs.clips],
     iguanas: () =>
       iguanas.list.map((ig) => {
@@ -167,7 +177,8 @@ async function main() {
           sneezes: ig.sneezes,
           bites: ig.bites,
           meals: ig.meals,
-          meal: meal && { x: meal.x, y: meal.y, z: meal.z },
+          meal: meal && { id: meal.id, x: meal.x, y: meal.y, z: meal.z },
+          touch: meal && ig.touch(meal),
           lava: lavaCover(f.x, f.z),
           mate: ig.mate === player ? ('player' as const) : ig.mate ? iguanas.list.findIndex((o) => o.body === ig.mate) : null,
         };
@@ -186,8 +197,9 @@ async function main() {
     shoreX,
     rockPiles: () => ROCK_PILES.map((p) => ({ name: p.name, z: p.z, x0: shoreX(p.z) + p.from, x1: shoreX(p.z) + p.to, peak: p.peak })),
     algae: (near) =>
-      (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z })),
+      (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     removeAlgae: (id) => algae.remove(id),
+    sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);

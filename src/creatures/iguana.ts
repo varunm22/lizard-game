@@ -53,10 +53,12 @@ const HUNGER = [80, 140] as const;
 const FOOD_RANGE = 0.45;
 const FOOD_OUT = 0.75;
 const MAX_DIVE = 0.2;
-/** Grazes a patch this long (s, from-to), biting every so often (s, from-to), and goes on to at most this many. */
-const GRAZE_TIME = [6, 12] as const;
+/** Bites every so often (s, from-to); this many bites eat a patch, and it goes on to at most this many. */
 const BITE_GAP = [0.5, 1.1] as const;
+const BITES_PER_PATCH = 6;
 const MAX_PATCHES = 3;
+/** It only goes for patches grown at least this far in. */
+const RIPE = 0.8;
 /** The next patch is one within this of the last (m). */
 const NEXT_PATCH = 0.25;
 /** Sneezes this often (s, from-to) basking, and more often for a while after a meal. */
@@ -78,6 +80,11 @@ const SNOUT = 0.08;
 const SPOT_REACH = 0.05;
 const FOOD_REACH = 0.035;
 const FOOD_LEVEL = 0.045;
+/** Then it noses in until its drawn snout touches the fronds: within this of a point this far above the holdfast (m). */
+const TOUCH = 0.012;
+const FROND = 0.006;
+/** It gives up on a patch it can't get its snout into for this long (s). */
+const NOSE_IN = 8;
 /** Ambles at this share of the lizard's walking speed (about its walk clip's own pace). */
 const AMBLE = 0.6;
 /** Settling to bask, it creeps round at this share of walking pace until broadside to the sun (radians off). */
@@ -379,26 +386,49 @@ class Iguana {
   private startGrazing() {
     this.activity = 'graze';
     this.foodTries = 0;
-    this.timer = this.between(GRAZE_TIME);
     this.nextBite = 0.3;
+    this.timer = NOSE_IN;
     this.patches++;
   }
 
+  /** How far the drawn snout is from the patch's fronds (m): across, and up (positive when the fronds are above it). */
+  private toFronds(p: AlgaePatch) {
+    const s = this.model.bodySpheres[0];
+    return { flat: Math.hypot(p.x - s.x, p.z - s.z), dy: p.y + FROND - s.y };
+  }
+
+  /** How far the drawn snout is from the patch's fronds (m), or Infinity if the patch is gone. */
+  touch(p: AlgaePatch | null): number {
+    if (!p) return Infinity;
+    const { flat, dy } = this.toFronds(p);
+    return Math.hypot(flat, dy);
+  }
+
   private graze(dt: number) {
-    this.nextBite -= dt;
-    if (this.nextBite <= 0) {
-      this.biteT = 0;
-      this.bites++;
-      this.nextBite = this.between(BITE_GAP);
-    }
-    // Drifting in the water, nose back in to the patch.
     const g = this.goal!;
+    const food = g.food!;
+    // Someone else ate the last of it: on to another, or done.
+    if (!this.herd.growing(food)) return this.grazedPatch();
     const b = this.body;
-    const sx = this.feet.x + Math.sin(b.yaw) * SNOUT;
-    const sz = this.feet.z + Math.cos(b.yaw) * SNOUT;
-    if (Math.hypot(g.x - sx, g.z - sz) > FOOD_REACH * 2) this.steer(g, 0.4);
-    this.timer -= dt;
-    if (this.timer > 0) return;
+    const { flat, dy } = this.toFronds(food);
+    const touching = Math.hypot(flat, dy) < TOUCH * 1.5;
+    // Nose in until its snout is in the fronds; in the water, kick up to them or sink down onto them.
+    if (flat > TOUCH) this.steer(food, b.swimming ? 0.25 : 0.2);
+    if (b.swimming && dy > 0.004 && (this.kick -= dt) <= 0) {
+      this.input.jump = true;
+      this.kick = KICK_GAP;
+    }
+    if (!touching && (this.timer -= dt) < 0) return ++this.foodTries < FOOD_TRIES ? this.startFeeding() : this.headForLand();
+    this.nextBite -= dt;
+    if (this.nextBite > 0 || !touching) return;
+    this.biteT = 0;
+    this.bites++;
+    this.nextBite = this.between(BITE_GAP);
+    if (this.herd.bite(food)) this.grazedPatch();
+  }
+
+  /** It ate the patch: maybe on to another nearby, otherwise back to land with a full belly. */
+  private grazedPatch() {
     if (this.patches < MAX_PATCHES && this.rand() < 0.6) return this.startFeeding();
     this.meals++;
     this.sinceMeal = 0;
@@ -501,6 +531,7 @@ class Iguana {
     const reachFrom = g.food ? SNOUT : 0;
     const flat = Math.hypot(g.x - (this.feet.x + fx * reachFrom), g.z - (this.feet.z + fz * reachFrom));
     const dy = g.y - this.feet.y;
+    if (g.food && !this.herd.growing(g.food)) return 'gave_up';
     if (g.food ? flat < FOOD_REACH && Math.abs(dy) < FOOD_LEVEL : flat < (g.mate ? MATE_REACH : SPOT_REACH)) return 'arrived';
     // Someone's lying where it meant to bask, or the mate it was going to lie beside has gone: look again.
     const taken = this.herd.others(this).some((o) => o !== g.mate?.body && Math.hypot(o.position.x - g.x, o.position.z - g.z) < SPOT_TAKEN);
@@ -685,7 +716,9 @@ export class Iguanas {
    */
   baskSpot(ig: Iguana, rand: () => number): BaskSpot {
     const at = ig.body.position;
-    const lying = (b: PlayerController) => b.grounded && !b.swimming && !b.climbing && b.horizontalSpeed < 0.02;
+    // Lying still on the black lava.
+    const lying = (b: PlayerController) =>
+      b.grounded && !b.swimming && !b.climbing && b.horizontalSpeed < 0.02 && lavaCover(b.position.x, b.position.z) >= BLACK_LAVA;
     const mates = [
       ...(lying(this.player) ? [this.player] : []),
       ...this.list.filter((o) => o !== ig && o.activity === 'bask' && lying(o.body)).map((o) => o.body),
@@ -727,11 +760,21 @@ export class Iguanas {
     return { ...spot, y: terrainHeight(spot.x, spot.z), mate: null };
   }
 
+  /** Whether a patch is still there to eat. */
+  growing(p: AlgaePatch) {
+    return this.algae.get(p.id) === p;
+  }
+
+  /** Take a bite of a patch; true when that was the last of it. */
+  bite(p: AlgaePatch) {
+    return this.algae.bite(p.id, 1 / BITES_PER_PATCH);
+  }
+
   /** An algae patch off its home shore to graze, near `after` if given (the patch it just left), or null. */
   food(ig: Iguana, rand: () => number, after: THREE.Vector3 | null): AlgaePatch | null {
     const taken = new Set(this.list.filter((o) => o !== ig).map((o) => o.meal));
     const ok = this.algae.all().filter((p) => {
-      if (taken.has(p) || p.y > WATER_Y + 0.01 || p.y < WATER_Y - MAX_DIVE || !offPiles(p.z)) return false;
+      if (taken.has(p) || this.algae.grown(p.id) < RIPE || p.y > WATER_Y + 0.01 || p.y < WATER_Y - MAX_DIVE || !offPiles(p.z)) return false;
       if (after) return Math.hypot(p.x - after.x, p.z - after.z) < NEXT_PATCH && Math.hypot(p.x - after.x, p.z - after.z) > 0.05;
       return Math.abs(p.z - ig.home.z) < FOOD_RANGE && p.x - shoreX(p.z) < FOOD_OUT;
     });

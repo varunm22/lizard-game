@@ -90,74 +90,103 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
   expect(errors).toEqual([]);
 });
 
-test('a hungry iguana goes down to the sea, grazes algae, and comes back out to bask', async ({ page }) => {
+test('a hungry iguana goes down to the sea, puts its snout to the algae and eats them, and comes back out to bask', async ({ page }) => {
   test.setTimeout(180_000);
   const errors = await boot(page);
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
   await page.evaluate(() => (window.__game!.advance(2, false), window.__game!.iguanaDo(1, 'feed')));
   let swam = false;
-  let grazedUnder = false;
+  let shot = false;
   let back = false;
-  const grazes: { snout: number; level: number }[] = [];
-  // Run it in half-second pieces, stopping early at the start of its first graze under water for a picture.
+  /** For each patch it grazed: the closest its drawn snout came to the fronds, and whether it was under water. */
+  const grazed = new Map<number, { touch: number; under: boolean }>();
+  // Run it in half-second pieces, stopping early the first time its snout is in the fronds under water, for a picture.
   for (let s = 0; s < 360 && !back; s++) {
     const r = await page.evaluate(
       ([waterY, wantShot]) => {
         const g = window.__game!;
         let swam = false;
-        let started: { snout: number; level: number; under: boolean } | null = null;
+        let shot = false;
+        const seen: { id: number; touch: number; under: boolean }[] = [];
         for (let k = 0; k < 30; k++) {
-          const was = g.iguanas()[1].activity === 'graze';
           g.advance(1, false);
           const ig = g.iguanas()[1];
           swam ||= ig.swimming;
-          if (ig.activity === 'graze' && !was && ig.meal) {
-            const sx = ig.x + Math.sin(ig.yaw) * 0.08;
-            const sz = ig.z + Math.cos(ig.yaw) * 0.08;
-            started = { snout: Math.hypot(sx - ig.meal.x, sz - ig.meal.z), level: Math.abs(ig.y - ig.meal.y), under: ig.swimming && ig.meal.y < waterY };
-            if (started.under && wantShot) {
-              // Side on, from a little behind, under the water with it.
-              g.viewFrom({ x: Math.cos(ig.yaw) * 0.16 - Math.sin(ig.yaw) * 0.06, y: 0.02, z: -Math.sin(ig.yaw) * 0.16 - Math.cos(ig.yaw) * 0.06 }, { x: ig.x, y: ig.y + 0.02, z: ig.z });
-              g.advance(20);
-              break;
-            }
+          if (ig.activity !== 'graze' || !ig.meal || ig.touch === null) continue;
+          const under = ig.swimming && ig.meal.y < waterY;
+          seen.push({ id: ig.meal.id, touch: ig.touch, under });
+          if (under && wantShot && ig.touch < 0.015) {
+            // Side on, from a little behind, under the water with it.
+            g.viewFrom({ x: Math.cos(ig.yaw) * 0.14 - Math.sin(ig.yaw) * 0.04, y: 0.015, z: -Math.sin(ig.yaw) * 0.14 - Math.cos(ig.yaw) * 0.04 }, { x: ig.meal.x, y: ig.meal.y + 0.01, z: ig.meal.z });
+            g.advance(1);
+            shot = true;
+            break;
           }
         }
         const ig = g.iguanas()[1];
-        return { swam, started, back: ig.meals > 0 && ig.activity === 'bask' && !ig.swimming };
+        return { swam, shot, seen, back: ig.meals > 0 && ig.activity === 'bask' && !ig.swimming };
       },
-      [waterY, !grazedUnder] as const,
+      [waterY, !shot] as const,
     );
     swam ||= r.swam;
     back = r.back;
-    if (r.started) {
-      grazes.push(r.started);
-      if (r.started.under && !grazedUnder) {
-        grazedUnder = true;
-        await page.screenshot({ path: 'test-results/screenshots/iguana-graze.png' });
-        await page.evaluate(() => window.__game!.viewFrom(null));
-      }
+    for (const v of r.seen) grazed.set(v.id, { touch: Math.min(v.touch, grazed.get(v.id)?.touch ?? Infinity), under: v.under || !!grazed.get(v.id)?.under });
+    if (r.shot) {
+      shot = true;
+      await page.screenshot({ path: 'test-results/screenshots/iguana-graze.png' });
+      await page.evaluate(() => window.__game!.viewFrom(null));
     }
   }
-  const trip = await page.evaluate(() => {
+  const trip = await page.evaluate((ids) => {
     const g = window.__game!;
     const end = g.iguanas()[1];
-    return { end, shoreX: g.shoreX(end.z) };
-  });
-  // It grazed at least one patch, its snout at the algae, and ate.
-  expect(grazes.length).toBeGreaterThan(0);
-  for (const gz of grazes) {
-    expect(gz.snout).toBeLessThan(0.05);
-    expect(gz.level).toBeLessThan(0.05);
-  }
-  expect(trip.end.bites).toBeGreaterThan(3);
+    const left = new Set(g.algae().map((a) => a.id));
+    return { end, shoreX: g.shoreX(end.z), eaten: ids.filter((id) => !left.has(id)).length };
+  }, [...grazed.keys()]);
+  // It grazed at least one patch with its snout right in the fronds, and ate it: the patch is gone.
+  expect(grazed.size).toBeGreaterThan(0);
+  const touched = [...grazed.values()].filter((v) => v.touch < 0.018);
+  expect(touched.length).toBeGreaterThan(0);
+  expect(trip.eaten).toBeGreaterThan(0);
+  expect(trip.end.bites).toBeGreaterThanOrEqual(6);
   expect(trip.end.meals).toBe(1);
   // Grazing under the sea meant swimming there.
-  if (grazedUnder) expect(swam).toBe(true);
+  if ([...grazed.values()].some((v) => v.under)) expect(swam).toBe(true);
   // And it came back out onto the shore to bask.
   expect(back).toBe(true);
   expect(trip.end.x).toBeLessThan(trip.shoreX);
   expect(trip.end.y).toBeGreaterThan(waterY);
+  expect(errors).toEqual([]);
+});
+
+test('algae sprout now and then on the rocks, growing in from nothing', async ({ page }) => {
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const ids = (list: { id: number }[]) => new Set(list.map((a) => a.id));
+    const before = g.algae();
+    // Left alone for two minutes, a few new patches come up by themselves.
+    g.advance(120 * 60, false);
+    const later = g.algae();
+    const old = ids(before);
+    const fresh = later.filter((a) => !old.has(a.id));
+    // One sprouted now starts from nothing and grows in.
+    const id = g.sproutAlgae()!;
+    const at = (n: number) => g.algae().find((a) => a.id === n)!;
+    const seedling = at(id);
+    g.advance(20 * 60, false);
+    const half = at(id).grown;
+    g.advance(30 * 60, false);
+    return { before: before.length, fresh, seedling, half, full: at(id).grown, wet: g.ocean().waterY };
+  });
+  expect(run.fresh.length).toBeGreaterThanOrEqual(2);
+  expect(run.fresh.length).toBeLessThan(20);
+  for (const a of [...run.fresh, run.seedling]) expect(a.y).toBeLessThan(run.wet + 0.02);
+  expect(run.seedling.grown).toBe(0);
+  expect(run.half).toBeGreaterThan(0.3);
+  expect(run.half).toBeLessThan(0.7);
+  expect(run.full).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -270,5 +299,43 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
   expect(run.apart).toBeLessThan(0.07);
   expect(Math.abs(Math.cos(run.ig.yaw - run.p.yaw))).toBeGreaterThan(0.9);
   expect(run.ig.lava).toBeGreaterThan(0.8);
+  expect(errors).toEqual([]);
+});
+
+test('crabs groom the other iguanas too, hopping onto a still one and off again when it moves', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    // Keep the lizard out of it, inland.
+    g.teleport(0, 0, 0);
+    let groomed: { crab: number; iguana: number } | null = null;
+    for (let s = 0; s < 120 && !groomed; s++) {
+      g.advance(30, false);
+      const i = g.crabs().findIndex((c) => c.state === 'groom' && typeof c.grooming === 'number');
+      if (i >= 0) groomed = { crab: i, iguana: g.crabs()[i].grooming as number };
+    }
+    if (!groomed) return { groomed, count: g.crabs().length };
+    const c = g.crabs()[groomed.crab];
+    const ig = g.iguanas()[groomed.iguana];
+    g.viewFrom({ x: Math.cos(ig.yaw) * 0.16, y: 0.1, z: -Math.sin(ig.yaw) * 0.16 }, { x: ig.x, y: ig.y + 0.02, z: ig.z });
+    g.advance(2);
+    // Up on its back, then off again once the iguana gets up.
+    const onBack = c.y - ig.y;
+    g.iguanaDo(groomed.iguana, 'feed');
+    let off = false;
+    for (let k = 0; k < 600 && !off; k++) {
+      g.advance(1, false);
+      const now = g.crabs()[groomed.crab];
+      off = now.state !== 'groom' && now.state !== 'hop';
+    }
+    return { groomed, count: g.crabs().length, onBack, off, igState: g.iguanas()[groomed.iguana].activity };
+  });
+  await page.screenshot({ path: 'test-results/screenshots/crab-grooms-iguana.png' });
+  expect(run.count).toBeGreaterThanOrEqual(15);
+  expect(run.groomed).not.toBeNull();
+  expect(run.onBack).toBeGreaterThan(0.015);
+  expect(run.off).toBe(true);
   expect(errors).toEqual([]);
 });
