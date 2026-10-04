@@ -6,6 +6,7 @@ import { rng, smoothstep } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import type { Plant, Plants } from '../world/plants';
 import type { PlayerController } from '../player/controller';
+import { centreAboveFeet } from '../player/movement';
 import type { Route } from './route';
 
 /**
@@ -40,6 +41,8 @@ const SHOVE_MARGIN = 0.025;
 const FRONT_REACH = 0.04;
 /** Feet higher than this above the tortoise's are on its back, riding, not in its way (m). */
 const ON_TOP = 0.05;
+/** How far below a rider's feet the shell may curve away and still be carrying it (m). */
+const RIDER_PROBE = 0.02;
 
 interface Extras {
   gait_speed: number;
@@ -74,6 +77,8 @@ export class Tortoise {
   private rot = new THREE.Quaternion();
   private prevRot = new THREE.Quaternion();
   private basis = new THREE.Matrix4();
+  private world: RAPIER.World;
+  private riderRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
   private constructor(
     gltf: Awaited<ReturnType<typeof loadGltf>>,
@@ -95,6 +100,7 @@ export class Tortoise {
       this.actions[name].clampWhenFinished = true;
     }
 
+    this.world = world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
     this.collider = world.createCollider(RAPIER.ColliderDesc.convexHull(shellHull(this.extras))!, this.body);
     this.along = start;
@@ -145,6 +151,7 @@ export class Tortoise {
 
   /** Advance one fixed step. */
   step(dt: number, player: PlayerController) {
+    const rider = this.carrying(player);
     this.prevPos.copy(this.pos);
     this.prevRot.copy(this.rot);
     this.stateTime += dt;
@@ -204,8 +211,29 @@ export class Tortoise {
     }
     // The shell (and so the solid body) sinks onto the ground while it lies down.
     const lying = this.lying();
-    this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y - this.extras.rest_drop * lying, z: this.pos.z });
+    const next = { x: this.pos.x, y: this.pos.y - this.extras.rest_drop * lying, z: this.pos.z };
+    if (rider) this.carry(player, next);
+    this.body.setNextKinematicTranslation(next);
     this.body.setNextKinematicRotation(this.rot);
+  }
+
+  /** The lizard is standing on the shell: just under the middle of its body is the shell, not the ground. */
+  private carrying(player: PlayerController): boolean {
+    if (!player.grounded || player.swimming) return false;
+    this.riderRay.origin = player.position;
+    const reach = centreAboveFeet() + RIDER_PROBE;
+    const hit = this.world.castRay(this.riderRay, reach, true, undefined, undefined, undefined, undefined, (c) => c.handle === this.collider.handle);
+    return hit !== null;
+  }
+
+  /** Move a rider with the shell, from where it is now to `next` and the new heading, as if fixed to it. */
+  private carry(player: PlayerController, next: { x: number; y: number; z: number }) {
+    const was = this.body.translation();
+    const delta = new THREE.Quaternion().copy(this.body.rotation() as THREE.Quaternion).invert().premultiply(this.rot);
+    const feet = player.feetAt(1, new THREE.Vector3());
+    const off = new THREE.Vector3(feet.x - was.x, feet.y - was.y, feet.z - was.z).applyQuaternion(delta);
+    const ahead = new THREE.Vector3(0, 0, 1).applyQuaternion(delta);
+    player.carry(next.x + off.x - feet.x, next.y + off.y - feet.y, next.z + off.z - feet.z, Math.atan2(ahead.x, ahead.z));
   }
 
   /** Draw it between the last two steps. */

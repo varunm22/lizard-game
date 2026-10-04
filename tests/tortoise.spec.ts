@@ -141,3 +141,43 @@ test('the tortoise shoves the lizard out of its way instead of stopping for it',
   expect(run.deepest).toBeLessThan(0);
   expect(errors).toEqual([]);
 });
+
+test('the lizard rides on the shell, carried round with the tortoise while it stands still', async ({ page }) => {
+  const errors = await boot(page);
+  const ride = await page.evaluate(() => {
+    const g = window.__game!;
+    const t0 = g.tortoise();
+    // Dropped onto the crown of the shell, facing the way the tortoise walks.
+    g.teleport(t0.x, t0.z, t0.yaw, t0.y + 0.16);
+    g.advance(60, false);
+    // Where it sits on the shell, in the shell's own frame.
+    const local = () => {
+      const t = g.tortoise();
+      const p = g.player();
+      const ox = p.x - t.x;
+      const oz = p.z - t.z;
+      return { along: ox * Math.sin(t.yaw) + oz * Math.cos(t.yaw), across: ox * Math.cos(t.yaw) - oz * Math.sin(t.yaw), turn: p.yaw - t.yaw, up: p.y - t.y };
+    };
+    const start = { t: g.tortoise(), at: local() };
+    const states = new Set<string>();
+    let maxSpeed = 0;
+    for (let s = 0; s < 10 * 60; s++) {
+      g.advance(1, false);
+      states.add(g.player().state);
+      maxSpeed = Math.max(maxSpeed, g.player().speed);
+    }
+    const end = { t: g.tortoise(), at: local() };
+    return { start, end, states: [...states], maxSpeed, travelled: end.t.along - start.t.along };
+  });
+  // Up on the shell, and the tortoise kept walking with it aboard.
+  expect(ride.start.at.up).toBeGreaterThan(0.1);
+  expect(ride.travelled).toBeGreaterThan(0.2);
+  // It went along for the ride: still in the same spot on the shell, facing the same way...
+  expect(Math.abs(ride.end.at.along - ride.start.at.along)).toBeLessThan(0.01);
+  expect(Math.abs(ride.end.at.across - ride.start.at.across)).toBeLessThan(0.01);
+  expect(Math.abs(Math.atan2(Math.sin(ride.end.at.turn - ride.start.at.turn), Math.cos(ride.end.at.turn - ride.start.at.turn)))).toBeLessThan(0.05);
+  // ...and standing still the whole time, not walking on the spot.
+  expect(ride.states).toEqual(['idle']);
+  expect(ride.maxSpeed).toBeLessThan(0.02);
+  expect(errors).toEqual([]);
+});
