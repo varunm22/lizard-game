@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "assets": "python3 assets-src/lizard.py && python3 assets-src/plants.py",
-    "build:preview": "tsc --noEmit && vite build --mode preview"
+    "build:preview": "tsc --noEmit && vite build --mode preview",
+    "demo": "node scripts/demo-video/record.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
