@@ -13,6 +13,7 @@ import { Splashes } from './world/splashes';
 import { Plants, type PlantKind } from './world/plants';
 import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
+import { Crabs } from './creatures/crab';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -26,6 +27,7 @@ import lizardUrl from './assets/lizard.glb?url';
 import plantsUrl from './assets/plants.glb?url';
 import propsUrl from './assets/props.glb?url';
 import tortoiseUrl from './assets/tortoise.glb?url';
+import crabUrl from './assets/crab.glb?url';
 
 async function main() {
   await RAPIER.init();
@@ -53,6 +55,7 @@ async function main() {
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
+  const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -67,6 +70,7 @@ async function main() {
   let lastState = states.state;
   const feet = new THREE.Vector3();
   let viewOffset: THREE.Vector3 | null = null;
+  let viewTarget: THREE.Vector3 | null = null;
   const groundedFeet = new THREE.Vector3();
   const tickFeet = new THREE.Vector3();
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
@@ -88,9 +92,9 @@ async function main() {
         radius: o.radius,
         opacity: (o.mesh.material as THREE.Material).opacity,
       })),
-    groundAt: (x, z) => {
-      const hit = world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
-      return hit ? 5 - hit.timeOfImpact : null;
+    groundAt: (x, z, from = 5) => {
+      const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS, undefined, player.body);
+      return hit ? from - hit.timeOfImpact : null;
     },
     lizard: () => {
       const head = lizard.root.getObjectByName('head')!;
@@ -125,8 +129,9 @@ async function main() {
       forcedInput = i;
       forcedSteps = forSteps;
     },
-    viewFrom: (offset) => {
+    viewFrom: (offset, at) => {
       viewOffset = offset && new THREE.Vector3(offset.x, offset.y, offset.z);
+      viewTarget = at ? new THREE.Vector3(at.x, at.y, at.z) : null;
     },
     plants: (near) =>
       plants.all
@@ -135,6 +140,11 @@ async function main() {
     sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
     tortoise: () => ({ ...tortoise.position, state: tortoise.state, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),
+    crabs: () =>
+      crabs.list.map((c) => ({ x: c.pos.x, y: c.pos.y, z: c.pos.z, yaw: c.yaw, state: c.state, clip: c.clip, onPile: c.home.pile, hops: c.hops })),
+    crabClips: () => [...crabs.clips],
+    crabGo: (i, x, z) => crabs.list[i].go(x, z),
+    crabPlace: (i, x, z, y = 1) => crabs.list[i].place(x, y, z),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
     shoreX,
     rockPiles: () => ROCK_PILES.map((p) => ({ name: p.name, z: p.z, x0: shoreX(p.z) + p.from, x1: shoreX(p.z) + p.to, peak: p.peak })),
@@ -156,6 +166,7 @@ async function main() {
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
+    crabs.step(dt);
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
@@ -189,14 +200,16 @@ async function main() {
     const groundedFeetY = player.grounded || player.swimming ? player.feetAt(1, groundedFeet).y : null;
     followCam.update(feet, groundedFeetY, player.yawAt(alpha), steering, frameDt);
     if (viewOffset) {
-      camera.position.copy(feet).add(viewOffset);
-      camera.lookAt(feet);
+      const at = viewTarget ?? feet;
+      camera.position.copy(at).add(viewOffset);
+      camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     tortoise.update(alpha, frameDt);
+    crabs.update(alpha, frameDt);
     plants.update(pushers, frameDt);
     water.update(frameDt);
     algae.update(frameDt);
