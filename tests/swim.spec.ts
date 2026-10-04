@@ -176,3 +176,48 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   expect(surfacing!.ripple.strength).toBeGreaterThan(0.3);
   expect(errors).toEqual([]);
 });
+
+test('swimming: climbs out of the sea onto a domed rock without falling back in', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.waitForFunction(() => window.__game?.ready === true);
+
+  // Swim at the rock island from every side, holding W and tapping Space to keep near the surface.
+  // Its crown is a dome with no flat spot right past the rim, which used to refuse the climb: the
+  // lizard surfaced against the face, stood up, and fell straight back in.
+  const runs = await page.evaluate(() => {
+    const g = window.__game!;
+    const w = g.ocean().waterY;
+    const rock = g.obstacles().find((o) => o.name === 'rock-island')!;
+    const runs: { side: number; backIn: number; swimming: boolean; onTop: boolean }[] = [];
+    for (let side = 0; side < 8; side++) {
+      const a = (side / 8) * Math.PI * 2;
+      const x = rock.x + Math.sin(a) * (rock.radius + 0.12);
+      const z = rock.z + Math.cos(a) * (rock.radius + 0.12);
+      if ((g.groundAt(x, z) ?? -Infinity) > w - 0.06) continue;
+      g.teleport(x, z, a + Math.PI, w - 0.04);
+      g.advance(5, false);
+      let backIn = 0;
+      let wasOut = false;
+      for (let k = 0; k < 400; k++) {
+        g.setInput({ move: { x: 0, y: 1 }, jump: k % 40 < 20 }, 1);
+        g.advance(1, false);
+        const p = g.player();
+        if (wasOut && p.swimming) backIn++;
+        wasOut = !p.swimming && !p.climbing;
+        if (wasOut && p.grounded && Math.hypot(p.x - rock.x, p.z - rock.z) < rock.radius * 0.6) break;
+      }
+      g.setInput(null);
+      g.advance(60, false);
+      const p = g.player();
+      runs.push({ side, backIn, swimming: p.swimming, onTop: p.y > w && Math.hypot(p.x - rock.x, p.z - rock.z) < rock.radius });
+    }
+    return runs;
+  });
+  expect(runs.length).toBeGreaterThan(4);
+  for (const r of runs) expect(r).toEqual({ side: r.side, backIn: 0, swimming: false, onTop: true });
+  await page.evaluate(() => window.__game!.advance(1));
+  await page.screenshot({ path: 'test-results/screenshots/swim-climb-out.png' });
+  expect(errors).toEqual([]);
+});
