@@ -16,6 +16,13 @@ export const SPAWN = { x: 0.1, z: 0.05, yaw: Math.PI };
  */
 export const BEACH_PATH = { z0: 0.95, z1: 1.3, from: -0.5 };
 
+/**
+ * The giant tortoise's round: an oval through the grassy clearing north of the spawn and back from
+ * the beach, clear of every rock, log and tree by more than a shell's width, on gentle ground, and
+ * well away from the spawn and the path down to the sea. Centre and half-axes along X and Z (m).
+ */
+export const TORTOISE_ROUTE = { x: -0.3, z: 2.1, rx: 0.75, rz: 0.65 };
+
 /** How wooded (x, z) is, 0 to 1: forest west of x = -1.3 and north of z = -1.3, with ragged edges. */
 export function forestCover(x: number, z: number): number {
   const ragged = valueNoise(x / 0.7 + 5, z / 0.7 - 9, 21) * 0.35;

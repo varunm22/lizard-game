@@ -6,11 +6,13 @@ import { buildTerrain, IGNORE_STEMS, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
-import { SPAWN } from './world/layout';
+import { SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
-import { Plants } from './world/plants';
+import { Plants, type PlantKind } from './world/plants';
+import { Route, Regrowth } from './creatures/route';
+import { Tortoise } from './creatures/tortoise';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -23,6 +25,7 @@ import type { GameTestHooks } from './debug/testHooks';
 import lizardUrl from './assets/lizard.glb?url';
 import plantsUrl from './assets/plants.glb?url';
 import propsUrl from './assets/props.glb?url';
+import tortoiseUrl from './assets/tortoise.glb?url';
 
 async function main() {
   await RAPIER.init();
@@ -39,6 +42,9 @@ async function main() {
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, SPAWN);
+  const route = new Route(TORTOISE_ROUTE.x, TORTOISE_ROUTE.z, TORTOISE_ROUTE.rx, TORTOISE_ROUTE.rz);
+  const regrowth = new Regrowth(route, plants);
+  const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z));
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
@@ -124,7 +130,10 @@ async function main() {
     plants: (near) =>
       plants.all
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
-        .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz })),
+        .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
+    sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
+    tortoise: () => ({ ...tortoise.position, state: tortoise.state, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
+    tortoiseDo: (action) => tortoise.request(action),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
     shoreX,
     algae: (near) =>
@@ -142,6 +151,9 @@ async function main() {
     // Plants slow the lizard by where its physics body is, not where it's drawn.
     player.feetAt(1, tickFeet);
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw));
+    // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
+    tortoise.step(dt, player);
+    regrowth.step(dt);
     player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
@@ -182,6 +194,7 @@ async function main() {
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
+    tortoise.update(alpha, frameDt);
     plants.update(pushers, frameDt);
     water.update(frameDt);
     algae.update(frameDt);

@@ -53,7 +53,39 @@ export interface GameTestHooks {
    * Every plant: its kind, root position, stem height (m), and current lean as a vector in the
    * ground plane (radians; points the way the top leans). `near` keeps only those within r of (x, z).
    */
-  plants: (near?: { x: number; z: number; r: number }) => { kind: string; x: number; y: number; z: number; height: number; tiltX: number; tiltZ: number }[];
+  plants: (near?: { x: number; z: number; r: number }) => {
+    kind: string;
+    x: number;
+    y: number;
+    z: number;
+    height: number;
+    tiltX: number;
+    tiltZ: number;
+    /** How trampled: 1 just flattened, easing to 0 as it stands back up. */
+    crush: number;
+    /** 0 seedling to 1 full grown. */
+    growth: number;
+  }[];
+  /** Make a plant come up at (x, z), a seedling or `grown`; false if there's no room for it there. */
+  sprout: (kind: string, x: number, z: number, grown?: boolean) => boolean;
+  /**
+   * The giant tortoise: where its centre stands, its facing (yaw, as the lizard's), what it's doing
+   * and the clip playing, how far round its route it is (m), the route point 0.3 m ahead of it, and
+   * the route itself (an oval: centre and half-axes).
+   */
+  tortoise: () => {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    state: string;
+    clip: string | undefined;
+    along: number;
+    ahead: { x: number; z: number };
+    route: { x: number; z: number; rx: number; rz: number };
+  };
+  /** Make the tortoise lie down for a rest now, or eat the next plant its mouth comes to. */
+  tortoiseDo: (action: 'eat' | 'rest') => void;
   /** The sea: height of its surface, and how deep the open sea floor lies below it. */
   ocean: () => { waterY: number; depth: number };
   /** X of the waterline at a given z (the sea is to the east, +X). */
