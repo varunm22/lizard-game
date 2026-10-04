@@ -12,8 +12,8 @@ export interface GameTestHooks {
   advance: (n: number, draw?: boolean) => void;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
-  /** Height of the first physics surface under (x, z), found by a downward ray, or null. */
-  groundAt: (x: number, z: number) => number | null;
+  /** Height of the first physics surface under (x, z), found by a downward ray from `from` (default 5 m), or null. */
+  groundAt: (x: number, z: number, from?: number) => number | null;
   /**
    * Obstacles (rocks, logs, trees, cactus) with their footprint radius and current opacity (below 1
    * while faded for blocking the view). `height` is its top above the ground under its centre.
@@ -91,6 +91,18 @@ export interface GameTestHooks {
   };
   /** Make the tortoise lie down for a rest now, or eat the next plant its mouth comes to. */
   tortoiseDo: (action: 'eat' | 'rest') => void;
+  /**
+   * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
+   * sideways), what it's doing and the clip playing, whether it lives on a rock pile, and how many
+   * hops it has made.
+   */
+  crabs: () => { x: number; y: number; z: number; yaw: number; state: string; clip: string | undefined; onPile: boolean; hops: number }[];
+  /** The crab's animation clips. */
+  crabClips: () => string[];
+  /** Send crab i walking to (x, z); it ignores the lizard until it gets there or is stopped. */
+  crabGo: (i: number, x: number, z: number) => void;
+  /** Put crab i down at (x, z), on the first surface below `y` (default 1 m). */
+  crabPlace: (i: number, x: number, z: number, y?: number) => void;
   /** The sea: height of its surface, and how deep the open sea floor lies below it. */
   ocean: () => { waterY: number; depth: number };
   /** X of the waterline at a given z (the sea is to the east, +X). */
@@ -113,8 +125,11 @@ export interface GameTestHooks {
    * steps, or until called with null when `forSteps` is 0. Camera look is not affected.
    */
   setInput: (input: Partial<InputState> | null, forSteps?: number) => void;
-  /** Pin the camera at this offset from the lizard's feet, looking at them (for screenshots); null releases it. */
-  viewFrom: (offset: { x: number; y: number; z: number } | null) => void;
+  /**
+   * Pin the camera at this offset from the lizard's feet, or from the point `at`, looking at it (for
+   * screenshots); null releases it.
+   */
+  viewFrom: (offset: { x: number; y: number; z: number } | null, at?: { x: number; y: number; z: number }) => void;
   /** Place the player's feet at (x, z) facing `yaw`, on the ground or at height `y`, with the camera behind. */
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
