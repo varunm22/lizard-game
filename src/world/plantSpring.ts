@@ -26,6 +26,12 @@ export interface PlantBody {
   zeta: number;
   tx: number;
   tz: number;
+  /**
+   * The lean the spring returns to: upright (0, 0) normally; something heavy that walked over the
+   * plant leaves it lying flat here for a while (`Plants.trample`).
+   */
+  restX: number;
+  restZ: number;
   vx: number;
   vz: number;
   /** False once the plant has settled upright and nothing touches it; it's skipped until touched. */
@@ -48,8 +54,8 @@ export function stepPlant(p: PlantBody, pushers: readonly Pusher[], dt: number) 
   if (p.awake) {
     const k = p.omega * p.omega;
     const c = 2 * p.zeta * p.omega;
-    p.vx += (-k * p.tx - c * p.vx) * dt;
-    p.vz += (-k * p.tz - c * p.vz) * dt;
+    p.vx += (-k * (p.tx - p.restX) - c * p.vx) * dt;
+    p.vz += (-k * (p.tz - p.restZ) - c * p.vz) * dt;
     p.tx += p.vx * dt;
     p.tz += p.vz * dt;
   }
@@ -103,14 +109,18 @@ export function stepPlant(p: PlantBody, pushers: readonly Pusher[], dt: number) 
     }
   }
 
+  // A flattened plant may lie further over than a push alone could put it.
   const t = Math.hypot(p.tx, p.tz);
-  if (t > p.maxTilt) {
-    p.tx *= p.maxTilt / t;
-    p.tz *= p.maxTilt / t;
+  const limit = Math.max(p.maxTilt, Math.hypot(p.restX, p.restZ));
+  if (t > limit) {
+    p.tx *= limit / t;
+    p.tz *= limit / t;
   }
   if (touched) p.awake = true;
-  else if (p.awake && t < REST_TILT && Math.hypot(p.vx, p.vz) < REST_SPIN) {
+  else if (p.awake && Math.hypot(p.tx - p.restX, p.tz - p.restZ) < REST_TILT && Math.hypot(p.vx, p.vz) < REST_SPIN) {
     p.awake = false;
-    p.tx = p.tz = p.vx = p.vz = 0;
+    p.tx = p.restX;
+    p.tz = p.restZ;
+    p.vx = p.vz = 0;
   }
 }

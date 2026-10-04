@@ -18,6 +18,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 /** A step's downward move larger than this (m) is a fall, not walking down a slope. */
 const FREE_FALL_DROP = 0.002;
+/** Upward drift (m per step) the controller adds keeping its skin off a slope while sliding down it. */
+const GRIP_LIFT = 1e-4;
 /**
  * The capsule can rest on one end across a rim (half on a log, the rest over the drop), which a
  * lizard can't: it tips off. With nothing within this far under its centre, but something under one
@@ -107,6 +109,10 @@ export class PlayerController {
    */
   private swim = new THREE.Vector3();
   private desired = new THREE.Vector3();
+  /** Movement handed over by whatever the lizard stands on (the tortoise's shell), applied next step. */
+  private carried = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** Carried this step: riding something that moves. */
+  private riding = false;
   /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
   speedScale = 1;
   private world: RAPIER.World;
@@ -141,6 +147,7 @@ export class PlayerController {
     this.prevYaw = this.yaw;
     this.prevSwimPitch = this.swimPitch;
     this.landed = this.jumped = false;
+    this.applyCarry();
     if (this.climb) {
       this.stepClimb(dt);
       return;
@@ -241,7 +248,11 @@ export class PlayerController {
     // Standing still on a rounded or faceted edge (the rim of a log, the shoulder of a rock), the
     // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
     // Lizards grip: below a slow creep, hold still. Real slides on steep ground are much faster.
-    if (this.grounded && wasGrounded && !hasInput && moved.y <= 0 && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
+    // (The controller keeps its skin off a sloping face by lifting a few microns while it slides, so
+    // a lift that small still counts as creeping down, not climbing. Riding something that rises and
+    // falls under it, like the tortoise's shell, the controller nudges it up off the surface now and
+    // then; holding on, it stays put on it.)
+    if (this.grounded && wasGrounded && !hasInput && (moved.y <= GRIP_LIFT || this.riding) && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
       moved.x = moved.y = moved.z = 0;
     }
 
@@ -270,6 +281,31 @@ export class PlayerController {
 
     if (this.grounded && !wasGrounded && this.airTime > 0.05) this.landed = true;
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+  }
+
+  /**
+   * Ride along with what the lizard is standing on: move it by (dx, dy, dz) and turn it by `dyaw`
+   * at the start of the next step. The ride isn't the lizard's own motion, so it never shows in its
+   * velocity (and so its gait): standing still on a walking tortoise, it idles.
+   */
+  carry(dx: number, dy: number, dz: number, dyaw: number) {
+    this.carried.x += dx;
+    this.carried.y += dy;
+    this.carried.z += dz;
+    this.carried.yaw += dyaw;
+  }
+
+  private applyCarry() {
+    const c = this.carried;
+    this.riding = c.x !== 0 || c.y !== 0 || c.z !== 0 || c.yaw !== 0;
+    if (!this.riding) return;
+    this.position.x += c.x;
+    this.position.y += c.y;
+    this.position.z += c.z;
+    this.yaw += c.yaw;
+    this.body.setTranslation(this.position, true);
+    this.body.setRotation(this.bodyRotation(this.yaw), true);
+    c.x = c.y = c.z = c.yaw = 0;
   }
 
   /** How far the top of the body is under the water surface (m); negative when any of it is out. */
@@ -498,6 +534,20 @@ export class PlayerController {
 
   get horizontalSpeed(): number {
     return Math.hypot(this.velocity.x, this.velocity.z);
+  }
+
+  /**
+   * Something big walked into the lizard: slide it (dx, dz) along the ground, stopping at anything
+   * solid except `pusher` itself and plant stems. Returns how far it actually went (m).
+   */
+  shove(dx: number, dz: number, pusher: RAPIER.Collider): number {
+    this.desired.set(dx, 0, dz);
+    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, IGNORE_STEMS, (c) => c.handle !== pusher.handle);
+    const m = this.kcc.computedMovement();
+    this.position.x += m.x;
+    this.position.z += m.z;
+    this.body.setTranslation(this.position, true);
+    return Math.hypot(m.x, m.z);
   }
 
   /** Teleport (tests and respawn). */

@@ -5,7 +5,7 @@ import { toonGradient } from '../render/toon';
 import { bendPlants, plantUniforms } from '../render/plantBend';
 import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
-import { rng } from './noise';
+import { rng, smoothstep } from './noise';
 import { forestCover, lavaCover, sandCover } from './layout';
 import { waterDepth } from './shore';
 
@@ -52,11 +52,41 @@ const SEED = 23;
 /** No pusher is bigger than this (m). */
 const MAX_PUSHER = 0.05;
 
+/**
+ * Trampled by something heavy (the tortoise), a plant lies this far over (radians), stays down most
+ * of about CRUSH_TIME seconds and lifts back up over the last CRUSH_LIFT of it, so a well-used route
+ * stays a flattened trail. While it's mostly flat (above STEM_BACK) its stem isn't solid either.
+ */
+const FLAT_TILT = 1.3;
+const CRUSH_TIME = 60;
+const CRUSH_LIFT = 0.35;
+const STEM_BACK = 0.3;
+/** A sprouted plant grows from a seedling to full size over this long (s); its stem is solid from half grown. */
+const GROW_TIME = 30;
+const SEEDLING = 0.05;
+/** Room for sprouted plants of each kind at once (the tortoise's meadow starts out as sprouts too). */
+const SPROUT_CAP = 96;
+
 export interface Plant extends PlantBody {
   kind: PlantKind;
   drag: number;
   yaw: number;
   scale: number;
+  /** Full-grown stem height and push radius (m); `height` and `radius` are these times `growth`. */
+  fullHeight: number;
+  fullRadius: number;
+  /** 0 (seedling) to 1 (full size). */
+  growth: number;
+  /** How trampled, 1 (flat) easing to 0 (recovered), over `crushTime` seconds; it lies toward (crushX, crushZ). */
+  crush: number;
+  crushTime: number;
+  crushX: number;
+  crushZ: number;
+  eaten: boolean;
+  /** Its solid stem (null until it's grown enough to have one). */
+  stem: RAPIER.Collider | null;
+  patch: Patch;
+  slot: number;
 }
 
 /** One kind's plants within one tile of the ground, drawn as a single instanced mesh. */
@@ -64,6 +94,16 @@ interface Patch {
   mesh: THREE.InstancedMesh;
   plants: Plant[];
   bend: THREE.InstancedBufferAttribute;
+  /** Sprout patches: slots freed by eaten plants, to reuse. */
+  free: number[];
+}
+
+interface KindDraw {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  depth: THREE.Material;
+  height: number;
+  sprouts: Patch;
 }
 
 /**
@@ -81,9 +121,17 @@ const TILE = 1;
  */
 export class Plants {
   private patches: Patch[] = [];
+  /** Every plant still growing (eaten ones leave). */
   readonly all: Plant[] = [];
   private time = 0;
   private dir = new THREE.Vector3();
+  private kinds = new Map<PlantKind, KindDraw>();
+  /** Plants that are trampled or still growing, which change every frame. */
+  private changing = new Set<Plant>();
+  private rand = rng(SEED + 1);
+  private matrix = new THREE.Matrix4();
+
+  private constructor(private world: RAPIER.World) {}
 
   /**
    * `open(x, z)` says whether a plant may grow at a ground point (false where a rock or log sits).
@@ -97,7 +145,7 @@ export class Plants {
     clear: { x: number; z: number },
   ) {
     const gltf = await loadGltf(url);
-    const plants = new Plants();
+    const plants = new Plants(world);
     const placed = scatter(open, clear);
     for (const name of Object.keys(KINDS) as PlantKind[]) {
       const src = gltf.scene.getObjectByName(name) as THREE.Mesh | undefined;
@@ -105,7 +153,7 @@ export class Plants {
       const geometry = src.geometry;
       geometry.computeBoundingBox();
       const height = geometry.boundingBox!.max.y;
-      const list = placed.filter((p) => p.kind === name).map((p) => plants.makePlant(p, height));
+      const list = placed.filter((p) => p.kind === name).map((p) => plants.makePlant(p, height, 1));
       plants.all.push(...list);
       const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
       bendPlants(material, height);
@@ -119,35 +167,161 @@ export class Plants {
       for (const [key, tile] of tiles) {
         plants.patches.push(makePatch(scene, `plants-${name}-${key}`, geometry, material, depth, tile));
       }
+      // New plants come up anywhere, so their batch isn't tied to a tile (and isn't culled).
+      const sprouts = makePatch(scene, `plants-${name}-sprouts`, geometry, material, depth, [], SPROUT_CAP);
+      plants.patches.push(sprouts);
+      plants.kinds.set(name, { geometry, material, depth, height, sprouts });
     }
-    for (const p of plants.all) {
-      const half = Math.min(p.height, STEM_TOP) / 2;
-      world.createCollider(
-        RAPIER.ColliderDesc.capsule(Math.max(half - STEM_RADIUS, 0.001), STEM_RADIUS)
-          .setTranslation(p.x, p.y + half, p.z)
-          .setCollisionGroups((PLANT_STEM_GROUP << 16) | 0xffff),
-      );
-    }
+    for (const p of plants.all) plants.growStem(p);
     return plants;
   }
 
-  private makePlant(p: Placement, height: number): Plant {
+  private makePlant(p: Placement, height: number, growth: number): Plant {
     const k = KINDS[p.kind];
     return {
       ...p,
       y: terrainHeight(p.x, p.z),
-      height: height * p.scale,
-      radius: k.radius * p.scale,
+      fullHeight: height * p.scale,
+      fullRadius: k.radius * p.scale,
+      height: height * p.scale * growth,
+      radius: k.radius * p.scale * growth,
+      growth,
       maxTilt: k.maxTilt,
       drag: k.drag,
       omega: 2 * Math.PI * k.hz,
       zeta: k.zeta,
       tx: 0,
       tz: 0,
+      restX: 0,
+      restZ: 0,
       vx: 0,
       vz: 0,
       awake: false,
+      crush: 0,
+      crushTime: CRUSH_TIME,
+      crushX: 0,
+      crushZ: 0,
+      eaten: false,
+      stem: null,
+      patch: undefined as unknown as Patch, // set by makePatch or sprout
+      slot: 0,
     };
+  }
+
+  /** Give the plant its thin solid stem (full-grown height). */
+  private growStem(p: Plant) {
+    const half = Math.min(p.fullHeight, STEM_TOP) / 2;
+    p.stem = this.world.createCollider(
+      RAPIER.ColliderDesc.capsule(Math.max(half - STEM_RADIUS, 0.001), STEM_RADIUS)
+        .setTranslation(p.x, p.y + half, p.z)
+        .setCollisionGroups((PLANT_STEM_GROUP << 16) | 0xffff),
+    );
+    p.stem.setEnabled(p.crush < STEM_BACK);
+  }
+
+  /** The nearest plant to (x, z) within r that is at least `minGrowth` grown, or null. */
+  nearest(x: number, z: number, r: number, minGrowth = 0): Plant | null {
+    let best: Plant | null = null;
+    let bestD = r;
+    for (const p of this.all) {
+      if (p.growth < minGrowth || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (d < bestD) [best, bestD] = [p, d];
+    }
+    return best;
+  }
+
+  /**
+   * Something heavy passes over every plant within r of (x, z), heading (dx, dz): each one is pressed
+   * flat, lying the way it was walked over and a little out from the middle, and its stem stops
+   * being solid. It stays down for about a minute (a little more or less each), then lifts back.
+   */
+  trample(x: number, z: number, r: number, dx: number, dz: number) {
+    for (const p of this.all) {
+      if (p.growth < 0.3 || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
+      const ox = p.x - x;
+      const oz = p.z - z;
+      const d = Math.hypot(ox, oz);
+      if (d > r) continue;
+      if (p.crush === 0) {
+        const lx = dx + (d > 1e-4 ? (0.5 * ox) / d : 0);
+        const lz = dz + (d > 1e-4 ? (0.5 * oz) / d : 0);
+        const l = Math.hypot(lx, lz) || 1;
+        p.crushX = lx / l;
+        p.crushZ = lz / l;
+        p.crushTime = CRUSH_TIME * (0.85 + 0.3 * this.rand());
+      }
+      p.crush = 1;
+      p.awake = true;
+      p.stem?.setEnabled(false);
+      this.changing.add(p);
+    }
+  }
+
+  /** Eat a plant: it's gone, stem and all. */
+  eat(p: Plant) {
+    if (p.eaten) return;
+    p.eaten = true;
+    this.all.splice(this.all.indexOf(p), 1);
+    this.changing.delete(p);
+    if (p.stem) this.world.removeCollider(p.stem, false);
+    p.stem = null;
+    this.place(p);
+    if (p.patch.free) p.patch.free.push(p.slot);
+  }
+
+  /**
+   * A new plant comes up at (x, z) as a seedling (or full grown) and grows, unless that's too close
+   * to another plant or this kind has no room left. Returns it, or null.
+   */
+  sprout(kind: PlantKind, x: number, z: number, grown = false): Plant | null {
+    if (this.all.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING)) return null;
+    const draw = this.kinds.get(kind)!;
+    const patch = draw.sprouts;
+    const slot = patch.free.pop() ?? (patch.plants.length < SPROUT_CAP ? patch.plants.length : -1);
+    if (slot < 0) return null;
+    const p = this.makePlant({ kind, x, z, yaw: this.rand() * 2 * Math.PI, scale: 0.8 + 0.35 * this.rand() }, draw.height, grown ? 1 : SEEDLING);
+    p.patch = patch;
+    p.slot = slot;
+    patch.plants[slot] = p;
+    patch.mesh.count = Math.max(patch.mesh.count, slot + 1);
+    patch.bend.setXY(slot, 0, 0);
+    patch.bend.needsUpdate = true;
+    this.place(p);
+    this.all.push(p);
+    if (grown) this.growStem(p);
+    else this.changing.add(p);
+    return p;
+  }
+
+  /** Write a plant's instance matrix: its spot, turn and size (none once eaten). */
+  private place(p: Plant) {
+    const s = p.eaten ? 0 : p.scale * p.growth;
+    this.matrix.compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(Y, p.yaw), new THREE.Vector3(s, s, s));
+    p.patch.mesh.setMatrixAt(p.slot, this.matrix);
+    p.patch.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Advance trampled plants back up and seedlings toward full size. */
+  private recover(dt: number) {
+    for (const p of this.changing) {
+      if (p.crush > 0) {
+        p.crush = Math.max(0, p.crush - dt / p.crushTime);
+        const flat = FLAT_TILT * smoothstep(0, CRUSH_LIFT, p.crush);
+        p.restX = p.crushX * flat;
+        p.restZ = p.crushZ * flat;
+        p.awake = true;
+        if (p.crush < STEM_BACK && p.stem && !p.stem.isEnabled()) p.stem.setEnabled(true);
+      }
+      if (p.growth < 1) {
+        p.growth = Math.min(1, p.growth + dt / GROW_TIME);
+        p.height = p.fullHeight * p.growth;
+        p.radius = p.fullRadius * p.growth;
+        this.place(p);
+        if (p.growth >= 0.5 && !p.stem) this.growStem(p);
+      }
+      if (p.crush === 0 && p.growth >= 1) this.changing.delete(p);
+    }
   }
 
   /**
@@ -163,11 +337,13 @@ export class Plants {
       const sz = z + fz * s;
       for (const p of this.all) {
         const reach = p.radius + DRAG_REACH;
+        // A flattened plant is a trail, and a seedling is underfoot: neither holds the lizard back much.
+        const drag = p.drag * (1 - p.crush) * p.growth;
         const dx = p.x - sx;
         const dz = p.z - sz;
         if (Math.abs(dx) > reach || Math.abs(dz) > reach) continue;
         const d = Math.hypot(dx, dz);
-        if (d < reach) sum += (p.drag * (1 - d / reach)) / DRAG_SAMPLES.length;
+        if (d < reach) sum += (drag * (1 - d / reach)) / DRAG_SAMPLES.length;
       }
     }
     return Math.max(MIN_SPEED_SCALE, 1 / (1 + sum));
@@ -177,11 +353,13 @@ export class Plants {
   update(pushers: readonly Pusher[], dt: number) {
     this.time += dt;
     plantUniforms.uTime.value = this.time;
+    this.recover(dt);
     const n = Math.ceil(Math.min(dt, 0.1) / MAX_SUBSTEP);
     const h = Math.min(dt, 0.1) / n;
     for (const k of this.patches) {
       let changed = false;
       k.plants.forEach((p, i) => {
+        if (p.eaten) return;
         // A plant at rest only needs stepping once something comes within reach of it.
         const reach = p.height + p.radius + MAX_PUSHER;
         if (!p.awake && !pushers.some((q) => Math.abs(q.x - p.x) < reach && Math.abs(q.z - p.z) < reach)) return;
@@ -207,31 +385,38 @@ function makePatch(
   material: THREE.Material,
   depth: THREE.Material,
   plants: Plant[],
+  capacity = plants.length,
 ): Patch {
   // Share the kind's vertex data; only the per-instance bend is the patch's own.
   const geometry = new THREE.BufferGeometry();
   for (const [attr, data] of Object.entries(source.attributes)) geometry.setAttribute(attr, data);
   geometry.setIndex(source.index);
-  const bend = new THREE.InstancedBufferAttribute(new Float32Array(plants.length * 2), 2);
+  const bend = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
   bend.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('aBend', bend);
 
-  const mesh = new THREE.InstancedMesh(geometry, material, plants.length);
+  const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+  mesh.count = plants.length;
   mesh.name = name;
   mesh.customDepthMaterial = depth;
   mesh.castShadow = mesh.receiveShadow = true;
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
+  const patch: Patch = { mesh, plants, bend, free: [] };
   plants.forEach((p, i) => {
+    p.patch = patch;
+    p.slot = i;
     m.compose(new THREE.Vector3(p.x, p.y, p.z), q.setFromAxisAngle(Y, p.yaw), new THREE.Vector3(p.scale, p.scale, p.scale));
     mesh.setMatrixAt(i, m);
   });
   mesh.instanceMatrix.needsUpdate = true;
-  // Bent plants reach outside their upright bounds by up to a stem's height.
-  mesh.computeBoundingSphere();
-  mesh.boundingSphere!.radius += Math.max(...plants.map((p) => p.height));
+  if (plants.length) {
+    // Bent plants reach outside their upright bounds by up to a stem's height.
+    mesh.computeBoundingSphere();
+    mesh.boundingSphere!.radius += Math.max(...plants.map((p) => p.height));
+  } else mesh.frustumCulled = false;
   scene.add(mesh);
-  return { mesh, plants, bend };
+  return patch;
 }
 
 interface Placement {

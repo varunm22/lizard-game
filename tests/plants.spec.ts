@@ -27,11 +27,16 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
     };
     g.setInput({ move: { x: 0, y: 1 } }, 150);
     let maxLean = 0;
+    let settled = g.player();
     for (let k = 0; k < 150; k++) {
       g.advance(1, false);
       maxLean = Math.max(maxLean, lean().size);
+      if (k === 119) settled = g.player();
     }
     const stopped = g.player();
+    // Pressed against a stem the controller jitters a little from step to step, so judge "stopped"
+    // by how far it got over the last half second rather than one step's speed.
+    const creep = Math.hypot(stopped.x - settled.x, stopped.z - settled.z) / 0.5;
     // Back off, then watch it come back upright: lean along the way it was left leaning, each step.
     g.setInput({ move: { x: 0, y: -1 } }, 20);
     g.advance(20, false);
@@ -42,7 +47,7 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
       const l = lean();
       after.push((l.x * left.x + l.z * left.z) / left.size);
     }
-    return { stoppedZ: stopped.z, stoppedSpeed: stopped.speed, maxLean, released: left.size, after };
+    return { stoppedZ: stopped.z, stoppedSpeed: creep, maxLean, released: left.size, after };
   }, poppy);
 
   // Held up by the stem: the capsule's nose (6 cm ahead of the feet, plus the controller's skin)
