@@ -10,6 +10,12 @@ export interface GameTestHooks {
    * renders slowly, so tests use this instead of waiting for frames.
    */
   advance: (n: number, draw?: boolean) => void;
+  /**
+   * Stop real time and play one frame of `frameDt` seconds as the real-time loop would: the physics
+   * steps it owes, then the views at the interpolated in-between point. Drawn only if `draw`. For
+   * checking what the game looks like at a display's own frame rate, not just at whole steps.
+   */
+  frame: (frameDt: number, draw?: boolean) => void;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
   /** Height of the first physics surface under (x, z), found by a downward ray from `from` (default 5 m), or null. */
@@ -40,6 +46,11 @@ export interface GameTestHooks {
    * clear): two points on each tail bone from the hips back, then each foot.
    */
   clearance: () => number[];
+  /**
+   * The same points as `clearance`, as drawn, in the lizard's own frame (m, +Z forward), so a test
+   * can see the tail or a foot jump from one frame to the next.
+   */
+  clearancePoints: () => { x: number; y: number; z: number }[];
   /** Feet position, facing, ground speed and movement state of the player (physics feet, not as drawn). */
   player: () => {
     x: number;

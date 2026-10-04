@@ -4,6 +4,7 @@ import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
+import { registerExactSurface, setDrawnPose } from '../world/exactSurface';
 import type { Plant, Plants } from '../world/plants';
 import type { PlayerController } from '../player/controller';
 import { centreAboveFeet } from '../player/movement';
@@ -60,6 +61,7 @@ export class Tortoise {
   readonly root: THREE.Object3D;
   readonly body: RAPIER.RigidBody;
   readonly collider: RAPIER.Collider;
+  private drawnAt = new THREE.Vector3();
   state: TortoiseState = 'walk';
   /** How far round its route it is (m). */
   along: number;
@@ -115,6 +117,7 @@ export class Tortoise {
     this.world = world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
     this.collider = world.createCollider(RAPIER.ColliderDesc.convexHull(shellHull(this.extras))!, this.body);
+    registerExactSurface(this.collider);
     this.along = start;
     this.untilRest = this.spell(WALK_SPELL);
     this.pose();
@@ -256,6 +259,9 @@ export class Tortoise {
     this.root.quaternion.slerpQuaternions(this.prevRot, this.rot, alpha);
     this.mixer.update(frameDt);
     this.lift = this.shellHeight() - this.standingHeight;
+    // The shell as drawn: between steps, at the drawn shell's height.
+    this.drawnAt.copy(this.root.position).y += this.lift;
+    setDrawnPose(this.collider, this.drawnAt, this.root.quaternion);
   }
 
   /** Height of the body bone (which carries the shell) above the feet, as drawn now. */
@@ -282,7 +288,12 @@ export class Tortoise {
     const next = this.actions[name];
     if (next === this.current) return;
     next.reset().setEffectiveWeight(1).fadeIn(CROSSFADE).play();
-    this.current?.fadeOut(CROSSFADE);
+    // Fade out everything still showing, not just the last clip: one cut short mid-fade (eat, walk
+    // for a frame, then lie down) would otherwise leave the weights short of 1, and the bind pose
+    // made up the rest, so the shell jumped.
+    for (const action of Object.values(this.actions)) {
+      if (action !== next && action.isRunning() && action.getEffectiveWeight() > 0) action.fadeOut(CROSSFADE);
+    }
     this.current = next;
   }
 
