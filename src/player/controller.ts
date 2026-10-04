@@ -46,6 +46,10 @@ const PERCH_DROP = 0.03;
 const CLIMB_SCAN = 0.12;
 /** How far past the face the climb carries the centre, so the hind feet end up on top too. */
 const CLIMB_OVER = 0.03;
+/** How much further onto a domed top the climb may go looking for room to lie down (m). */
+const CLIMB_ONTO_DOME = 0.06;
+/** How far above a domed top the body may end the climb, to settle down onto it (m). */
+const CLIMB_LIFT = 0.016;
 /** Climb time: a base plus this much per metre of height. */
 const CLIMB_BASE_TIME = 0.2;
 const CLIMB_TIME_PER_M = 6;
@@ -401,14 +405,24 @@ export class PlayerController {
     let rim = -1;
     for (let s = 0.02; s <= CLIMB_SCAN && rim < 0; s += 0.01) if (topAt(s) !== null) rim = s;
     if (rim < 0) return false;
-    // The body ends up with its hind feet past the rim, lying on the top found there.
-    const over = rim + CLIMB_OVER;
-    const top = topAt(over);
-    if (top === null || top < minTop) return false;
-    const to = new THREE.Vector3(this.position.x + fx * over, top + centreAboveFeet() + 0.001, this.position.z + fz * over);
-    if (this.world.intersectionWithShape(to, this.bodyRotation(this.yaw), this.collider.shape, undefined, undefined, undefined, this.body)) {
-      return false;
+    // The body ends up with its hind feet past the rim, lying on the top found there. A domed top
+    // (a boulder's crown) has no flat spot right past the rim for the straight body to lie on, so
+    // it goes on further up the dome and rests a little higher, over the rise, and settles from there.
+    const to = new THREE.Vector3();
+    let top: number | null = null;
+    search: for (let over = rim + CLIMB_OVER; over <= rim + CLIMB_OVER + CLIMB_ONTO_DOME + 1e-6; over += 0.01) {
+      const at = topAt(over);
+      if (at === null) break;
+      if (at < minTop) continue;
+      for (let lift = 0.001; lift <= CLIMB_LIFT + 1e-6; lift += 0.003) {
+        to.set(this.position.x + fx * over, at + centreAboveFeet() + lift, this.position.z + fz * over);
+        if (!this.world.intersectionWithShape(to, this.bodyRotation(this.yaw), this.collider.shape, undefined, undefined, undefined, this.body)) {
+          top = at;
+          break search;
+        }
+      }
     }
+    if (top === null) return false;
     const height = Math.abs(top - feetY);
     this.climb = { from: this.position.clone(), to, t: 0, duration: CLIMB_BASE_TIME + CLIMB_TIME_PER_M * height, top };
     this.vy = 0;
