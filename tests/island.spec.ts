@@ -89,3 +89,52 @@ test('algae grow on the rocky shore at and under the waterline, and each patch c
   await page.evaluate(() => window.__game!.advance(1));
   expect(errors).toEqual([]);
 });
+
+test('rock piles on the rocky shore can be climbed to the crest, from the lava and out of the sea', async ({ page }) => {
+  const errors = await boot(page);
+  const runs = await page.evaluate(() => {
+    const g = window.__game!;
+    const w = g.ocean().waterY;
+    /** Walk (or swim, tilting up) along the pile's spine toward +X or -X, steering back onto it; the highest point reached above the water. */
+    const climb = (pile: { z: number }, dir: number, steps: number) => {
+      let highest = -Infinity;
+      for (let k = 0; k < steps; k++) {
+        const p = g.player();
+        let err = Math.atan2(0.2 * dir, pile.z - p.z) - p.yaw;
+        err = Math.atan2(Math.sin(err), Math.cos(err));
+        g.setInput({ move: { x: Math.max(-1, Math.min(1, -3 * err)), y: 1 }, jump: p.swimming && k % 40 < 20 }, 1);
+        g.advance(1, false);
+        highest = Math.max(highest, p.y - w);
+      }
+      g.setInput(null);
+      return highest;
+    };
+    return g.rockPiles().map((pile) => {
+      const slabs = g.obstacles().filter((o) => o.name.startsWith(pile.name)).length;
+      g.teleport(pile.x0 - 0.12, pile.z, Math.PI / 2);
+      g.advance(10, false);
+      const fromLand = climb(pile, 1, 360);
+      g.teleport(pile.x1 + 0.25, pile.z, -Math.PI / 2, w - 0.01);
+      g.advance(10, false);
+      const fromSea = climb(pile, -1, 360);
+      return { name: pile.name, peak: pile.peak, slabs, fromLand, fromSea };
+    });
+  });
+  expect(runs.length).toBe(2);
+  for (const r of runs) {
+    // A heap of slabs, and the lizard got all the way up both ways (the crest is level to within a couple of cm).
+    expect(r.slabs).toBeGreaterThan(30);
+    expect(r.fromLand).toBeGreaterThan(r.peak - 0.03);
+    expect(r.fromSea).toBeGreaterThan(r.peak - 0.03);
+  }
+  await page.evaluate(() => {
+    const g = window.__game!;
+    const pile = g.rockPiles()[0];
+    g.teleport(pile.x0 + 0.55, pile.z, Math.PI / 2, g.ocean().waterY + pile.peak + 0.01);
+    g.advance(30, false);
+    g.viewFrom({ x: -0.35, y: 0.25, z: 0.45 });
+    g.advance(1);
+  });
+  await page.screenshot({ path: 'test-results/screenshots/rock-pile.png' });
+  expect(errors).toEqual([]);
+});

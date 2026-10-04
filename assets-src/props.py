@@ -17,6 +17,10 @@ object so the game can fade each placed prop on its own. Objects:
 - rock_0..5: lava boulders, convex (the game's collider is the hull of the mesh), about 1 m across,
   flat base at z = -0.55 * squash; the game scales and sinks them. Grey, so the game tints them per place.
 - algae_green, algae_red: sea lettuce and red turf tufts a few cm across, growing up from the origin.
+- slab_0..3: blocky lava slabs for the rock piles, convex, about 2 m across (radius ~1), the top a
+  near-flat facet at z = extras `top`, the base at z = extras `bottom`. The game scales them
+  unevenly (each slab's top set by the pile's shape, its base pushed down to the ground) and
+  stacks them into piles that can be climbed step by step.
 """
 
 import math
@@ -379,6 +383,39 @@ def rock(rng, squash):
     return mb
 
 
+def slab(rng, top):
+    """A lava slab: the hull of jittered points on a boxy superellipse, cut flat (a touch tilted) at
+    the top and the base, so a piled stack of them gives level footing at each step."""
+    bm = bmesh.new()
+    pts = []
+    stretch = rng.uniform(0.8, 1.0)
+    tilt = (rng.uniform(-0.06, 0.06), rng.uniform(-0.06, 0.06))
+    n = rng.randint(14, 20)
+    for k in range(n):
+        a = 2 * math.pi * (k + rng.uniform(-0.3, 0.3)) / n
+        c, s = math.cos(a), math.sin(a)
+        # Superellipse with exponent 4: a rounded square outline, chipped at random.
+        rad = (abs(c) ** 4 + abs(s) ** 4) ** -0.25 * rng.uniform(0.82, 1.0) * 0.8
+        x, y = rad * c, rad * s * stretch
+        for z in (top - rng.uniform(0.0, 0.08), -0.5, top * 0.4 + rng.uniform(-0.1, 0.1)):
+            # The rim of each face is pulled in a little so the edges read as worn, not sawn.
+            k2 = 1.0 if 0 < z < top * 0.9 else rng.uniform(0.82, 0.92)
+            pts.append(Vector((x * k2, y * k2, z + (tilt[0] * x + tilt[1] * y if z > 0 else 0.0))))
+    for p in pts:
+        bm.verts.new(p)
+    bmesh.ops.convex_hull(bm, input=list(bm.verts))
+    for v in [v for v in bm.verts if not v.link_faces]:
+        bm.verts.remove(v)
+    mb = MeshBuilder()
+    for f in bm.faces:
+        tone = rng.uniform(0.7, 1.1)
+        c = mix(C['rock'], C['rock_rust'], rng.random() ** 4)
+        col = scale(c, tone * (1.08 if f.normal.z > 0.8 else 1.0))
+        mb.face(*[mb.vert(v.co, col) for v in f.verts])
+    bm.free()
+    return mb
+
+
 def ulva(rng):
     """Sea lettuce: a few ruffled translucent-green sheets rising from one holdfast, ~3 cm."""
     mb = MeshBuilder()
@@ -454,6 +491,10 @@ def main():
         objects.append(make_object(f'rock_{i}', rock(rng, squash), mat, smooth=False, extras={'squash': squash}))
     objects.append(make_object('algae_green', ulva(rng), mat))
     objects.append(make_object('algae_red', turf(rng), mat))
+    # Slabs draw from their own generator so adding them left every other prop as it was.
+    srng = random.Random(31)
+    for i, top in enumerate((0.3, 0.35, 0.25, 0.4)):
+        objects.append(make_object(f'slab_{i}', slab(srng, top), mat, smooth=False, extras={'top': top, 'bottom': -0.5}))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 
