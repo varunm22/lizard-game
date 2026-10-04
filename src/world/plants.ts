@@ -5,7 +5,9 @@ import { toonGradient } from '../render/toon';
 import { bendPlants, plantUniforms } from '../render/plantBend';
 import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
-import { POND, WATER_Y } from './pond';
+import { rng } from './noise';
+import { forestCover, lavaCover, sandCover } from './layout';
+import { waterDepth } from './shore';
 
 /**
  * How each kind (a mesh in assets-src/plants.py) sways: spring frequency (Hz) and damping ratio,
@@ -19,7 +21,6 @@ const KINDS = {
   fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5 },
   daisy: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4 },
   poppy: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4 },
-  reed: { hz: 0.3, zeta: 1.3, radius: 0.012, maxTilt: 0.25, drag: 1.2 },
 } as const;
 /**
  * A plant slows the lizard while its body line is within this much of the plant's own radius (m):
@@ -241,39 +242,28 @@ interface Placement {
   scale: number;
 }
 
-/** Small deterministic PRNG (mulberry32), so the meadow is the same every load. */
-function rng(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
- * Lay the meadow out: grass in patches with odd tufts between, ferns, flowers in little groups,
- * and reeds around the pond's waterline. Nothing grows under water (except reeds in the shallows),
- * on a rock or log, past the edge, or right where the lizard spawns. A few flowers and grass stand
- * between the spawn and the log so they're the first thing to walk through.
+ * Lay the island's plants out: in the clearing, grass in patches with odd tufts between, ferns, and
+ * flowers in little groups; under the trees, ferns thick on the ground among grass; at the back of
+ * the beach, a few tufts holding the sand. Nothing grows in the sea, on the bare lava or the open
+ * sand, on a rock, log or tree, past the edge, or right where the lizard spawns. A few flowers and
+ * grass stand between the spawn and the log so they're the first thing to walk through.
  */
 function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z: number }): Placement[] {
   const rand = rng(SEED);
   const out: Placement[] = [];
   const edge = TERRAIN_SIZE / 2 - 0.1;
   const range = (a: number, b: number) => a + (b - a) * rand();
-  const ok = (kind: PlantKind, x: number, z: number) => {
+  const ok = (x: number, z: number) => {
     if (Math.abs(x) > edge || Math.abs(z) > edge) return false;
     if (Math.hypot(x - clear.x, z - clear.z) < 0.1) return false;
-    const depth = WATER_Y - terrainHeight(x, z);
-    if (kind === 'reed' ? depth > 0.03 || depth < -0.02 : depth > -0.004) return false;
+    if (waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) > 0) return false;
+    if (lavaCover(x, z) > 0.4 || sandCover(x, z) > 0.75) return false;
     return open(x, z);
   };
   const tooClose = (x: number, z: number) => out.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING);
   const add = (kind: PlantKind, x: number, z: number, scale: number) => {
-    if (ok(kind, x, z) && !tooClose(x, z)) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
+    if (ok(x, z) && !tooClose(x, z)) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
   };
   /** A point within `r` of (x, z), denser towards the middle. */
   const around = (x: number, z: number, r: number) => {
@@ -281,11 +271,18 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     const d = r * Math.sqrt(rand());
     return [x + Math.cos(a) * d, z + Math.sin(a) * d] as const;
   };
-  /** Somewhere in the ring between radii a and b around the centre of the world. */
-  const inRing = (a: number, b: number) => {
-    const ang = range(0, 2 * Math.PI);
-    const d = Math.sqrt(range(a * a, b * b));
-    return [Math.cos(ang) * d, Math.sin(ang) * d] as const;
+  /** Somewhere on the island where `where(x, z)` (0 to 1) says it's that kind of ground, more likely the higher it is. */
+  const somewhere = (where: (x: number, z: number) => number) => {
+    for (;;) {
+      const x = range(-edge, edge);
+      const z = range(-edge, edge);
+      if (rand() < where(x, z)) return [x, z] as const;
+    }
+  };
+  const clearing = (x: number, z: number) => (1 - forestCover(x, z)) * (1 - sandCover(x, z)) * (1 - lavaCover(x, z)) * (x < 2.5 ? 1 : 0);
+  const sandEdge = (x: number, z: number) => {
+    const s = sandCover(x, z);
+    return s > 0.15 && s < 0.7 ? 1 : 0;
   };
 
   // The first patch you meet: between the spawn and the log, a little off the straight line.
@@ -296,29 +293,36 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     ['grass', 0.05, -0.2, 1],
     ['grass', 0.13, -0.17, 0.9],
     ['grass', 0.22, -0.25, 1.1],
+    ['grass', 0.185, -0.158, 0.9],
     ['fern', 0.3, -0.12, 1],
   ] as const) add(kind, x, z, s);
 
-  for (let i = 0; i < 70; i++) {
-    const [cx, cz] = inRing(0.25, 2.8);
+  // The clearing.
+  for (let i = 0; i < 45; i++) {
+    const [cx, cz] = somewhere(clearing);
     const r = range(0.06, 0.16);
     const n = Math.round(range(5, 13));
     for (let j = 0; j < n; j++) add('grass', ...around(cx, cz, r), range(0.75, 1.2));
   }
-  for (let i = 0; i < 160; i++) add('grass', ...inRing(0.2, 2.9), range(0.7, 1.1));
-  for (let i = 0; i < 30; i++) add('fern', ...inRing(0.5, 2.8), range(0.8, 1.3));
-  for (let i = 0; i < 28; i++) {
+  for (let i = 0; i < 100; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
+  for (let i = 0; i < 12; i++) add('fern', ...somewhere(clearing), range(0.8, 1.3));
+  for (let i = 0; i < 16; i++) {
     const kind = i % 2 ? 'daisy' : 'poppy';
-    const [cx, cz] = inRing(0.3, 2.7);
+    const [cx, cz] = somewhere(clearing);
     const n = Math.round(range(2, 5));
     for (let j = 0; j < n; j++) add(kind, ...around(cx, cz, 0.08), range(0.8, 1.15));
   }
-  // Reeds in clumps on the waterline: try points around the shore until enough land in the band.
-  for (let i = 0; i < 18; i++) {
-    const a = range(0, 2 * Math.PI);
-    const r = POND.radius * range(0.85, 1.2);
-    const [cx, cz] = [POND.x + Math.cos(a) * r, POND.z + Math.sin(a) * r];
-    for (let j = 0; j < 6; j++) add('reed', ...around(cx, cz, 0.08), range(0.8, 1.2));
+  // The forest floor: ferns everywhere, grass in the lighter gaps.
+  for (let i = 0; i < 55; i++) {
+    const [cx, cz] = somewhere(forestCover);
+    const n = Math.round(range(2, 5));
+    for (let j = 0; j < n; j++) add('fern', ...around(cx, cz, 0.25), range(0.8, 1.25));
   }
+  for (let i = 0; i < 40; i++) {
+    const [cx, cz] = somewhere(forestCover);
+    for (let j = 0; j < 6; j++) add('grass', ...around(cx, cz, 0.12), range(0.8, 1.2));
+  }
+  // The back of the beach: scattered tufts.
+  for (let i = 0; i < 40; i++) add('grass', ...somewhere(sandEdge), range(0.6, 1));
   return out;
 }

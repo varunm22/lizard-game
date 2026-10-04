@@ -6,23 +6,40 @@ const steps = (page: Page, n: number, draw = true) =>
 const player = (page: Page) => page.evaluate(() => window.__game!.player());
 /** Capsule centre to top: feet + skin + diameter. */
 const BODY_TOP = 0.032;
+/**
+ * A line across the sandy beach, from 30 cm up the sand to 1.6 m out to sea, with no rock, tree or
+ * log near it, and where that line meets the waterline.
+ */
+async function beachLane(page: Page) {
+  return page.evaluate(() => {
+    const g = window.__game!;
+    const obstacles = g.obstacles();
+    for (let z = 1.1; z < 2.2; z += 0.02) {
+      for (const lane of [z, 2.2 - z]) {
+        const shore = g.shoreX(lane);
+        const clear = obstacles.every((o) => Math.abs(o.z - lane) > o.radius + 0.08 || o.x < shore - 0.35 || o.x > shore + 1.65);
+        if (clear) return { ...g.ocean(), z: lane, shore };
+      }
+    }
+    throw new Error('no clear lane across the beach');
+  });
+}
 
 test('swimming: wades in until fully under, sinks, Space tilts it up, rocks still block it, swims out', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
-  const pond = await page.evaluate(() => window.__game!.pond());
+  const sea = await beachLane(page);
 
-  // A big pond: the deep middle is a couple of lizard lengths down.
-  expect(pond.radius).toBeGreaterThan(0.7);
-  const deepest = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [pond.x, pond.z]);
-  expect(pond.waterY - deepest).toBeGreaterThan(0.3);
+  // Off the beach the sea floor shelves down to a couple of lizard lengths deep.
+  const offshore = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [sea.shore + 2, sea.z]);
+  expect(sea.waterY - offshore).toBeGreaterThan(0.3);
 
-  // Walk in from the east shore, heading west (-X), until the whole body is under.
-  const entry = await page.evaluate(([px, pz, r]) => {
+  // Walk down the beach into the sea, heading east (+X), until the whole body is under.
+  const entry = await page.evaluate(([shore, z]) => {
     const g = window.__game!;
-    g.teleport(px + r + 0.2, pz + 0.1, -Math.PI / 2);
+    g.teleport(shore - 0.2, z, Math.PI / 2);
     g.setInput({ move: { x: 0, y: 1 } }, 400);
     let wadingDeepest = Infinity;
     for (let k = 0; k < 400 && !g.player().swimming; k++) {
@@ -32,19 +49,19 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
     g.advance(60);
     g.setInput(null);
     return { wadingDeepest, p: g.player(), clip: g.lizard().current };
-  }, [pond.x, pond.z, pond.radius]);
+  }, [sea.shore, sea.z]);
   // It walked until the water closed over its back (give or take a step), not before.
-  expect(entry.wadingDeepest + BODY_TOP).toBeGreaterThan(pond.waterY - 0.006);
+  expect(entry.wadingDeepest + BODY_TOP).toBeGreaterThan(sea.waterY - 0.006);
   expect(entry.p.swimming).toBe(true);
   expect(entry.p.state).toBe('swim');
   expect(entry.clip).toBe('swim');
-  expect(entry.p.y + BODY_TOP).toBeLessThan(pond.waterY);
+  expect(entry.p.y + BODY_TOP).toBeLessThan(sea.waterY);
   // Slowed from walking pace to swimming pace.
   expect(entry.p.speed).toBeLessThan(0.15);
   await page.screenshot({ path: 'test-results/screenshots/swim.png' });
 
   // Mid-water with no input it sinks slowly, then A turns it on the spot.
-  await page.evaluate(([px, pz, y]) => window.__game!.teleport(px + 0.25, pz + 0.25, Math.PI / 2, y), [pond.x, pond.z, pond.waterY - 0.06]);
+  await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, Math.PI / 2, y), [sea.shore + 1.3, sea.z, sea.waterY - 0.06]);
   await steps(page, 2);
   const start = await player(page);
   await steps(page, 60);
@@ -84,7 +101,7 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   // Under water the rocks are still solid: sinking onto the sunk rock, it rests on top.
   const rock = await page.evaluate(() => window.__game!.obstacles().find((o) => o.name === 'rock-sunk')!);
   const rockTop = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [rock.x, rock.z]) + rock.height;
-  expect(rockTop + BODY_TOP).toBeLessThan(pond.waterY);
+  expect(rockTop + BODY_TOP).toBeLessThan(sea.waterY);
   await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, 0, y), [rock.x, rock.z, rockTop + 0.003]);
   await steps(page, 120);
   const resting = await player(page);
@@ -92,19 +109,19 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   expect(resting.y).toBeGreaterThan(rockTop - 0.004);
   await page.screenshot({ path: 'test-results/screenshots/swim-on-rock.png' });
 
-  // Swimming east over the shelf, it comes out onto the shore and walks again.
-  await page.evaluate(([px, pz, y]) => window.__game!.teleport(px + 0.6, pz + 0.1, Math.PI / 2, y), [pond.x, pond.z, pond.waterY - 0.06]);
+  // Swimming back west over the shelf, it comes out onto the beach and walks again.
+  await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, -Math.PI / 2, y), [sea.shore + 0.9, sea.z, sea.waterY - 0.06]);
   await page.evaluate(() => {
     const g = window.__game!;
     g.setInput({ move: { x: 0, y: 1 } }, 600);
-    for (let k = 0; k < 600 && (g.player().swimming || g.player().climbing || g.player().y < g.pond().waterY); k++) g.advance(1, false);
+    for (let k = 0; k < 600 && (g.player().swimming || g.player().climbing || g.player().y < g.ocean().waterY); k++) g.advance(1, false);
     g.setInput(null);
     g.advance(30);
   });
   const out = await player(page);
   expect(out.swimming).toBe(false);
   expect(out.grounded).toBe(true);
-  expect(out.y).toBeGreaterThan(pond.waterY);
+  expect(out.y).toBeGreaterThan(sea.waterY);
   expect(errors).toEqual([]);
 });
 
@@ -113,7 +130,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
-  const pond = await page.evaluate(() => window.__game!.pond());
+  const sea = await beachLane(page);
   /** Run up to `n` steps with `input`, returning the first new ripple and where the lizard was then. */
   const firstRipple = (input: object, n: number) =>
     page.evaluate(([input, n]) => {
@@ -130,15 +147,15 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
       return null;
     }, [input, n] as const);
 
-  // Walking down the east shore: a gentle ring where its feet meet the water.
-  await page.evaluate(([px, pz, r]) => window.__game!.teleport(px + r + 0.2, pz + 0.1, -Math.PI / 2), [pond.x, pond.z, pond.radius]);
+  // Walking down the beach: a gentle ring where its feet meet the water.
+  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI / 2), [sea.shore - 0.2, sea.z]);
   const wade = await firstRipple({ move: { x: 0, y: 1 } }, 300);
   expect(wade).not.toBeNull();
   expect(wade!.ripple.strength).toBeLessThan(0.6);
   expect(Math.hypot(wade!.ripple.x - wade!.p.x, wade!.ripple.z - wade!.p.z)).toBeLessThan(0.02);
 
   // Running and jumping off the shore: a much bigger ring.
-  await page.evaluate(([px, pz, r]) => window.__game!.teleport(px + r + 0.25, pz + 0.1, -Math.PI / 2), [pond.x, pond.z, pond.radius]);
+  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI / 2), [sea.shore - 0.25, sea.z]);
   await page.evaluate(() => window.__game!.advance(10, false));
   await page.evaluate(() => window.__game!.setInput({ move: { x: 0, y: 1 }, run: true }, 25));
   await page.evaluate(() => window.__game!.advance(25, false));
@@ -151,7 +168,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   // Rising from under water with Space, its back reaching the surface rings it (once the splash
   // is a couple of seconds old: gentle ripples are kept sparse).
   await page.evaluate(() => window.__game!.advance(90, false));
-  await page.evaluate(([px, pz, y]) => window.__game!.teleport(px + 0.25, pz + 0.25, Math.PI / 2, y), [pond.x, pond.z, pond.waterY - 0.05]);
+  await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, Math.PI / 2, y), [sea.shore + 1.3, sea.z, sea.waterY - 0.05]);
   await page.evaluate(() => window.__game!.advance(10, false));
   const surfacing = await firstRipple({ jump: true }, 60);
   expect(surfacing).not.toBeNull();

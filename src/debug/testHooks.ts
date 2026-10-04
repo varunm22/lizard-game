@@ -14,8 +14,11 @@ export interface GameTestHooks {
   terrainHeight: (x: number, z: number) => number;
   /** Height of the first physics surface under (x, z), found by a downward ray, or null. */
   groundAt: (x: number, z: number) => number | null;
-  /** Obstacles with their current opacity (below 1 while faded for blocking the view). */
-  obstacles: () => { name: string; x: number; y: number; z: number; height: number; opacity: number }[];
+  /**
+   * Obstacles (rocks, logs, trees, cactus) with their footprint radius and current opacity (below 1
+   * while faded for blocking the view). `height` is its top above the ground under its centre.
+   */
+  obstacles: () => { name: string; kind: string; x: number; y: number; z: number; height: number; radius: number; opacity: number }[];
   /**
    * Clips, the playing clip, the head bone's position in the lizard's own frame (+Z forward, +X its
    * left), and the spine fit: absolute pitch of the hips, chest and each tail bone (radians, positive
@@ -51,8 +54,14 @@ export interface GameTestHooks {
    * ground plane (radians; points the way the top leans). `near` keeps only those within r of (x, z).
    */
   plants: (near?: { x: number; z: number; r: number }) => { kind: string; x: number; y: number; z: number; height: number; tiltX: number; tiltZ: number }[];
-  /** The pond's centre, mean shoreline radius, deepest depth, and the height of its surface. */
-  pond: () => { x: number; z: number; radius: number; depth: number; waterY: number };
+  /** The sea: height of its surface, and how deep the open sea floor lies below it. */
+  ocean: () => { waterY: number; depth: number };
+  /** X of the waterline at a given z (the sea is to the east, +X). */
+  shoreX: (z: number) => number;
+  /** Algae patches still growing, or only those within r of (x, y, z), nearest first. */
+  algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number }[];
+  /** Remove (eat) the algae patch with this id; false if there's none. */
+  removeAlgae: (id: number) => boolean;
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
   ripples: () => { x: number; z: number; age: number; strength: number }[];
   /** `faded` names the obstacles currently blocking the view of the lizard. */

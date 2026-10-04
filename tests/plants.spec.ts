@@ -8,10 +8,10 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
 
   const plants = await page.evaluate(() => window.__game!.plants());
   const kinds = new Set(plants.map((p) => p.kind));
-  expect([...kinds].sort()).toEqual(['daisy', 'fern', 'grass', 'poppy', 'reed']);
-  // Plants stand on the ground and never grow out of the pond's water (reeds in the shallows aside).
-  const { waterY } = await page.evaluate(() => window.__game!.pond());
-  for (const p of plants.filter((p) => p.kind !== 'reed')) expect(p.y).toBeGreaterThan(waterY);
+  expect([...kinds].sort()).toEqual(['daisy', 'fern', 'grass', 'poppy']);
+  // Plants stand on the ground and never grow out of the sea.
+  const { waterY } = await page.evaluate(() => window.__game!.ocean());
+  for (const p of plants) expect(p.y).toBeGreaterThan(waterY);
 
   // The poppy in the first patch, between the spawn and the log. Walk straight at it from two body
   // lengths away (the lizard travels -Z facing yaw pi): its stem stops the lizard, leaning a little.
@@ -59,11 +59,11 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
   expect(Math.min(...walk.after)).toBeGreaterThan(-0.01);
   expect(Math.abs(walk.after.at(-1)!)).toBeLessThan(0.01);
 
-  // A straight lane through the thickest grass near the middle of the meadow that clears every stem
+  // A straight lane through the thickest grass in the clearing that clears every stem
   // (the body needs 2 cm each side of its line), so the walk only brushes the tufts beside it.
   const lane = await page.evaluate(() => {
     const ps = window.__game!.plants();
-    const grass = ps.filter((p) => p.kind === 'grass' && Math.hypot(p.x, p.z) < 1.2);
+    const grass = ps.filter((p) => p.kind === 'grass' && Math.hypot(p.x, p.z) < 2);
     const count = (x: number, z: number) => grass.filter((q) => Math.hypot(q.x - x, q.z - z) < 0.1).length;
     let best = { x: 0, z: 0, n: -1 };
     for (const p of grass) {

@@ -1,6 +1,6 @@
 import { MOVEMENT as M, centreAboveFeet } from '../player/movement';
 import type { PlayerController } from '../player/controller';
-import { nearPond, WATER_Y } from './pond';
+import { inOcean, WATER_Y } from './shore';
 import type { Water } from './water';
 
 /** Within this of the surface (m), the swimmer's back counts as touching it... */
@@ -36,7 +36,7 @@ export class Splashes {
     this.sinceGentle += dt;
     this.sinceWake += dt;
     const { x, y, z } = player.position;
-    if (!nearPond(x, z)) {
+    if (!inOcean(x, z)) {
       this.feetArmed = true;
       this.surfaceArmed = false;
       return;
