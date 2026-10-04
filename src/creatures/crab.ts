@@ -47,6 +47,16 @@ const SAFE = 0.15;
 const SAFE_TIME = 1.5;
 /** The lizard's snout is about this far ahead of its feet (m). */
 const SNOUT = 0.08;
+/**
+ * The lizard's body, as the physics capsule: a segment this far either side of its feet along its
+ * facing (m). A crab is pushed out to this far from it, and at most this far above or below it
+ * counts as in its way (m).
+ */
+const BODY_HALF = 0.048;
+const BODY_CLEAR = 0.025;
+const BODY_LEVEL = 0.04;
+/** Two crabs keep at least this far apart (m), about a leg span; nearer, each steps half the overlap aside. */
+const CRAB_SPACE = 0.03;
 /** Where it feels the rock under its legs, either side and fore and aft (m), to tilt the body. */
 const SPAN = { side: 0.012, fore: 0.01 };
 /** A foot further down than this (m) is over an edge; it leans only as far as this. */
@@ -152,6 +162,19 @@ class Crab {
     this.prevPos.copy(this.pos);
     this.prevRot.copy(this.rot);
     this.hop = null;
+  }
+
+  /**
+   * Shift it by (dx, dz) along the rock, if that's somewhere it could step: no wall, drop or sea.
+   * Mid-hop it's in the air and can't be pushed.
+   */
+  nudge(dx: number, dz: number) {
+    if (this.state === 'hop') return;
+    const x = this.pos.x + dx;
+    const z = this.pos.z + dz;
+    const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX);
+    if (h === null || h - this.pos.y > HOP_MAX || this.pos.y - h > DROP_MAX || !this.crabs.dryAt(x, z, h)) return;
+    this.pos.set(x, h, z);
   }
 
   /** Walk to (x, z) (tests). */
@@ -449,6 +472,44 @@ export class Crabs {
     this.player.feetAt(1, feet);
     snout.set(feet.x + Math.sin(this.player.yaw) * SNOUT, feet.y, feet.z + Math.cos(this.player.yaw) * SNOUT);
     for (const c of this.list) c.step(dt, this.lizard);
+    this.clearLizard(feet);
+    this.spaceOut();
+  }
+
+  /** A crab under the lizard's body (one it walked over while the crab was ducked, say) is pushed out from under it. */
+  private clearLizard(feet: THREE.Vector3) {
+    const fx = Math.sin(this.player.yaw);
+    const fz = Math.cos(this.player.yaw);
+    for (const c of this.list) {
+      if (Math.abs(c.pos.y - feet.y) > BODY_LEVEL) continue;
+      // Nearest point on the body's spine, then straight out from it.
+      const along = Math.max(-BODY_HALF, Math.min(BODY_HALF, (c.pos.x - feet.x) * fx + (c.pos.z - feet.z) * fz));
+      const ox = c.pos.x - (feet.x + fx * along);
+      const oz = c.pos.z - (feet.z + fz * along);
+      const d = Math.hypot(ox, oz);
+      if (d >= BODY_CLEAR) continue;
+      // Dead under the spine: out to the side.
+      const [ux, uz] = d > 1e-6 ? [ox / d, oz / d] : [fz, -fx];
+      c.nudge(ux * (BODY_CLEAR - d), uz * (BODY_CLEAR - d));
+    }
+  }
+
+  /** Crabs that have walked into each other each step half the overlap apart. */
+  private spaceOut() {
+    for (let i = 0; i < this.list.length; i++) {
+      for (let j = i + 1; j < this.list.length; j++) {
+        const a = this.list[i];
+        const b = this.list[j];
+        const dx = b.pos.x - a.pos.x;
+        const dz = b.pos.z - a.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d >= CRAB_SPACE || Math.abs(b.pos.y - a.pos.y) > BODY_LEVEL) continue;
+        const [ux, uz] = d > 1e-6 ? [dx / d, dz / d] : [1, 0];
+        const half = (CRAB_SPACE - d) / 2;
+        a.nudge(-ux * half, -uz * half);
+        b.nudge(ux * half, uz * half);
+      }
+    }
   }
 
   update(alpha: number, frameDt: number) {

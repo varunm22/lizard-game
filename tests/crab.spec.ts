@@ -91,6 +91,39 @@ test('a crab runs off sideways when the lizard comes close', async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+test('a crab under the lizard is pushed out from under it, and two crabs never stand in each other', async ({ page }) => {
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const i = g.crabs().findIndex((c) => !c.onPile);
+    const c0 = g.crabs()[i];
+    // Sent walking, it pays the lizard no mind, so the lizard can end up right on top of it.
+    g.crabGo(i, c0.x, c0.z - 0.3);
+    g.teleport(c0.x, c0.z, Math.PI / 2);
+    g.advance(3, false);
+    const p = g.player();
+    const c = g.crabs()[i];
+    // Distance from the crab to the lizard's spine (the capsule, 4.8 cm either side of its feet).
+    const fx = Math.sin(p.yaw);
+    const fz = Math.cos(p.yaw);
+    const along = Math.max(-0.048, Math.min(0.048, (c.x - p.x) * fx + (c.z - p.z) * fz));
+    const underLizard = Math.hypot(c.x - (p.x + fx * along), c.z - (p.z + fz * along));
+    // Two crabs put down on the same spot, the lizard well away.
+    g.teleport(0, 0, 0);
+    const j = g.crabs().findIndex((k, n) => !k.onPile && n !== i);
+    g.crabPlace(i, c0.x, c0.z);
+    g.crabPlace(j, c0.x, c0.z);
+    g.advance(3, false);
+    const [a, b] = [g.crabs()[i], g.crabs()[j]];
+    return { underLizard, apart: Math.hypot(a.x - b.x, a.z - b.z) };
+  });
+
+  expect(run.underLizard).toBeGreaterThan(0.022);
+  expect(run.apart).toBeGreaterThan(0.027);
+  expect(errors).toEqual([]);
+});
+
 test('a crab climbs a rock pile to the crest, hopping up its steps', async ({ page }) => {
   const errors = await boot(page);
   const run = await page.evaluate(() => {
