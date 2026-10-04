@@ -110,6 +110,16 @@ export class LizardModel {
     return new LizardModel(gltf.scene, gltf.animations);
   }
 
+  /**
+   * The top of its back, as last posed: over the middle of the body, between the chest and hips
+   * spheres (refreshed by `updateBodySpheres`). Where a crab stands to groom it.
+   */
+  back(out: THREE.Vector3): THREE.Vector3 {
+    const chest = this.bodySpheres[Object.keys(BODY_SPHERES).indexOf('chest')];
+    const hips = this.bodySpheres[Object.keys(BODY_SPHERES).indexOf('hips')];
+    return out.set((chest.x + hips.x) / 2, (chest.y + hips.y) / 2 + (chest.r + hips.r) / 2, (chest.z + hips.z) / 2);
+  }
+
   /** Move `bodySpheres` to the spine joints as currently posed. */
   updateBodySpheres() {
     this.root.updateMatrixWorld();
