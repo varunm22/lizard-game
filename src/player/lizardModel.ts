@@ -55,6 +55,10 @@ export class LizardModel {
   private bentBones: { bone: THREE.Object3D; name: BentBone; rest: THREE.Quaternion; axis: THREE.Vector3 }[] = [];
   /** For each leg, the skinned vertices that make up the sole of its foot. */
   readonly soles = new Map<string, { mesh: THREE.SkinnedMesh; index: number }[]>();
+  /** For each leg, its upper and lower bones and the centre of its sole in the lower bone's frame, at rest. */
+  readonly legs: { leg: string; upper: THREE.Object3D; lower: THREE.Object3D; foot: THREE.Vector3 }[] = [];
+  /** The tail tip in model space (the rig has no joint there). */
+  readonly tailTip: [number, number, number];
   /** The body as spheres in world space, refreshed by `updateBodySpheres`. */
   readonly bodySpheres: { x: number; y: number; z: number; r: number }[];
   private sphereBones: THREE.Object3D[];
@@ -71,6 +75,8 @@ export class LizardModel {
     this.sphereBones = Object.keys(BODY_SPHERES).map((name) => root.getObjectByName(name === 'snout' ? 'head' : name)!);
     this.bodySpheres = Object.values(BODY_SPHERES).map((r) => ({ x: 0, y: 0, z: 0, r }));
     this.findSoles();
+    this.findLegs();
+    this.tailTip = rigPoints(root).tail_tip;
     this.rig = this.measureRig();
     for (const [name, share] of Object.entries(HEAD_TURN_SPLIT)) {
       const bone = root.getObjectByName(name);
@@ -149,6 +155,18 @@ export class LizardModel {
     for (const b of this.bentBones) b.bone.quaternion.multiply(this.q.setFromAxisAngle(b.axis, this.bend[b.name]));
     // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
     for (const t of this.turnBones) t.bone.quaternion.multiply(this.q.setFromAxisAngle(BONE_Z, this.headTurn * t.share));
+  }
+
+  private findLegs() {
+    const v = new THREE.Vector3();
+    for (const [leg, soles] of this.soles) {
+      const upper = this.root.getObjectByName('upper_' + leg);
+      const lower = this.root.getObjectByName('lower_' + leg);
+      if (!upper || !lower) continue;
+      const foot = new THREE.Vector3();
+      for (const { mesh, index } of soles) foot.add(mesh.getVertexPosition(index, v).applyMatrix4(mesh.matrixWorld));
+      this.legs.push({ leg, upper, lower, foot: lower.worldToLocal(foot.divideScalar(soles.length)) });
+    }
   }
 
   private measureRig(): SpineRig {

@@ -268,6 +268,26 @@ test('the big rock is too tall to climb, and the log can be jumped over', async 
   expect(over.grounded).toBe(true);
 });
 
+test('backing into the big rock, the tail bends round it instead of going into it', async ({ page }) => {
+  await boot(page);
+  const rock = await obstacle(page, 'rock-big');
+  // South of the rock, facing away from it, backing up tail first until the body stops against it.
+  await teleport(page, rock.x, rock.z + 0.2, 0);
+  await page.evaluate(() => window.__game!.viewFrom({ x: 0.1, y: 0.2, z: 0.03 }));
+  let deepest = 0;
+  for (let i = 0; i < 25; i++) {
+    await page.evaluate(() => window.__game!.setInput({ move: { x: 0, y: -1 } }, 4));
+    await steps(page, 4, false);
+    deepest = Math.max(deepest, ...(await page.evaluate(() => window.__game!.clearance())));
+  }
+  await steps(page, 1);
+  await page.screenshot({ path: 'test-results/screenshots/tail-rock.png' });
+  await page.evaluate(() => window.__game!.viewFrom(null));
+  // It backed up far enough for the tail (11 cm behind the hips) to reach well into the rock.
+  expect((await player(page)).z).toBeLessThan(rock.z + 0.16);
+  expect(deepest).toBeLessThan(0.001);
+});
+
 test('landing on the mid rock and the log: stands on top and stays put', async ({ page }) => {
   await boot(page);
   // The mid rock is narrower than the lizard is long: a running jump carries it over and off.
