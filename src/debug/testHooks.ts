@@ -162,6 +162,8 @@ export interface GameTestHooks {
    * it sneeze when next on land and still.
    */
   iguanaDo: (i: number, action: 'feed' | 'move' | 'sneeze') => void;
+  /** Put iguana i down at (x, z) facing `yaw`, basking there for `stay` seconds (default a minute). */
+  iguanaPlace: (i: number, x: number, z: number, yaw: number, stay?: number) => void;
   /** How much the ground at (x, z) is bare black lava, 0 to 1. */
   lava: (x: number, z: number) => number;
   /** Salt spray droplets in the air. */

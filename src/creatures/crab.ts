@@ -348,6 +348,8 @@ class Crab {
 
   /** One step sideways toward the target: walk on, hop a step, or give up at a wall or the sea. */
   private move(dt: number) {
+    // On its way to groom an iguana that has got up and gone (into the sea, perhaps): give it up.
+    if (this.toLizard && !this.host!.calm) return this.blocked();
     const run = this.state === 'flee';
     const dx = this.target.x - this.pos.x;
     const dz = this.target.y - this.pos.z;

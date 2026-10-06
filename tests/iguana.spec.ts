@@ -222,9 +222,20 @@ test('an iguana on its way goes round the lizard lying across its path instead o
     };
     let closest = Infinity;
     let past = false;
+    // Backing up, and swinging one way then the other, is dithering.
+    let back = 0;
+    let swings = 0;
+    let turn = 0;
     for (let k = 0; k < 600 && !past; k++) {
+      const was = ig;
       g.advance(1, false);
       ig = g.iguanas()[0];
+      back += Math.max(0, -((ig.x - was.x) * Math.sin(was.yaw) + (ig.z - was.z) * Math.cos(was.yaw)));
+      const dyaw = Math.atan2(Math.sin(ig.yaw - was.yaw), Math.cos(ig.yaw - was.yaw));
+      if (Math.abs(dyaw) > 0.004) {
+        if (turn !== 0 && Math.sign(dyaw) !== turn) swings++;
+        turn = Math.sign(dyaw);
+      }
       // Its own body too: from its hips to its snout.
       const fx = Math.sin(ig.yaw);
       const fz = Math.cos(ig.yaw);
@@ -232,12 +243,16 @@ test('an iguana on its way goes round the lizard lying across its path instead o
       past = (ig.x - start.x) * dx + (ig.z - start.z) * dz > 0.32;
     }
     const after = g.player();
-    return { closest, past, pushed: Math.hypot(after.x - p.x, after.z - p.z), activity: ig.activity };
+    return { closest, past, back, swings, pushed: Math.hypot(after.x - p.x, after.z - p.z), activity: ig.activity };
   });
   // It got past the lizard without touching it (two bodies 12 mm in radius touch at 24 mm) or pushing it.
   expect(run.past).toBe(true);
   expect(run.closest).toBeGreaterThan(0.035);
   expect(run.pushed).toBeLessThan(0.002);
+  // In one smooth sweep: off to one side, round the lizard and back onto its way, never backing up.
+  console.log('go round', run.back, run.swings);
+  expect(run.back).toBeLessThan(0.005);
+  expect(run.swings).toBeLessThanOrEqual(3);
   expect(errors).toEqual([]);
 });
 
@@ -280,24 +295,27 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
     g.iguanaDo(0, 'move');
     let ig = g.iguanas()[0];
     let mate: string | number | null = null;
-    for (let k = 0; k < 1500; k++) {
+    let took = 0;
+    for (; took < 1500; took++) {
       g.advance(1, false);
       ig = g.iguanas()[0];
       mate ??= ig.mate;
-      if (k > 300 && ig.activity === 'bask' && ig.state === 'idle') break;
+      if (took > 300 && ig.activity === 'bask' && ig.state === 'idle') break;
     }
     g.advance(240, false);
     ig = g.iguanas()[0];
     const p = g.player();
     g.viewFrom({ x: -0.18, y: 0.14, z: 0.12 }, { x: (ig.x + p.x) / 2, y: p.y + 0.02, z: (ig.z + p.z) / 2 });
     g.advance(2);
-    return { mate, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
+    return { mate, took, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
   });
   await page.screenshot({ path: 'test-results/screenshots/iguana-bask-together.png' });
   // It went to the lizard, and lies alongside it, the same way round, on the lava.
   expect(run.mate).toBe('player');
   expect(run.ig.activity).toBe('bask');
   expect(run.apart).toBeLessThan(0.07);
+  // Lined up and walked in along the lizard in one go, not round and round its spot first.
+  expect(run.took).toBeLessThan(800);
   expect(Math.abs(Math.cos(run.ig.yaw - run.p.yaw))).toBeGreaterThan(0.9);
   expect(run.ig.lava).toBeGreaterThan(0.8);
   expect(errors).toEqual([]);
@@ -338,5 +356,115 @@ test('crabs groom the other iguanas too, hopping onto a still one and off again 
   expect(run.groomed).not.toBeNull();
   expect(run.onBack).toBeGreaterThan(0.015);
   expect(run.off).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+/** Open ground by the shore (the beach), flat and dry 15 cm all round, with no rock, log, tree or plant near. */
+async function openGround(page: Page) {
+  return page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const yaw = g.iguanas()[0].yaw;
+    let best: { x: number; z: number; yaw: number; room: number } | null = null;
+    for (let z = -2.5; z < 3.5; z += 0.05) {
+      for (const up of [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]) {
+        const x = g.shoreX(z) - up;
+        const flat = [-0.15, 0, 0.15].every((s) =>
+          [-0.15, 0, 0.15].every((t) => {
+            const qx = x + s;
+            const qz = z + t;
+            return Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) < 0.003 && g.terrainHeight(qx, qz) > g.ocean().waterY + 0.01;
+          }),
+        );
+        if (!flat || g.plants({ x, z, r: 0.3 }).length > 0 || g.iguanas().some((o, i) => i > 0 && Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
+        const room = Math.min(...g.obstacles().map((o) => Math.hypot(o.x - x, o.z - z) - o.radius));
+        if (!best || room > best.room) best = { x, z, yaw, room };
+      }
+    }
+    if (!best || best.room < 0.18) throw new Error('no open ground by the shore');
+    return best;
+  });
+}
+
+test('the lizard walks over or past a basking iguana from any side without getting stuck on it', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page);
+  const spot = await openGround(page);
+  const runs = await page.evaluate((spot) => {
+    const g = window.__game!;
+    const out: { angle: number; off: number; along: number }[] = [];
+    // Head on, across it at angles, and from behind; through its middle and either end.
+    for (const angle of [0, 0.4, 0.8, Math.PI / 2, 2.2, 2.7, Math.PI]) {
+      for (const off of [-0.04, 0, 0.04]) {
+        g.iguanaPlace(0, spot.x, spot.z, spot.yaw);
+        g.advance(3, false);
+        const ig = g.iguanas()[0];
+        const yaw = ig.yaw + angle;
+        const fx = Math.sin(yaw);
+        const fz = Math.cos(yaw);
+        const ix = Math.sin(ig.yaw);
+        const iz = Math.cos(ig.yaw);
+        g.teleport(ig.x - fx * 0.13 + ix * off, ig.z - fz * 0.13 + iz * off, yaw);
+        g.advance(3, false);
+        const s0 = g.player();
+        g.setInput({ move: { x: 0, y: 1 } }, 150);
+        g.advance(150, false);
+        const p = g.player();
+        out.push({ angle, off, along: (p.x - s0.x) * fx + (p.z - s0.z) * fz });
+      }
+    }
+    return out;
+  }, spot);
+  // Over it (climbing onto its back and down the far side), or nudging it aside: in 2.5 s the
+  // lizard is well past where the iguana lay, never left standing with its hips on the iguana's back.
+  for (const r of runs) expect(r.along, `from ${r.angle.toFixed(2)} rad, ${r.off} m along it`).toBeGreaterThan(0.22);
+  expect(errors).toEqual([]);
+});
+
+test('walking into an iguana end-on pushes it slowly out of the way', async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors = await boot(page);
+  const spot = await openGround(page);
+  const run = await page.evaluate((spot) => {
+    const g = window.__game!;
+    g.iguanaPlace(0, spot.x, spot.z, spot.yaw);
+    g.advance(3, false);
+    const ig = g.iguanas()[0];
+    // Behind it, in line, walking up to its tail and on into its hips: too long a back to climb onto lengthways.
+    const yaw = ig.yaw;
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    g.teleport(ig.x - fx * 0.17, ig.z - fz * 0.17, yaw);
+    g.advance(3, false);
+    g.setInput({ move: { x: 0, y: 1 } }, 120);
+    g.advance(120, false);
+    const after = g.iguanas()[0];
+    return { moved: (after.x - ig.x) * fx + (after.z - ig.z) * fz, across: Math.abs((after.x - ig.x) * fz - (after.z - ig.z) * fx) };
+  }, spot);
+  // Pushed along ahead of the lizard, slower than it walks (2 s at 6 cm/s at most).
+  expect(run.moved).toBeGreaterThan(0.01);
+  expect(run.moved).toBeLessThan(0.13);
+  expect(errors).toEqual([]);
+});
+
+test("an iguana passing close behind the lizard doesn't pull the camera in", async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors = await boot(page);
+  const spot = await openGround(page);
+  const run = await page.evaluate((spot) => {
+    const g = window.__game!;
+    g.iguanaPlace(0, spot.x, spot.z, spot.yaw);
+    // The lizard lies 7 cm off the iguana's flank, facing away from it, so the camera's arm runs back over the iguana.
+    const lx = Math.cos(spot.yaw);
+    const lz = -Math.sin(spot.yaw);
+    g.teleport(spot.x + lx * 0.07, spot.z + lz * 0.07, Math.atan2(lx, lz));
+    let arm = Infinity;
+    for (let k = 0; k < 60; k++) {
+      g.advance(1);
+      arm = Math.min(arm, g.camera().arm);
+    }
+    return { arm, distance: g.camera().distance };
+  }, spot);
+  expect(run.arm).toBeGreaterThan(run.distance - 0.01);
   expect(errors).toEqual([]);
 });

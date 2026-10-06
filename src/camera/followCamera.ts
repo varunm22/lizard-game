@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
-import { EDGE_WALL_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 
 const CAM = {
   /** Look-at point above the lizard's feet (m). */
@@ -35,8 +35,8 @@ const CAM = {
 /**
  * Third-person orbit camera with a spring arm: mouse or right stick orbit, wheel zoom, and a
  * sphere cast from the lizard back to the camera that pulls the camera in before terrain can get
- * between them. Obstacles don't pull it in; `OccluderFade` turns them translucent instead. It swings
- * back behind the lizard while the lizard is steered, and holds its height through jumps.
+ * between them. Obstacles don't pull it in; `OccluderFade` turns them translucent instead. Nor do
+ * the other iguanas, which are small enough to see past. It swings back behind the lizard while the lizard is steered, and holds its height through jumps.
  */
 export class FollowCamera {
   /** Yaw the camera looks along (0 looks toward +Z). Movement input is relative to this. */
@@ -120,7 +120,9 @@ export class FollowCamera {
       this.distance,
       true,
       undefined,
-      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP),
+      // The other iguanas don't pull it in either: one passing behind the lizard would snap the
+      // camera right up to the lizard's back and out again.
+      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP & ~IGUANA_GROUP),
       undefined,
       this.ignoreBody,
       this.skip,

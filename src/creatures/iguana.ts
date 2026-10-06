@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { InputState } from '../input';
 import { PlayerController } from '../player/controller';
+import { MOVEMENT } from '../player/movement';
 import { MovementStateMachine } from '../player/state';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
@@ -9,7 +10,7 @@ import { covers, type Obstacle } from '../world/obstacles';
 import { lavaCover, ROCK_PILES } from '../world/layout';
 import { rng } from '../world/noise';
 import { shoreX, WATER_Y } from '../world/shore';
-import { IGNORE_BODIES, IGUANA_GROUP, terrainHeight } from '../world/terrain';
+import { IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import type { Algae, AlgaePatch } from '../world/algae';
 import type { Plants } from '../world/plants';
 import { Splashes } from '../world/splashes';
@@ -87,6 +88,12 @@ const FROND = 0.006;
 const NOSE_IN = 8;
 /** Ambles at this share of the lizard's walking speed (about its walk clip's own pace). */
 const AMBLE = 0.6;
+/**
+ * Walking to a point, it keeps its turning circle's diameter to at most this share of the way there,
+ * slowing down for a sharp turn close by, but never below this share of walking pace.
+ */
+const TURN_IN = 0.4;
+const MIN_PACE = 0.06;
 /** Settling to bask, it creeps round at this share of walking pace until broadside to the sun (radians off). */
 const CREEP = 0.12;
 const SETTLE_TIME = 3;
@@ -98,12 +105,16 @@ const DETOUR_TIME = 1.2;
 const DETOUR_ANGLE = 1.2;
 /** After this many tries it gives up on where it was going. */
 const MAX_STUCK = 6;
-/** Another body (the lizard, another iguana) this far ahead on its way (m) and nearer its line than this (m) is passed to one side. */
+/**
+ * Another body (the lizard, another iguana) within this far ahead (m) whose centre line comes nearer
+ * its way than PASS_WIDE (m) is gone round: it walks to a point beside that body, PASS_CLEAR (m) out
+ * from its centre line on the side that's the shorter way round, then on to where it was going.
+ */
 const LOOK_AHEAD = 0.3;
-const PASS_WIDE = 0.1;
-/** Passing, it bears off this far (radians) and sticks to the side it picked for this long (s). */
-const AVOID_ANGLE = 0.9;
-const AVOID_HOLD = 1;
+const PASS_WIDE = 0.06;
+const PASS_CLEAR = 0.075;
+/** A body's centre line runs this far (m) each way from its middle, end caps included. */
+const BODY_ENDS = 0.06;
 /** Someone lying within this of the spot it's going to bask on (m): it picks another spot, at most this many times. */
 const SPOT_TAKEN = 0.12;
 const RE_PICKS = 3;
@@ -114,11 +125,21 @@ const RE_PICKS = 3;
  */
 const JOIN_RANGE = 0.8;
 const BESIDE = 0.052;
-/** It lines up this far (m) off the mate's end before walking in alongside it. */
+/**
+ * It comes in alongside the mate along a line off the mate's end: first to a point LINE_UP (m) out
+ * along it, unless it's already behind that end, more than LEAD_IN out and nearer the line than that
+ * is out, and then in along the line to its spot, steering for a point CARROT (m) further in than
+ * where it is, which brings it onto the line in one smooth curve.
+ */
 const LEAD_IN = 0.1;
 const LINE_UP = 0.2;
+const CARROT = 0.04;
 const VIA_REACH = 0.03;
-const MATE_REACH = 0.03;
+/** The line in is clear of rocks this far (m) either side: half a body's width, its controller's skin and a little. */
+const LANE = 0.03;
+/** Beside a mate, it's there once within this of level with its spot, and this near the line in (m). */
+const MATE_LEVEL = 0.01;
+const MATE_LINE = 0.025;
 /** The mate it's going to lie beside moving this far (m) sends it to look again. */
 const MATE_MOVED = 0.05;
 /**
@@ -132,6 +153,8 @@ const BODY_GAP = 0.05;
 const MATE_GAP = 0.036;
 /** Half the straight part of a body's centre line, snout end to hips (m). */
 const BODY_HALF = 0.048;
+/** Pushed by the lizard walking into it, it gives way at this speed (m/s), slower than the lizard walks. */
+const PUSH_SPEED = 0.06;
 /** Swimming, it kicks up (taps Space) this often (s) when deeper than it wants to be. */
 const KICK_GAP = 0.6;
 /** Heading back to land it keeps its back within this of the surface (m). */
@@ -154,6 +177,29 @@ function segmentGap(ax: number, az: number, afx: number, afz: number, bx: number
   return best;
 }
 
+/**
+ * Closest distance in the ground plane between the path from a to b and a body's centre line (±BODY_ENDS
+ * along its facing), counting only the part of the body level with the path before b: a body just
+ * beyond or beside the end of the path (a mate it's walking up to) isn't in its way.
+ */
+function pathGap(o: PlayerController, ax: number, az: number, bx: number, bz: number): number {
+  const px = bx - ax;
+  const pz = bz - az;
+  const len2 = px * px + pz * pz || 1e-9;
+  const fx = Math.sin(o.yaw);
+  const fz = Math.cos(o.yaw);
+  let best = Infinity;
+  for (let i = -6; i <= 6; i++) {
+    const qx = o.position.x + fx * BODY_ENDS * (i / 6);
+    const qz = o.position.z + fz * BODY_ENDS * (i / 6);
+    const t = ((qx - ax) * px + (qz - az) * pz) / len2;
+    if (t >= 1) continue;
+    const c = Math.max(0, t);
+    best = Math.min(best, Math.hypot(qx - ax - px * c, qz - az - pz * c));
+  }
+  return best;
+}
+
 const offPiles = (z: number) => ROCK_PILES.every((p) => Math.abs(z - p.z) > p.width + PILE_BERTH);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -167,8 +213,8 @@ interface Goal {
   /** Basking beside another body: it, where it lay when picked, and the way to lie (parallel to it). */
   mate: { body: PlayerController; x: number; z: number; yaw: number; end: number } | null;
   /**
-   * First go to these, in turn (two points in line beside the mate, off its nearer end), so it's
-   * lined up with the mate before the last stretch in alongside it.
+   * First go to these, in turn (the point on the line in beside the mate, off its nearer end), so
+   * it's lined up with the mate before the last stretch in alongside it.
    */
   via: { x: number; z: number }[];
 }
@@ -211,10 +257,14 @@ class Iguana {
   private stuck = 0;
   private detour = 0;
   private kick = 0;
-  private avoidSide = 0;
-  private avoidHold = 0;
+  /**
+   * Going round a body in its way: which body, which side (+1 its left of the way, -1 its right), and
+   * the way it was heading when it picked the side, which the points beside the body are laid out along.
+   */
+  private pass: { body: PlayerController; side: number; dx: number; dz: number } | null = null;
+  /** Where it's making for right now (a via point, a point beside a body, or the goal), for headway. */
+  private aim = new THREE.Vector2(NaN, NaN);
   private rePicks = 0;
-  private other = new THREE.Vector3();
   private feet = new THREE.Vector3();
   private splashes: Splashes;
   private input: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
@@ -234,6 +284,8 @@ class Iguana {
     this.body = new PlayerController(world, new THREE.Vector3(home.x, terrainHeight(home.x, home.z), home.z), (IGUANA_GROUP << 16) | 0xffff);
     this.body.setFeet(this.body.feetAt(1, this.feet), yaw);
     this.body.stillGroups = IGNORE_BODIES;
+    // Brushing past another lizard it slides along it; it never clambers over one.
+    this.body.climbGroups = IGNORE_BODIES & ~PLANT_STEM_GROUP;
     this.visual = new LizardVisual(model, this.body, world);
     this.splashes = new Splashes(water);
     this.timer = this.between(BASK_TIME);
@@ -271,6 +323,17 @@ class Iguana {
   moveOn() {
     if (this.activity === 'bask') this.timer = 0;
     this.hunger = Math.max(this.hunger, 1);
+  }
+
+  /** Put it down at (x, z) facing `yaw`, basking there for `stay` seconds (tests). */
+  place(x: number, z: number, yaw: number, stay = 60) {
+    this.body.setFeet(new THREE.Vector3(x, terrainHeight(x, z), z), yaw);
+    this.activity = 'bask';
+    this.goal = null;
+    this.pass = null;
+    this.beside = null;
+    this.settle = 0;
+    this.timer = stay;
   }
 
   /** Sneeze now (if on land). */
@@ -466,49 +529,93 @@ class Iguana {
       // Off the end of the mate that was picked.
       const fx = Math.sin(m.yaw);
       const fz = Math.cos(m.yaw);
-      this.goal.via = [LINE_UP, LEAD_IN].map((d) => ({ x: at.x + fx * m.end * d, z: at.z + fz * m.end * d }));
+      this.goal.via = [{ x: at.x + fx * m.end * LINE_UP, z: at.z + fz * m.end * LINE_UP }];
     }
     this.beside = null;
+    this.pass = null;
     this.best = Infinity;
     this.noHeadway = this.stuck = this.detour = 0;
   }
 
-  /**
-   * How far to bear off (radians) the heading to the goal `reach` metres away, to pass the lizard or
-   * another iguana lying in the way instead of walking into it.
-   */
-  private avoid(dt: number, heading: number, reach: number, mate: PlayerController | null): number {
-    const dx = Math.sin(heading);
-    const dz = Math.cos(heading);
-    let near = Infinity;
-    let lateral = 0;
+  /** The nearest body (the lizard, another iguana) in the way from its feet to `to`, other than `skip`, or null. */
+  private inTheWay(to: { x: number; z: number }, skip: PlayerController | null): PlayerController | null {
+    const reach = Math.hypot(to.x - this.feet.x, to.z - this.feet.z);
+    const look = Math.min(LOOK_AHEAD, reach) / (reach || 1);
+    const bx = this.feet.x + (to.x - this.feet.x) * look;
+    const bz = this.feet.z + (to.z - this.feet.z) * look;
+    let near: PlayerController | null = null;
+    let nearest = Infinity;
     for (const o of this.herd.others(this)) {
-      // Lining up off its mate's end and walking in alongside it, its way is clear of the mate.
-      if (o === mate) continue;
-      o.feetAt(1, this.other);
-      if (Math.abs(this.other.y - this.feet.y) > 0.06) continue;
-      const ox = Math.sin(o.yaw);
-      const oz = Math.cos(o.yaw);
-      // Along its body, snout to hips.
-      for (const s of [-0.08, -0.03, 0.03, 0.08]) {
-        const qx = this.other.x + ox * s - this.feet.x;
-        const qz = this.other.z + oz * s - this.feet.z;
-        const along = qx * dx + qz * dz;
-        const across = qx * dz - qz * dx;
-        if (along <= 0 || along > Math.min(LOOK_AHEAD, reach) || Math.abs(across) > PASS_WIDE || along >= near) continue;
-        near = along;
-        lateral = across;
+      if (o === skip || Math.abs(o.position.y - this.body.position.y) > 0.06) continue;
+      if (pathGap(o, this.feet.x, this.feet.z, bx, bz) > PASS_WIDE) continue;
+      const d = Math.hypot(o.position.x - this.feet.x, o.position.z - this.feet.z);
+      if (d < nearest) {
+        nearest = d;
+        near = o;
       }
     }
-    if (near === Infinity) {
-      this.avoidHold -= dt;
-      if (this.avoidHold <= 0) this.avoidSide = 0;
-    } else {
-      // Bear away from the side it's on, and keep to that side once picked so it doesn't dither.
-      if (this.avoidSide === 0) this.avoidSide = lateral > 0 ? -1 : 1;
-      this.avoidHold = AVOID_HOLD;
+    return near;
+  }
+
+  /**
+   * The two points beside body `o` on `side` of the way (dx, dz): PASS_CLEAR out from the furthest
+   * its centre line reaches on that side, level with its near end and with its far end.
+   */
+  private besidePoints(o: PlayerController, side: number, dx: number, dz: number) {
+    // Across the way, positive to its left.
+    const lx = dz;
+    const lz = -dx;
+    const fx = Math.sin(o.yaw);
+    const fz = Math.cos(o.yaw);
+    let out = -Infinity;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const e of [-BODY_ENDS, BODY_ENDS]) {
+      out = Math.max(out, side * (fx * lx + fz * lz) * e);
+      const along = (fx * dx + fz * dz) * e;
+      lo = Math.min(lo, along);
+      hi = Math.max(hi, along);
     }
-    return this.avoidSide * AVOID_ANGLE;
+    const off = side * (out + PASS_CLEAR);
+    const at = (a: number) => ({ x: o.position.x + lx * off + dx * a, z: o.position.z + lz * off + dz * a });
+    return { near: at(lo), far: at(hi) };
+  }
+
+  /**
+   * Where to make for to get round a body in the way to `to`: beside it, on the side it picked when
+   * it first met it (the shorter way round that isn't into a rock), kept to until the way is clear.
+   * Null when nothing's in the way.
+   */
+  private passPoint(to: { x: number; z: number }, skip: PlayerController | null): { x: number; z: number } | null {
+    const o = this.inTheWay(to, skip);
+    if (!o) {
+      this.pass = null;
+      return null;
+    }
+    const reach = Math.hypot(to.x - this.feet.x, to.z - this.feet.z) || 1;
+    const dx = (to.x - this.feet.x) / reach;
+    const dz = (to.z - this.feet.z) / reach;
+    if (this.pass?.body !== o) {
+      // How far off its way each side's point lies, and whether it's clear of rocks there.
+      const sides = [1, -1].map((side) => {
+        const { near, far } = this.besidePoints(o, side, dx, dz);
+        const off = Math.abs((far.x - this.feet.x) * dz - (far.z - this.feet.z) * dx);
+        const open = [near, far].every((p) => this.herd.open(p.x, p.z));
+        return { side, cost: off + (open ? 0 : 1) };
+      });
+      sides.sort((a, b) => a.cost - b.cost);
+      this.pass = { body: o, side: sides[0].side, dx, dz };
+    }
+    const p = this.pass;
+    let { near, far } = this.besidePoints(o, p.side, p.dx, p.dz);
+    // Got there and it's still in the way (it lies along the way, or moved): lay the points out afresh from here.
+    if (Math.hypot(far.x - this.feet.x, far.z - this.feet.z) < VIA_REACH) {
+      p.dx = dx;
+      p.dz = dz;
+      ({ near, far } = this.besidePoints(o, p.side, dx, dz));
+    }
+    // Round its near end first if heading straight for the far point would clip it.
+    return pathGap(o, this.feet.x, this.feet.z, far.x, far.z) < PASS_WIDE && Math.hypot(near.x - this.feet.x, near.z - this.feet.z) > VIA_REACH ? near : far;
   }
 
   /**
@@ -550,7 +657,15 @@ class Iguana {
     const flat = Math.hypot(g.x - (this.feet.x + fx * reachFrom), g.z - (this.feet.z + fz * reachFrom));
     const dy = g.y - this.feet.y;
     if (g.food && !this.herd.growing(g.food)) return 'gave_up';
-    if (g.food ? flat < FOOD_REACH && Math.abs(dy) < FOOD_LEVEL : flat < (g.mate ? MATE_REACH : SPOT_REACH)) return 'arrived';
+    const m = g.mate;
+    // How far out along the line in beside the mate it is, from its spot toward the mate's end, and how far off the line.
+    const ex = m ? Math.sin(m.yaw) * m.end : 0;
+    const ez = m ? Math.cos(m.yaw) * m.end : 0;
+    const out = (this.feet.x - g.x) * ex + (this.feet.z - g.z) * ez;
+    const off = Math.abs((this.feet.x - g.x) * ez - (this.feet.z - g.z) * ex);
+    // Beside the mate it's there once level with its spot, not just near it, so it lies alongside, not off its end.
+    const there = g.food ? flat < FOOD_REACH && Math.abs(dy) < FOOD_LEVEL : m ? !g.via.length && out < MATE_LEVEL && off < MATE_LINE : flat < SPOT_REACH;
+    if (there) return 'arrived';
     // Someone's lying where it meant to bask, or the mate it was going to lie beside has gone: look again.
     const taken = this.herd.others(this).some((o) => o !== g.mate?.body && Math.hypot(o.position.x - g.x, o.position.z - g.z) < SPOT_TAKEN);
     const left = g.mate && Math.hypot(g.mate.body.position.x - g.mate.x, g.mate.body.position.z - g.mate.z) > MATE_MOVED;
@@ -560,7 +675,23 @@ class Iguana {
       return 'going';
     }
 
-    const dist = Math.hypot(flat, g.food ? dy : 0);
+    if (g.via.length && Math.hypot(g.via[0].x - this.feet.x, g.via[0].z - this.feet.z) < VIA_REACH) g.via.shift();
+    let to: { x: number; z: number } = g.via[0] ?? g;
+    if (m) {
+      if (g.via.length && out > LEAD_IN && off < out - LEAD_IN) g.via.length = 0;
+      if (!g.via.length) {
+        const ahead = Math.max(0, out - CARROT);
+        to = { x: g.x + ex * ahead, z: g.z + ez * ahead };
+      }
+    }
+    // Once lined up off the mate's end, it walks in past it, on its line.
+    const onLine = g.via.length === 0 ? (m?.body ?? null) : null;
+    const pass = this.passPoint(to, onLine);
+    const aim = pass ?? to;
+    // Going round someone, headway is measured toward the point beside them, so that isn't being stuck.
+    if (!(Math.hypot(aim.x - this.aim.x, aim.z - this.aim.y) < 0.03)) this.best = Infinity;
+    this.aim.set(aim.x, aim.z);
+    const dist = pass ? Math.hypot(pass.x - this.feet.x, pass.z - this.feet.z) : Math.hypot(flat, g.food ? dy : 0);
     if (dist < this.best - HEADWAY) {
       this.best = dist;
       this.noHeadway = 0;
@@ -572,11 +703,7 @@ class Iguana {
       // On land a hop sometimes gets it up a ledge it can't climb.
       if (!b.swimming && this.stuck % 3 === 0) this.input.jump = true;
     }
-    if (g.via.length && Math.hypot(g.via[0].x - this.feet.x, g.via[0].z - this.feet.z) < VIA_REACH) g.via.shift();
-    const to = g.via[0] ?? g;
-    // Once lined up off the mate's end, it walks in past it, on its line.
-    const onLine = g.via.length <= 1 ? (g.mate?.body ?? null) : null;
-    let side = this.avoid(dt, Math.atan2(to.x - this.feet.x, to.z - this.feet.z), Math.hypot(to.x - this.feet.x, to.z - this.feet.z), onLine);
+    let side = 0;
     if (this.detour > 0) {
       this.detour -= dt;
       side = (this.stuck % 2 === 1 ? 1 : -1) * DETOUR_ANGLE;
@@ -584,7 +711,7 @@ class Iguana {
     // Right over the food and above it: stop and sink down to it.
     const sinking = b.swimming && g.food !== null && flat < FOOD_REACH * 1.5 && dy < 0;
     // Near the spot, or lining up off its mate's end, it slows so it turns tight.
-    this.steer(to, sinking ? 0 : flat < 0.1 || (g.mate && g.via.length <= 1) ? AMBLE * 0.5 : AMBLE, side);
+    this.steer(aim, sinking ? 0 : flat < 0.1 || (g.mate && g.via.length === 0) ? AMBLE * 0.5 : AMBLE, side);
 
     if (b.swimming) {
       // Kick up toward food above it, or toward the surface going back to land.
@@ -607,6 +734,15 @@ class Iguana {
     const facing = Math.abs(diff) < 0.9;
     this.input.move.y = facing ? pace : b.swimming ? 0 : Math.min(pace, 0.3);
     if (b.swimming && facing && pace > 0) this.input.move.y = 1;
+    else if (!b.swimming && pace > 0) {
+      // It turns at a set rate, so the faster it walks the wider it swings. A point off to one side
+      // closer than its turning circle would have it walking round and round it: slow down enough to
+      // turn in to it, a walk of that circle's diameter being well short of the way there.
+      const dist = Math.hypot(g.x - this.feet.x, g.z - this.feet.z);
+      const across = Math.abs(diff) < Math.PI / 2 ? Math.sin(Math.abs(diff)) : 1;
+      const tight = (TURN_IN * dist * MOVEMENT.turnRate) / (2 * Math.max(across, 1e-3) * MOVEMENT.walkSpeed);
+      this.input.move.y = Math.min(this.input.move.y, Math.max(MIN_PACE, tight));
+    }
   }
 
   private animate(dt: number) {
@@ -716,6 +852,11 @@ export class Iguanas {
     return { x, z };
   }
 
+  /** Whether (x, z) is clear of every rock, log and tree, with room for a body beside it. */
+  open(x: number, z: number) {
+    return !this.obstacles.some((o) => covers(o, x, z, BASK_CLEAR));
+  }
+
   /** Whether a body lying along `yaw` at (x, z) is all on bare black lava, above the sea, clear of rocks, logs and trees. */
   private clearAt(x: number, z: number, yaw: number) {
     const fx = Math.sin(yaw);
@@ -760,7 +901,7 @@ export class Iguanas {
         for (const end of [nearEnd, -nearEnd]) {
           const steps = Math.ceil(LINE_UP / 0.02);
           const open = Array.from({ length: steps + 1 }, (_, i) => (i / steps) * LINE_UP).every(
-            (d) => !this.obstacles.some((o) => covers(o, x + fx * end * d, z + fz * end * d, 0.01)),
+            (d) => !this.obstacles.some((o) => covers(o, x + fx * end * d, z + fz * end * d, LANE)),
           );
           if (open) return { x, y: terrainHeight(x, z), z, mate: { body: m, x: m.position.x, z: m.position.z, yaw: m.yaw, end } };
         }
@@ -797,6 +938,18 @@ export class Iguanas {
       return Math.abs(p.z - ig.home.z) < FOOD_RANGE && p.x - shoreX(p.z) < FOOD_OUT;
     });
     return ok.length ? ok[Math.floor(rand() * ok.length)] : null;
+  }
+
+  /**
+   * The lizard walked into some of them this step: each one it ran into is pushed along the way the
+   * lizard faces, at PUSH_SPEED, as far as there's room.
+   */
+  pushedBy(lizard: PlayerController, dt: number) {
+    if (lizard.swimming || lizard.climbing) return;
+    for (const ig of this.list) {
+      if (ig.body.swimming || !lizard.blockers.includes(ig.body.collider)) continue;
+      ig.body.shove(Math.sin(lizard.yaw) * PUSH_SPEED * dt, Math.cos(lizard.yaw) * PUSH_SPEED * dt, lizard.collider);
+    }
   }
 
   step(dt: number) {
