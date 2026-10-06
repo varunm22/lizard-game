@@ -20,6 +20,7 @@ import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
 import { LizardModel } from './player/lizardModel';
 import { LizardVisual } from './player/visual';
+import { Feeding } from './player/feeding';
 import { FollowCamera } from './camera/followCamera';
 import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
@@ -57,6 +58,7 @@ async function main() {
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
+  const feeding = new Feeding(lizard, algae);
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
@@ -79,6 +81,7 @@ async function main() {
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
   const pushers = [...lizard.bodySpheres, ...iguanas.bodySpheres, cameraPusher];
 
+  const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
   const hooks: GameTestHooks = {
     ready: false,
     advance: () => {},
@@ -104,7 +107,17 @@ async function main() {
       const head = lizard.root.getObjectByName('head')!;
       const local = lizard.root.worldToLocal(head.getWorldPosition(new THREE.Vector3()));
       const { hips, chest, tail } = visual.fit ?? { hips: 0, chest: 0, tail: [0, 0, 0, 0] };
-      return { clips: lizard.clipNames, current: lizard.current, head: { x: local.x, y: local.y, z: local.z }, spine: { hips, chest, tail } };
+      const jaw = lizard.root.getObjectByName('jaw');
+      return {
+        clips: lizard.clipNames,
+        current: lizard.current,
+        head: { x: local.x, y: local.y, z: local.z },
+        spine: { hips, chest, tail },
+        biting: lizard.biting,
+        // How far the jaw hangs open (radians).
+        jawOpen: jaw ? 2 * Math.acos(Math.min(1, Math.abs(jaw.quaternion.dot(jawRest!)))) : 0,
+        snout: { ...lizard.bodySpheres[0] },
+      };
     },
     feet: () =>
       lizard.solePoints().map(({ leg, point }) => {
@@ -176,6 +189,7 @@ async function main() {
           sneezing: ig.sneezing,
           sneezes: ig.sneezes,
           bites: ig.bites,
+          biting: ig.model.biting,
           meals: ig.meals,
           meal: meal && { id: meal.id, x: meal.x, y: meal.y, z: meal.z },
           touch: meal && ig.touch(meal),
@@ -199,6 +213,8 @@ async function main() {
     algae: (near) =>
       (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     removeAlgae: (id) => algae.remove(id),
+    bite: () => feeding.bite(),
+    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, lastBite: feeding.lastBite }),
     sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
     teleport: (x, z, yaw, y) => {
@@ -241,6 +257,7 @@ async function main() {
   const readInput = (frameDt: number) => {
     frameInput = input.read(frameDt);
     followCam.applyInput(frameInput);
+    if (frameInput.bite) feeding.bite();
   };
   const updateViews = (alpha: number, frameDt: number) => {
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.

@@ -38,6 +38,11 @@ export interface GameTestHooks {
     current: string | undefined;
     head: { x: number; y: number; z: number };
     spine: { hips: number; chest: number; tail: number[] };
+    /** A bite is under way, and how far the jaw hangs open now (radians). */
+    biting: boolean;
+    jawOpen: number;
+    /** The drawn snout tip (world m) and the radius of its sphere. */
+    snout: { x: number; y: number; z: number; r: number };
   };
   /**
    * Each foot's gap to the surface under it (m): the lowest point of its sole as drawn, minus the
@@ -148,6 +153,8 @@ export interface GameTestHooks {
     sneezing: boolean;
     sneezes: number;
     bites: number;
+    /** Its bite clip is playing. */
+    biting: boolean;
     meals: number;
     meal: { id: number; x: number; y: number; z: number } | null;
     /** How far its drawn snout is from the fronds of that patch (m), or null. */
@@ -179,6 +186,10 @@ export interface GameTestHooks {
   algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
   /** Remove (eat) the algae patch with this id; false if there's none. */
   removeAlgae: (id: number) => boolean;
+  /** Bite, as pressing F does; false while a bite is already under way. */
+  bite: () => boolean;
+  /** The player's bites so far, those that got algae, and what the last one got (null if nothing). */
+  feeding: () => { bites: number; mouthfuls: number; lastBite: { id: number; ate: boolean } | null };
   /** Sprout a new algae patch on a bare site on the rocks now; its id, or null if there's no room. */
   sproutAlgae: () => number | null;
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
