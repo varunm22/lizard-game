@@ -54,8 +54,8 @@ const HUNGER = [80, 140] as const;
 const FOOD_RANGE = 0.45;
 const FOOD_OUT = 0.75;
 const MAX_DIVE = 0.2;
-/** Bites every so often (s, from-to); this many bites eat a patch, and it goes on to at most this many. */
-const BITE_GAP = [0.5, 1.1] as const;
+/** Starts a bite every so often (s, from-to; a bite takes 0.6 s); this many bites eat a patch, and it goes on to at most this many. */
+const BITE_GAP = [0.8, 1.4] as const;
 const BITES_PER_PATCH = 6;
 const MAX_PATCHES = 3;
 /** It only goes for patches grown at least this far in. */
@@ -72,9 +72,6 @@ const SNEEZE_WINDUP = 0.36;
 const SNEEZE_BLOW = 0.42;
 const SNEEZE_UP = 0.24;
 const SNEEZE_DOWN = -0.14;
-/** A bite dips the head this far for this long (radians, s). */
-const BITE_DIP = -0.3;
-const BITE_TIME = 0.32;
 /** The snout is this far ahead of the feet (m). */
 const SNOUT = 0.08;
 /** Arrived: feet within this of a spot, or snout within this of food and at about its height (m). */
@@ -244,9 +241,10 @@ class Iguana {
   private foodTries = 0;
   private nextSneeze: number;
   private nextBite = 0;
-  /** Time into the sneeze or bite under way, or -1. */
+  /** Time into the sneeze under way, or -1. */
   private sneezeT = -1;
-  private biteT = -1;
+  /** The patch its jaws just closed on, eaten on its next step. */
+  private chomp: AlgaePatch | null = null;
   private sprayDue = false;
   private settle = 0;
   /** Settling in, the way to lie: beside a mate, parallel to it; null, across the sun's rays. */
@@ -450,6 +448,7 @@ class Iguana {
     this.activity = 'graze';
     this.foodTries = 0;
     this.nextBite = 0.3;
+    this.chomp = null;
     this.timer = NOSE_IN;
     this.patches++;
   }
@@ -472,6 +471,11 @@ class Iguana {
     const food = g.food!;
     // Someone else ate the last of it: on to another, or done.
     if (!this.herd.growing(food)) return this.grazedPatch();
+    if (this.chomp === food) {
+      this.chomp = null;
+      this.bites++;
+      if (this.herd.bite(food)) return this.grazedPatch();
+    }
     const b = this.body;
     const { flat, dy } = this.toFronds(food);
     const touching = Math.hypot(flat, dy) < TOUCH * 1.5;
@@ -484,11 +488,10 @@ class Iguana {
     if (!touching && (this.timer -= dt) < 0) return ++this.foodTries < FOOD_TRIES ? this.startFeeding() : this.headForLand();
     this.nextBite -= dt;
     if (this.nextBite > 0 || !touching) return;
-    this.biteT = 0;
-    this.bites++;
+    // The bite clip: head up with the mouth open, down onto the fronds, and the jaws snap shut on them.
+    if (!this.model.bite(() => (this.chomp = food))) return;
     this.timer = NOSE_IN;
     this.nextBite = this.between(BITE_GAP);
-    if (this.herd.bite(food)) this.grazedPatch();
   }
 
   /**
@@ -752,10 +755,9 @@ class Iguana {
       if (before < SNEEZE_BLOW && this.sneezeT >= SNEEZE_BLOW) this.sprayDue = true;
       if (this.sneezeT >= SNEEZE_TIME) this.sneezeT = -1;
     }
-    if (this.biteT >= 0 && (this.biteT += dt) >= BITE_TIME) this.biteT = -1;
   }
 
-  /** The head's nod for the sneeze or bite under way (radians, positive snout up). */
+  /** The head's nod for the sneeze under way (radians, positive snout up). */
   private nod(): number {
     const smooth = (x: number) => x * x * (3 - 2 * x);
     const t = this.sneezeT;
@@ -764,7 +766,6 @@ class Iguana {
       if (t < SNEEZE_BLOW) return SNEEZE_UP + (SNEEZE_DOWN - SNEEZE_UP) * smooth((t - SNEEZE_WINDUP) / (SNEEZE_BLOW - SNEEZE_WINDUP));
       return SNEEZE_DOWN * (1 - smooth((t - SNEEZE_BLOW) / (SNEEZE_TIME - SNEEZE_BLOW)));
     }
-    if (this.biteT >= 0) return BITE_DIP * Math.sin((Math.PI * this.biteT) / BITE_TIME);
     return 0;
   }
 

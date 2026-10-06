@@ -16,6 +16,13 @@ export const LIZARD_GAIT_SPEED = { walk: 0.15, run: 0.3 } as const;
 export const LIZARD_SWIM_SPEED = 0.14;
 
 const ONE_SHOT: LizardClip[] = ['jump', 'land'];
+/**
+ * The bite clip moves only the neck, head and jaw, and is layered over the body's clip. Its jaws
+ * snap shut this far into it (s): frame 10 of `BITE` in assets-src/lizard.py.
+ */
+const BITE_CLIP = 'bite';
+export const BITE_SNAP = 10 / 30;
+const BITE_TRACKS = ['neck.quaternion', 'head.quaternion', 'jaw.quaternion'];
 /** How a head turn splits between the neck and head bones. */
 const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
 /** How a nod splits between the neck and head bones. */
@@ -48,6 +55,9 @@ export class LizardModel {
   /** Nod layered over the clips and the spine fit (radians, positive raises the snout). */
   nod = 0;
   private turnBones: { bone: THREE.Object3D; share: number }[] = [];
+  private biteAction: THREE.AnimationAction | undefined;
+  /** Called as the jaws snap shut on the bite under way. */
+  private onSnap: (() => void) | null = null;
   /**
    * Every bone's rotation as the clips alone leave it, last frame. The mixer only writes a bone when
    * its clip value changes, so a bone the code turns after the mixer (bends, head turn, leg reach,
@@ -99,6 +109,16 @@ export class LizardModel {
     });
     this.mixer = new THREE.AnimationMixer(root);
     for (const clip of clips) {
+      if (clip.name === BITE_CLIP) {
+        // Additive against its first frame, the rest pose, so it adds to whatever else is playing. Only
+        // the bones it moves, on copies of their keys: the GLB shares key arrays between clips.
+        const tracks = clip.tracks
+          .filter((t) => BITE_TRACKS.includes(t.name))
+          .map((t) => new THREE.QuaternionKeyframeTrack(t.name, t.times.slice(), t.values.slice()));
+        const bite = THREE.AnimationUtils.makeClipAdditive(new THREE.AnimationClip(BITE_CLIP, clip.duration, tracks));
+        this.biteAction = this.mixer.clipAction(bite).setLoop(THREE.LoopOnce, 1);
+        continue;
+      }
       const action = this.mixer.clipAction(clip);
       if (ONE_SHOT.includes(clip.name as LizardClip)) {
         action.setLoop(THREE.LoopOnce, 1);
@@ -165,6 +185,22 @@ export class LizardModel {
     this.current = name;
   }
 
+  /** Whether a bite is under way. */
+  get biting(): boolean {
+    return !!this.biteAction?.isRunning();
+  }
+
+  /**
+   * Take a bite: the head lifts with the mouth open, lunges down and snaps shut, then tugs. `onSnap`
+   * runs as the jaws close, which is when anything at the mouth is bitten. False if already biting.
+   */
+  bite(onSnap?: () => void): boolean {
+    if (!this.biteAction || this.biting) return false;
+    this.biteAction.reset().play();
+    this.onSnap = onSnap ?? null;
+    return true;
+  }
+
   /** Playback rate of the current clip (1 = as authored). */
   setRate(rate: number) {
     const action = this.current && this.actions.get(this.current);
@@ -173,7 +209,9 @@ export class LizardModel {
 
   update(dt: number) {
     for (const c of this.clipPose) c.bone.quaternion.copy(c.q);
+    const biteBefore = this.biting ? this.biteAction!.time : Infinity;
     this.mixer.update(dt);
+    const snap = this.onSnap && biteBefore < BITE_SNAP && (this.biteAction!.time >= BITE_SNAP || !this.biting) ? this.onSnap : null;
     for (const c of this.clipPose) c.q.copy(c.bone.quaternion);
     // Pitch about the body's side-to-side axis, taken into each bone's own frame at rest.
     for (const b of this.bentBones) {
@@ -182,6 +220,11 @@ export class LizardModel {
     }
     // The rig bends sideways about each bone's local Z (see assets-src/lizard.py).
     for (const t of this.turnBones) t.bone.quaternion.multiply(this.q.setFromAxisAngle(BONE_Z, this.headTurn * t.share));
+    // Fully posed now, so the snout is where it's drawn.
+    if (snap) {
+      this.onSnap = null;
+      snap();
+    }
   }
 
   private findLegs() {

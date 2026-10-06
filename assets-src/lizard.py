@@ -69,6 +69,12 @@ SPINE = [
 SHOULDER_Y, HIP_Y = -0.031, 0.010
 STEPS, RING = 110, 24
 SNOUT_TIP = -0.0657  # the blunt snout's fan closes just ahead of the first cross-section
+# The mouth: the lips run round the head at ring vertex LIP_K (and RING - LIP_K) on each side, a
+# little below the middle of the flank, from the snout back to the corner of the mouth, just behind
+# the eye; the jaw hinges there.
+LIP_K = 7
+MOUTH_CORNER_Y = -0.0515
+MOUTH_ACROSS = 6  # faces across the palate and the floor of the mouth
 
 
 def srgb(hex_colour):
@@ -326,6 +332,7 @@ COLORS = {
     'Claw': srgb_lin((0.80, 0.77, 0.69)),
     'Eye': srgb('#1d1714'),
     'Shine': srgb('#ffffff'),
+    'Mouth': srgb('#7c4846'),
 }
 
 
@@ -370,29 +377,45 @@ class MeshBuilder:
 
 
 def build_body(mb):
+    """The body tube, snout to tail tip. Ahead of the mouth's corner each ring is split along the
+    lips: its lower part rides the jaw bone, so the mouth can open, and a palate and a mouth floor
+    (on their own vertices, so they don't soften the lips' shading) close the two jaws inside."""
     steps, ring_n = STEPS, RING
     y0, y1 = PROFILE[0][0], PROFILE[-1][0]
     span = y1 - SNOUT_TIP
-    rings, ts = [], []
+    lips = (LIP_K, ring_n - LIP_K)
+    # rings[i][k] = (upper vertex, lower vertex): the same one except on the jaw's side of the lips.
+    rings, ts, split = [], [], []
     for i in range(steps):
         y = lerp(y0, y1, i / (steps - 1))
         ts.append((y - SNOUT_TIP) / span)
+        mouth = y < MOUTH_CORNER_Y
+        split.append(mouth)
         ring = []
         for k in range(ring_n):
             x, z = ring_point(y, 2 * math.pi * k / ring_n)
-            ring.append(mb.add_vert((x, y, z), ('spine', y)))
+            on_jaw = mouth and lips[0] < k < lips[1]
+            up = None if on_jaw else mb.add_vert((x, y, z), ('spine', y))
+            lo = mb.add_vert((x, y, z), ('jaw', y)) if mouth and lips[0] <= k <= lips[1] else up
+            ring.append((up if up is not None else lo, lo))
         rings.append(ring)
 
     def uv(i, k):
         return body_uv(ts[i], 2 * math.pi * k / ring_n)
 
+    def jaw_face(k):
+        return lips[0] <= k < lips[1]
+
     for i in range(steps - 1):
         for k in range(ring_n):
             k2 = (k + 1) % ring_n
-            mb.add_face([rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]], 'Skin',
+            w = 1 if jaw_face(k) else 0
+            mb.add_face([rings[i][k][w], rings[i][k2][w], rings[i + 1][k2][w], rings[i + 1][k][w]], 'Skin',
                         [uv(i, k), uv(i, k + 1), uv(i + 1, k + 1), uv(i + 1, k)])
 
-    # Close the blunt snout and the tail tip with fans.
+    # Close the blunt snout and the tail tip with fans; the jaw's part of the snout closes on its own tip.
+    lip_front = ring_point(y0, 2 * math.pi * LIP_K / ring_n)[1]
+    jaw_tip = mb.add_vert((0, SNOUT_TIP, lip_front), ('jaw', SNOUT_TIP))
     for ring, y, i, flip in ((rings[0], SNOUT_TIP, 0, True), (rings[-1], y1 + 0.0005, steps - 1, False)):
         cz = profile_at(y0 if flip else y1)[2]
         tip = mb.add_vert((0, y, cz), ('spine', y))
@@ -400,12 +423,43 @@ def build_body(mb):
         for k in range(ring_n):
             mid = body_uv(t_tip, 2 * math.pi * (k + 0.5) / ring_n)
             if flip:
-                mb.add_face([ring[k], tip, ring[(k + 1) % ring_n]], 'Skin', [uv(i, k), mid, uv(i, k + 1)])
+                on_jaw = jaw_face(k)
+                w, t = (1, jaw_tip) if on_jaw else (0, tip)
+                mb.add_face([ring[k][w], t, ring[(k + 1) % ring_n][w]], 'Skin', [uv(i, k), mid, uv(i, k + 1)])
             else:
-                mb.add_face([ring[(k + 1) % ring_n], tip, ring[k]], 'Skin', [uv(i, k + 1), mid, uv(i, k)])
+                mb.add_face([ring[(k + 1) % ring_n][0], tip, ring[k][0]], 'Skin', [uv(i, k + 1), mid, uv(i, k)])
+
+    # Inside the mouth: the palate arches up into the head and faces down, the floor dips into the
+    # jaw and faces up, each from the snout back to the corner, where they meet.
+    last = split.index(False)  # the corner ring
+    across = [i / MOUTH_ACROSS for i in range(MOUTH_ACROSS + 1)]
+    for w, part, facing in ((0, 'spine', -1), (1, 'jaw', 1)):
+        strips = []
+        for i in range(last + 1):
+            a, b = mb.verts[rings[i][lips[0]][w]], mb.verts[rings[i][lips[1]][w]]
+            y = a.y
+            hw, hh, cz = profile_at(y)
+            # How deep: most of the way to the top of the head or the chin, closing up at the corner.
+            reach = (cz + hh - a.z) * 0.55 if facing < 0 else (a.z - (cz - hh * 0.7)) * 0.5
+            depth = -facing * reach * min(1.0, (MOUTH_CORNER_Y - y) / 0.004)
+            strips.append([mb.add_vert((lerp(a.x, b.x, t) * (1 - 0.15 * math.sin(math.pi * t)), y, a.z + depth * math.sin(math.pi * t)), (part, y))
+                           for t in across])
+        tip = mb.add_vert((0, SNOUT_TIP + 0.0006, (profile_at(y0)[2] if facing < 0 else lip_front)), (part, SNOUT_TIP))
+        for k in range(MOUTH_ACROSS):
+            facing_face(mb, [strips[0][k], strips[0][k + 1], tip], 'Mouth', facing)
+            for r0, r1 in zip(strips, strips[1:]):
+                facing_face(mb, [r0[k], r0[k + 1], r1[k + 1], r1[k]], 'Mouth', facing)
 
     build_crest(mb)
     build_head_scales(mb)
+
+
+def facing_face(mb, idx, mat, up):
+    """Add a face wound so its normal points up (+Z, up=1) or down (up=-1)."""
+    a, b, c = (mb.verts[i] for i in idx[:3])
+    if (b - a).cross(c - a).z * up < 0:
+        idx = idx[::-1]
+    mb.add_face(idx, mat)
 
 
 def build_crest(mb):
@@ -541,7 +595,13 @@ def build_mesh(rig, mats):
     obj.parent = rig
     groups = {b.name: obj.vertex_groups.new(name=b.name) for b in rig.data.bones if b.name != 'root'}
     for i, (kind, val) in enumerate(mb.vert_part):
-        for bone, w in (skin_weights(val) if kind == 'spine' else {val: 1.0}).items():
+        if kind == 'spine':
+            weights = skin_weights(val)
+        elif kind == 'jaw':  # the jaw takes the head's share, so the lips stay together however the neck bends
+            weights = {('jaw' if b == 'head' else b): w for b, w in skin_weights(val).items()}
+        else:
+            weights = {val: 1.0}
+        for bone, w in weights.items():
             groups[bone].add([i], w, 'REPLACE')
     obj.modifiers.new('Armature', 'ARMATURE').object = rig
     return obj
@@ -644,6 +704,12 @@ def build_armature():
         b.parent = parent
         b.use_connect = parent is not bones['hips']
         bones[name] = parent = b
+
+    # The lower jaw hinges at the corner of the mouth and points to the snout.
+    lip = lambda y: ring_point(y, 2 * math.pi * LIP_K / RING)[1]
+    jaw = eb.new('jaw')
+    jaw.head, jaw.tail = (0, MOUTH_CORNER_Y, lip(MOUTH_CORNER_Y)), (0, SNOUT_TIP, lip(PROFILE[0][0]))
+    jaw.parent = bones['head']
 
     for front in (True, False):
         for side in (1, -1):
@@ -897,6 +963,27 @@ def swim(rig, frames, legs, body, tail):
         key(rig, f, rot)
 
 
+# A bite: the head lifts with the mouth gaping, lunges down onto the food, snaps shut, and tugs it
+# off with a jerk to one side and back. Only the neck, head and jaw move, so the game layers it over
+# whatever the body is doing (additively; its first and last frames are the rest pose).
+# (frame, neck pitch, head pitch, head turn, jaw open), radians; positive pitch dips the snout.
+BITE = (
+    (0, 0.0, 0.0, 0.0, 0.0),
+    (4, -0.14, -0.12, 0.0, 0.38),
+    (8, 0.16, 0.20, 0.0, 0.45),
+    (10, 0.20, 0.26, 0.0, 0.0),  # snap: BITE_SNAP in src/player/lizardModel.ts
+    (12, 0.16, 0.18, 0.20, 0.0),
+    (14, 0.08, 0.08, -0.12, 0.0),
+    (18, 0.0, 0.0, 0.0, 0.0),
+)
+
+
+def bite(rig):
+    new_action(rig, 'bite')
+    for f, neck, head, turn, jaw in BITE:
+        key(rig, f, {'neck': (neck, 0, 0), 'head': (head, 0, turn), 'jaw': (jaw, 0, 0)})
+
+
 def build_animations(rig):
     targets = setup_ik(rig)
     idle(rig, targets)
@@ -906,6 +993,7 @@ def build_animations(rig):
     pose_air(rig, 'fall', frames=16, legs_fwd=0.5, tail_up=0.25, head_up=0.15, wiggle=0.15)
     land(rig, targets)
     swim(rig, **SWIM)
+    bite(rig)
     # The IK helpers only exist to bake; drop them so the export is a plain FK rig.
     for leg in LEGS:
         pb = rig.pose.bones['lower_' + leg]

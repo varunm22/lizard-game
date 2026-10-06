@@ -56,6 +56,9 @@ const GROW_TIME = 40;
 const SPROUT_GAP_M = 0.025;
 /** A bitten patch shrinks, down to this share of its size just before the last bite takes it. */
 const BITTEN_MIN = 0.35;
+/** How far a patch's fronds spread from the holdfast and how high they stand, at scale 1 (m): see assets-src/props.py. */
+const FROND_RADIUS = 0.014;
+const FROND_HEIGHT: Record<AlgaeKind, number> = { green: 0.025, red: 0.015 };
 
 interface Site extends Placement {
   batch: Batch;
@@ -141,6 +144,25 @@ export class Algae {
     return this.all()
       .filter((p) => d(p) < r * r)
       .sort((a, b) => d(a) - d(b));
+  }
+
+  /**
+   * Patches whose fronds reach into a sphere (centre x, y, z, radius r; m), nearest first. The fronds
+   * are taken as an upright cylinder on the holdfast, as wide and tall as the patch is drawn now.
+   */
+  touching(x: number, y: number, z: number, r: number): AlgaePatch[] {
+    const gap = (e: Entry) => {
+      const k = e.site.size * smooth(e.grown) * (BITTEN_MIN + (1 - BITTEN_MIN) * e.left);
+      const p = e.patch;
+      const across = Math.max(0, Math.hypot(x - p.x, z - p.z) - FROND_RADIUS * k);
+      const up = Math.max(0, p.y - y, y - (p.y + FROND_HEIGHT[p.kind] * k));
+      return Math.hypot(across, up);
+    };
+    return [...this.byId.values()]
+      .map((e) => ({ e, d: gap(e) }))
+      .filter(({ d }) => d < r)
+      .sort((a, b) => a.d - b.d)
+      .map(({ e }) => e.patch);
   }
 
   /**
@@ -259,6 +281,8 @@ interface Placement {
   kind: AlgaeKind;
   position: THREE.Vector3;
   matrix: THREE.Matrix4;
+  /** Its scale: how big it is full grown, relative to the mesh. */
+  size: number;
   shade: number;
 }
 
@@ -282,6 +306,7 @@ function place(rocks: readonly Obstacle[], seed: number, perRockMax: number, flo
       kind: kindAt(WATER_Y - position.y, rand()),
       position,
       matrix: new THREE.Matrix4().compose(position, q, new THREE.Vector3(s, s, s)),
+      size: s,
       shade: 0.8 + rand() * 0.35,
     });
   };
