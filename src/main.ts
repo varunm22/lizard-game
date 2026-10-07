@@ -6,7 +6,7 @@ import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, IGNORE_STEMS, IGNORE_STEMS_
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
-import { lavaCover, ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
+import { forestCover, lavaCover, ROCK_PILES, SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { SEA_DEPTH, shoreX, updateUnderwaterView, WATER_Y } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
@@ -15,6 +15,9 @@ import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
 import { Iguanas } from './creatures/iguana';
+import { Hawk, findPerches } from './creatures/hawk';
+import { Cover } from './world/cover';
+import { MAX_HITS, Wounds } from './player/wounds';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine } from './player/state';
@@ -30,6 +33,7 @@ import plantsUrl from './assets/plants.glb?url';
 import propsUrl from './assets/props.glb?url';
 import tortoiseUrl from './assets/tortoise.glb?url';
 import crabUrl from './assets/crab.glb?url';
+import hawkUrl from './assets/hawk.glb?url';
 
 async function main() {
   await RAPIER.init();
@@ -62,6 +66,14 @@ async function main() {
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
+  // The hawk hunts the lizard: three strikes knock it down, and it comes back at the spawn.
+  const wounds = new Wounds(player, lizard, () => {
+    player.setFeet(new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), SPAWN.yaw);
+    followCam.yaw = SPAWN.yaw;
+  });
+  const cover = new Cover(world, obstacles, plants);
+  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, player, lizard, wounds);
+
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
   followCam.yaw = SPAWN.yaw;
@@ -81,6 +93,7 @@ async function main() {
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.04 };
   const pushers = [...lizard.bodySpheres, ...iguanas.bodySpheres, cameraPusher];
 
+  const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
   const hooks: GameTestHooks = {
     ready: false,
@@ -217,6 +230,24 @@ async function main() {
     feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, lastBite: feeding.lastBite }),
     sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
+    hawk: () => ({
+      x: hawk.pos.x,
+      y: hawk.pos.y,
+      z: hawk.pos.z,
+      speed: hawk.vel.length(),
+      state: hawk.state,
+      clip: hawk.clip,
+      hunting: hawk.hunting,
+      seesPrey: hawk.seesPrey,
+      strikes: hawk.strikes,
+      hitsLanded: hawk.hitsLanded,
+      perch: hawk.perchIndex,
+      enabled: hawk.enabled,
+    }),
+    hawkClips: () => hawk.clipNames,
+    hawkDo: (action) => hawk.request(action),
+    inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
+    wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;
@@ -233,7 +264,10 @@ async function main() {
     regrowth.step(dt);
     iguanas.step(dt);
     crabs.step(dt);
-    player.step(dt, forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
+    hawk.step(dt);
+    wounds.step(dt);
+    // Knocked down, the lizard lies still whatever the controls say.
+    player.step(dt, wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
     const state = states.update(
@@ -257,12 +291,15 @@ async function main() {
   const readInput = (frameDt: number) => {
     frameInput = input.read(frameDt);
     followCam.applyInput(frameInput);
-    if (frameInput.bite) feeding.bite();
+    if (frameInput.bite && !wounds.down) feeding.bite();
   };
   const updateViews = (alpha: number, frameDt: number) => {
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
     tortoise.update(alpha, frameDt);
+    visual.downed = wounds.down;
     visual.update(states.state, alpha, frameDt);
+    hawk.update(alpha, frameDt);
+    hud.wounds(wounds.hits, MAX_HITS, wounds.countdown);
     iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;

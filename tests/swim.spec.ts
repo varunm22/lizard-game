@@ -30,6 +30,8 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
   const sea = await beachLane(page);
 
   // Off the beach the sea floor shelves down to a couple of lizard lengths deep.
@@ -130,6 +132,8 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
   const sea = await beachLane(page);
   /** Run up to `n` steps with `input`, returning the first new ripple and where the lizard was then. */
   const firstRipple = (input: object, n: number) =>
@@ -182,6 +186,8 @@ test('swimming: climbs out of the sea onto a domed rock without falling back in'
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
 
   // Swim at the rock island from every side, holding W and tapping Space to keep near the surface.
   // Its crown is a dome with no flat spot right past the rim, which used to refuse the climb: the

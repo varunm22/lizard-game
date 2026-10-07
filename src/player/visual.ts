@@ -88,6 +88,12 @@ export class LizardVisual {
   private shellGap: number | null = null;
   /** The spine fit drawn last frame. */
   fit: SpineFit | null = null;
+  /**
+   * Knocked down by the hawk: it plays the collapse, rolling onto its side, and lies limp. The body
+   * isn't fitted to the ground then (it lies straight, tilted with the ground under it) and the legs
+   * don't reach for it.
+   */
+  downed = false;
 
   constructor(
     readonly model: LizardModel,
@@ -111,7 +117,7 @@ export class LizardVisual {
     this.sampleUp = top === null ? SAMPLE_UP : Math.max(SAMPLE_UP, top - this.feet.y + 0.005);
 
     // Sample the surface along the body. In the air or the water the body just straightens.
-    const standing = p.grounded && !p.swimming;
+    const standing = p.grounded && !p.swimming && !this.downed;
     this.targetNormal.copy(UP);
     let hindSlope = 0;
     for (let i = 0; i < SAMPLES.length; i++) {
@@ -121,6 +127,10 @@ export class LizardVisual {
         h = hit === null ? -SAMPLE_DOWN : this.sampleUp - hit.timeOfImpact;
       }
       this.heights[i] += (h - this.heights[i]) * ease;
+    }
+    if (this.downed && p.grounded) {
+      const centre = this.cast(this.feet.x, this.feet.z);
+      if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
     }
     if (standing) {
       const centre = this.cast(this.feet.x, this.feet.z);
@@ -158,7 +168,7 @@ export class LizardVisual {
     this.model.root.position.copy(this.feet).y += fit.rootY + this.swimLift;
     this.model.root.quaternion.copy(this.yawQ).multiply(this.rollQ).multiply(this.pitchQ);
 
-    this.model.play(state, CROSS_FADE[state] ?? 0.2);
+    this.model.play(this.downed ? 'collapse' : state, this.downed ? 0.1 : (CROSS_FADE[state] ?? 0.2));
     if (state === 'walk' || state === 'run') {
       const speed = p.climbing ? p.velocity.length() : p.horizontalSpeed;
       this.model.setRate(THREE.MathUtils.clamp(speed / LIZARD_GAIT_SPEED[state], 0.3, 5));
@@ -173,7 +183,7 @@ export class LizardVisual {
     this.model.update(dt);
     this.reach += ((standing ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
     this.legs.apply((x, y, z) => this.footGround(x, y, z), this.reach);
-    this.clearance.apply(dt);
+    if (!this.downed) this.clearance.apply(dt);
   }
 
   /** On the shell, draw the feet at an eased height over it instead of the physics body's. */

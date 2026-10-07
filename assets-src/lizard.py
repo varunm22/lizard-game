@@ -984,6 +984,71 @@ def bite(rig):
         key(rig, f, {'neck': (neck, 0, 0), 'head': (head, 0, turn), 'jaw': (jaw, 0, 0)})
 
 
+# Struck by the hawk: the body jerks into a curve with both ends thrown toward the side it was hit
+# on, the head ducks and the tail lashes, then it straightens. One clip per side; like the bite it's
+# layered over whatever the body is doing (additively; first and last frames are the rest pose), so
+# only the spine and tail move. (frame, curve, duck, lash): duck dips the head, curve and lash are
+# fractions of the turns below, positive toward the struck side.
+FLINCH = ((0, 0.0, 0.0, 0.0), (2, 1.0, 0.30, 0.6), (5, -0.35, 0.22, -1.0), (9, 0.12, 0.08, 0.4), (14, 0.0, 0.0, 0.0))
+
+
+def flinch(rig, name, side):
+    """side 1: struck on its left; -1: on its right."""
+    new_action(rig, name)
+    for f, curve, duck, lash in FLINCH:
+        c = side * curve
+        rot = {'chest': (0, 0, 0.30 * c), 'neck': (duck * 0.6, 0, 0.30 * c), 'head': (duck * 0.4, 0, 0.20 * c)}
+        for i, tb in enumerate(TAIL):
+            rot[tb] = (0, 0, side * (0.22 * curve + 0.12 * lash) * (1 + 0.25 * i))
+        key(rig, f, rot)
+
+
+# Caught a third time: it staggers, rolls over onto its right side and lies there limp, legs out,
+# mouth a little open (plays once and holds the last frame). The root bone points up, so its local Z
+# is the body's long axis (snout forward) and rolling the left side up is a positive turn about it;
+# its local Y is up. COLLAPSE_LIFT raises the body as it rolls so it rests on its flank on the
+# ground instead of sinking into it.
+COLLAPSE_ROLL = ((0, 0.0), (4, 0.10), (12, 1.42), (15, 1.30), (19, 1.38))
+COLLAPSE_LIFT = 0.0085
+COLLAPSE_SHIFT = 0.006
+
+
+def collapse(rig):
+    new_action(rig, 'collapse')
+    for f in range(0, 20):
+        roll = track(f, COLLAPSE_ROLL)
+        t = roll / COLLAPSE_ROLL[-1][1]
+        sag = track(f, ((0, 0.0), (5, 1.0)))
+        rot = {
+            'root': (0, 0, roll),
+            'neck': (0.25 * sag + 0.15 * t, 0, -0.25 * t),
+            'head': (0.15 * t, 0, -0.15 * t),
+            'jaw': (0.15 * t, 0, 0),
+            'chest': (0.05 * sag, 0, -0.10 * t),
+        }
+        for i, tb in enumerate(TAIL):
+            rot[tb] = (0, 0, 0.01 * t * (1 + 0.3 * i))
+        sweep, tilt, fold = SWIM['legs']['front']
+        for leg in LEGS:
+            s = leg_sign(leg)
+            # Limp: the legs fold partway back as when swimming, and the upper side's lift off the ground.
+            k = 1.0 * t if s < 0 else 0.7 * t
+            rot['upper_' + leg] = (tilt * k, 0, s * sweep * k)
+            rot['lower_' + leg] = (fold * k * 0.7, 0, 0)
+        key(rig, f, rot, {'root': (-COLLAPSE_SHIFT * t, COLLAPSE_LIFT * math.sin(roll) / math.sin(COLLAPSE_ROLL[-1][1]) - 0.002 * sag * (1 - t), 0)})
+
+
+def track(f, keys):
+    """Scalar channel: keys [(frame, value), ...], eased between keys, held past the ends."""
+    if f <= keys[0][0]:
+        return keys[0][1]
+    for (f0, v0), (f1, v1) in zip(keys, keys[1:]):
+        if f <= f1:
+            u = (f - f0) / (f1 - f0)
+            return lerp(v0, v1, u * u * (3 - 2 * u))
+    return keys[-1][1]
+
+
 def build_animations(rig):
     targets = setup_ik(rig)
     idle(rig, targets)
@@ -994,6 +1059,9 @@ def build_animations(rig):
     land(rig, targets)
     swim(rig, **SWIM)
     bite(rig)
+    flinch(rig, 'flinch_left', 1)
+    flinch(rig, 'flinch_right', -1)
+    collapse(rig)
     # The IK helpers only exist to bake; drop them so the export is a plain FK rig.
     for leg in LEGS:
         pb = rig.pose.bones['lower_' + leg]

@@ -6,6 +6,8 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
 
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
   await page.evaluate(() => window.__game!.advance(30));
 
   // Sample a grid over forest, clearing, beach and sea floor, away from obstacles: the collider and
@@ -48,7 +50,7 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
   }
 
   const lizard = await page.evaluate(() => window.__game!.lizard());
-  expect([...lizard.clips].sort()).toEqual(['fall', 'idle', 'jump', 'land', 'run', 'swim', 'walk']);
+  expect([...lizard.clips].sort()).toEqual(['collapse', 'fall', 'idle', 'jump', 'land', 'run', 'swim', 'walk']);
   expect(await page.evaluate(() => window.__game!.player().state)).toBe('idle');
   expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('idle');
   await page.screenshot({ path: 'test-results/screenshots/spawn.png' });

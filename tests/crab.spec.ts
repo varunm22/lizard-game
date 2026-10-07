@@ -5,6 +5,8 @@ async function boot(page: Page) {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
   return errors;
 }
 

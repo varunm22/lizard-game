@@ -207,6 +207,31 @@ export interface GameTestHooks {
    */
   viewFrom: (offset: { x: number; y: number; z: number } | null, at?: { x: number; y: number; z: number }) => void;
   /** Place the player's feet at (x, z) facing `yaw`, on the ground or at height `y`, with the camera behind. */
+  /**
+   * The hawk: where it is (its middle, world m), its speed, state and clip, whether it's hunting the
+   * lizard and could see it at its last look, strikes made and landed, and the perch it's on or bound for.
+   */
+  hawk: () => {
+    x: number;
+    y: number;
+    z: number;
+    speed: number;
+    state: string;
+    clip: string | null;
+    hunting: boolean;
+    seesPrey: boolean;
+    strikes: number;
+    hitsLanded: number;
+    perch: number;
+    enabled: boolean;
+  };
+  hawkClips: () => string[];
+  /** 'hunt': go for the lizard now; 'off': never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'. */
+  hawkDo: (action: 'hunt' | 'off' | 'on' | 'perch' | 'soar') => void;
+  /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
+  inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
+  /** The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether it's hunted, and a flinch under way. */
+  wounds: () => { hits: number; down: boolean; countdown: number | null; hunted: boolean; flinching: boolean };
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 
