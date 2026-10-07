@@ -15,7 +15,8 @@ import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
 import { Iguanas } from './creatures/iguana';
-import { Hawk, findPerches } from './creatures/hawk';
+import { Hawk, PATROL } from './creatures/hawk';
+import { findPerches } from './creatures/perches';
 import { quarries } from './creatures/quarry';
 import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
@@ -76,7 +77,7 @@ async function main() {
   });
   const cover = new Cover(world, obstacles, plants);
   const prey = quarries(player, lizard, wounds, iguanas, crabs);
-  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, prey);
+  const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(obstacles, forestCover, PATROL, fit), cover, prey);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -266,9 +267,13 @@ async function main() {
       strikes: hawk.strikes,
       hitsLanded: hawk.hitsLanded,
       perch: hawk.perchIndex,
+      flushed: hawk.flushed,
       enabled: hawk.enabled,
     }),
     hawkClips: () => hawk.clipNames,
+    hawkPerches: () => hawk.perchSpots.map((p) => ({ ...p })),
+    hawkLowest: () => hawk.lowest(),
+    hawkSit: (i) => hawk.sitAt(i),
     hawkDo: (action) => hawk.request(action),
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
     lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),

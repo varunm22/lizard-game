@@ -240,10 +240,18 @@ export interface GameTestHooks {
     seesPrey: boolean;
     strikes: number;
     hitsLanded: number;
+    /** How many times the lizard has flushed it off a perch. */
+    flushed: number;
     perch: number;
     enabled: boolean;
   };
   hawkClips: () => string[];
+  /** Where the hawk can perch: a spot on top of a rock or a tree, and the way it faces. */
+  hawkPerches: () => { x: number; y: number; z: number; yaw: number; on: string }[];
+  /** The lowest drawn point of the hawk's toes and of its tail (world y). */
+  hawkLowest: () => { feet: number; tail: number };
+  /** Put the hawk straight onto perch `i`, sitting. */
+  hawkSit: (i: number) => void;
   /**
    * 'hunt': go for the lizard now; 'hunt_iguana' and 'hunt_crab': for the nearest of those; 'off':
    * never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'.
