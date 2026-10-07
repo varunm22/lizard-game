@@ -414,16 +414,17 @@ test('the lizard walks over or past a basking iguana from any side without getti
         g.teleport(ig.x - fx * 0.13 + ix * off, ig.z - fz * 0.13 + iz * off, yaw);
         g.advance(3, false);
         const s0 = g.player();
-        g.setInput({ move: { x: 0, y: 1 } }, 150);
-        g.advance(150, false);
+        g.setInput({ move: { x: 0, y: 1 } }, 240);
+        g.advance(240, false);
         const p = g.player();
         out.push({ angle, off, along: (p.x - s0.x) * fx + (p.z - s0.z) * fz });
       }
     }
     return out;
   }, spot);
-  // Over it (climbing onto its back and down the far side), or nudging it aside: in 2.5 s the
-  // lizard is well past where the iguana lay, never left standing with its hips on the iguana's back.
+  // Over it (climbing onto its back and down the far side), or nudging it aside: in 4 s the lizard
+  // is well past where the iguana lay, never left standing with its hips on the iguana's back. Pushing
+  // it a little way first (at PUSH_SPEED) before climbing over takes a good part of that.
   for (const r of runs) expect(r.along, `from ${r.angle.toFixed(2)} rad, ${r.off} m along it`).toBeGreaterThan(0.22);
   expect(errors).toEqual([]);
 });
