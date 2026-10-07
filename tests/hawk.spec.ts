@@ -361,3 +361,50 @@ test('the rock piles have gaps to hide in where the hawk cannot see the lizard',
   }
   expect(errors).toEqual([]);
 });
+
+test('peeking out of a shelter with only the head showing, the hawk cannot make the lizard out', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.hawkDo('off');
+    g.advance(2, false);
+    // Facing out of each shelter, head and neck past the roof's edge, then stepped right out.
+    const views = g.shelters().map((s) => {
+      const dir = s.name.endsWith('n') ? 1 : -1;
+      const look = (d: number) => {
+        g.teleport(s.x, s.z + dir * d, dir > 0 ? 0 : Math.PI);
+        g.advance(20, false);
+        const p = g.player();
+        return g.lizardInView({ x: p.x, y: p.y + 1.2, z: p.z });
+      };
+      return { name: s.name, peek: look(0.1), out: look(0.15) };
+    });
+    // Head out of the first one while the hawk hunts: it circles, gets the odd glimpse from low over
+    // the sea, never strikes, and gives up.
+    const s = g.shelters()[0];
+    const dir = s.name.endsWith('n') ? 1 : -1;
+    g.teleport(s.x, s.z + dir * 0.08, dir > 0 ? 0 : Math.PI);
+    g.advance(20, false);
+    g.hawkDo('on');
+    g.hawkDo('hunt');
+    let gaveUp = -1;
+    for (let i = 0; i < 12 * 60; i++) {
+      g.advance(1, false);
+      if (!g.hawk().hunting) {
+        gaveUp = i;
+        break;
+      }
+    }
+    return { views, gaveUp, hits: g.wounds().hits };
+  });
+  for (const v of r.views) {
+    // Some of it shows, but not enough; a step further out and it's plain to see.
+    expect(v.peek.seen, v.name).toBeGreaterThan(0);
+    expect(v.peek.sees, v.name).toBe(false);
+    expect(v.out.sees, v.name).toBe(true);
+  }
+  expect(r.gaveUp).toBeGreaterThan(0);
+  expect(r.hits).toBe(0);
+  expect(errors).toEqual([]);
+});

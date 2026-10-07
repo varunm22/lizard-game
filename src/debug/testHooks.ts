@@ -252,6 +252,11 @@ export interface GameTestHooks {
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
   /**
+   * How many of the lizard's watched spheres (head to tail base) an eye at `from` sees, out of how
+   * many, and whether that's enough for the hawk to see the lizard (more than half).
+   */
+  lizardInView: (from: { x: number; y: number; z: number }) => { seen: number; of: number; sees: boolean };
+  /**
    * The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether
    * it's hunted, a flinch under way, and the dust and feathers in the air from strikes.
    */

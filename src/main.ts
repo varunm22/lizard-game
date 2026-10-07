@@ -75,7 +75,8 @@ async function main() {
     followCam.yaw = SPAWN.yaw;
   });
   const cover = new Cover(world, obstacles, plants);
-  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, quarries(player, lizard, wounds, iguanas, crabs));
+  const prey = quarries(player, lizard, wounds, iguanas, crabs);
+  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, prey);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -270,6 +271,7 @@ async function main() {
     hawkClips: () => hawk.clipNames,
     hawkDo: (action) => hawk.request(action),
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
+    lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),
     wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);

@@ -74,6 +74,10 @@ const HIT_REACH = 0.012;
 /** Of a lizard's spheres, the ones it aims at: head, neck, chest, hips, tail base. A crab has one. */
 const TARGET_SPHERES = [1, 2, 3, 4, 5];
 const AIM_SPHERE = 3;
+/** It only sees an animal when more than this share of those spheres is in plain view. */
+const SEEN_SHARE = 0.5;
+/** Out of its sight this long in the stoop (s), it pulls up rather than dive into cover. */
+const STOOP_BLIND = 0.25;
 /** Having passed over something it decided against, it won't weigh that one again for this long (s). */
 const IGNORE_TIME = 12;
 /** Standing over a kill, it eats for this long before the last of it is gone (s). */
@@ -374,7 +378,18 @@ export class Hawk {
     if (!this.hunting && Math.hypot(mid.x - this.pos.x, mid.z - this.pos.z) > SPOT_RANGE * p.acuity) return false;
     // Its eyes are a little ahead of and above its middle.
     this.eye.set(0, 0.008, 0.026).applyQuaternion(this.quat).add(this.pos);
-    return this.aimSpheres(p).some((s) => this.cover.inSight(this.eye, s, p.body));
+    return this.inView(p, this.eye).sees;
+  }
+
+  /**
+   * How much of `p` is in plain view from `eye`: a head or a tail poking out of cover isn't enough,
+   * the hawk has to see most of the body.
+   */
+  inView(p: Quarry, eye: THREE.Vector3) {
+    const spheres = this.aimSpheres(p);
+    let seen = 0;
+    for (const s of spheres) if (this.cover.inSight(eye, s, p.body)) seen++;
+    return { seen, of: spheres.length, sees: seen > spheres.length * SEEN_SHARE };
   }
 
   /** The spheres of `p` the hawk watches and strikes at. */
@@ -498,7 +513,7 @@ export class Hawk {
       return;
     }
     this.dive(target, STOOP_SPEED, STOOP_ACCEL, dt);
-    if (this.stateTime > 4) this.goTo('climb');
+    if (this.stateTime > 4 || this.unseen > STOOP_BLIND) this.goTo('climb');
   }
 
   /**
@@ -558,7 +573,9 @@ export class Hawk {
   private contact() {
     this.struck = true;
     const t = this.v.copy(this.talons).applyQuaternion(this.quat).add(this.pos);
-    const hit = this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
+    // Gone mostly into cover at the last moment, the talons close on rock.
+    const open = this.quarry!.down || this.canSee(this.quarry!);
+    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
     if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
   }
 
