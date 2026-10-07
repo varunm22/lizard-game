@@ -29,6 +29,11 @@ const MAX_LEG_TURN = 0.6;
  */
 const TAIL_TOLERANCE = 0.0015;
 const LEG_TOLERANCE = 0.003;
+/**
+ * A tail bone pushed sideways into something (its push at least this much across the bone, as a share
+ * of the push) turns aside first, so the resting sway stops against a rock instead of lifting over it.
+ */
+const SIDE_FIRST = 0.3;
 /** Halvings when searching for the smallest turn that clears. */
 const SEARCH_STEPS = 6;
 /**
@@ -49,6 +54,8 @@ interface Link {
   points: { at: THREE.Vector3; r: number; from?: THREE.Object3D }[];
   max: number;
   tolerance: number;
+  /** Turn aside before up when pushed sideways (the tail), rather than out along the push first. */
+  sideFirst: boolean;
   /** The turn applied last frame, in the parent bone's frame, eased toward what the pose needs. */
   turn: THREE.Quaternion;
 }
@@ -94,10 +101,10 @@ export class BodyClearance {
         ? root.getObjectByName(next[0])!.getWorldPosition(new THREE.Vector3())
         : root.localToWorld(new THREE.Vector3(...model.tailTip));
       bone.worldToLocal(end);
-      this.links.push({ bone, points: ALONG.map((t) => ({ at: end.clone().multiplyScalar(t), r })), max: MAX_TAIL_TURN, tolerance: TAIL_TOLERANCE, turn: new THREE.Quaternion() });
+      this.links.push({ bone, points: ALONG.map((t) => ({ at: end.clone().multiplyScalar(t), r })), max: MAX_TAIL_TURN, tolerance: TAIL_TOLERANCE, sideFirst: true, turn: new THREE.Quaternion() });
     });
     for (const { upper, lower, foot } of model.legs) {
-      this.links.push({ bone: upper, points: [{ at: foot, r: SOLE_RADIUS, from: lower }], max: MAX_LEG_TURN, tolerance: LEG_TOLERANCE, turn: new THREE.Quaternion() });
+      this.links.push({ bone: upper, points: [{ at: foot, r: SOLE_RADIUS, from: lower }], max: MAX_LEG_TURN, tolerance: LEG_TOLERANCE, sideFirst: false, turn: new THREE.Quaternion() });
     }
   }
 
@@ -137,7 +144,11 @@ export class BodyClearance {
     const along = this.p.copy(this.worstAt).sub(this.joint).normalize().clone();
     // Ways to turn the worst point, each perpendicular to the bone: out along its push, up, either side.
     const sideways = new THREE.Vector3().crossVectors(along, UP).normalize();
-    const ways = [this.worstPush.clone(), UP.clone(), sideways, sideways.clone().negate()]
+    // A tail swung into the side of a rock stops against it: aside, away from the rock, comes first.
+    const across = sideways.dot(this.worstPush) / this.worstPush.length();
+    const aside = link.sideFirst && Math.abs(across) >= SIDE_FIRST;
+    if (aside && across < 0) sideways.negate();
+    const ways = (aside ? [sideways.clone(), this.worstPush.clone(), UP.clone()] : [this.worstPush.clone(), UP.clone(), sideways.clone(), sideways.clone().negate()])
       .map((w) => w.addScaledVector(along, -w.dot(along)))
       .filter((w) => w.lengthSq() > 1e-8)
       .map((w) => new THREE.Vector3().crossVectors(along, w.normalize()).normalize());
