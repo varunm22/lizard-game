@@ -25,7 +25,7 @@ In Claude cloud sessions Chromium is preinstalled; do not run `playwright instal
 - Preserve physics/update ordering and deterministic random-number consumption when refactoring.
 - Gravity stays vertical. No wall/ceiling traversal or full runtime foot IK. The physics capsule stays straight; visual fitting follows the surface. Restore the last clip pose before mixing, never the rest pose.
 - Preserve the documented Rapier tolerances and exact-surface queries; they prevent movement and animation regressions at this small scale.
-- Debug hook implementations live in `src/debug/createTestHooks.ts`; their public contract is in `testHooks.ts`. Main owns mutable input/view overrides and the frame-driving callbacks. Tests share `tests/helpers/bootGame.ts`; hawk scenarios explicitly enable the hawk.
+- Debug hook implementations live in `src/debug/createTestHooks.ts`; their public contract is in `testHooks.ts`. Main owns mutable input/view overrides and the frame-driving callbacks. Tests share `tests/helpers/bootGame.ts`; hawk scenarios explicitly enable the hawk, and vitals scenarios the drifting bars.
 - Shared animation initialization lives in `src/render/animationActions.ts`. Playback, restart and crossfade behavior remain creature-specific. Shared Blender helpers live in `assets-src/common.py`; geometry and random calls remain species-specific.
 
 ## Read the relevant subsystem guide before changing it

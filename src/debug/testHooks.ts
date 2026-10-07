@@ -276,7 +276,20 @@ export interface GameTestHooks {
    * The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether
    * it's hunted, a flinch under way, and the dust and feathers in the air from strikes.
    */
-  wounds: () => { hits: number; down: boolean; countdown: number | null; hunted: boolean; flinching: boolean; puff: number };
+  wounds: () => { hits: number; down: boolean; downBy: string | null; countdown: number | null; hunted: boolean; flinching: boolean; puff: number };
+  /** Health, warmth, fullness and air (0 to 1), their rates, the cold's speed scale, and what the surroundings read. */
+  vitals: () => {
+    health: number;
+    warmth: number;
+    fullness: number;
+    air: number;
+    rate: { health: number; warmth: number };
+    speedScale: number;
+    frozen: boolean;
+    climate: { sun: number; surface: number; surfaceKind: string; company: number; companyScale: number; wet: boolean; underwater: boolean };
+  };
+  /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */
+  setVitals: (v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>) => void;
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 

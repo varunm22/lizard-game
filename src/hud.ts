@@ -1,9 +1,36 @@
+import type { DownCause } from './player/vitals';
+
+/** What the bars show, each 0 to 1, with the way health and warmth are heading (per second). */
+export interface HudVitals {
+  health: number;
+  warmth: number;
+  fullness: number;
+  air: number;
+  healthRate: number;
+  warmthRate: number;
+}
+
+const DOWN_TEXT: Record<DownCause, string> = {
+  hawk: 'Caught by the hawk.',
+  cold: 'Too cold to move.',
+  hunger: 'Starved.',
+  air: 'Out of air.',
+};
+
+/** A rate this small (per second) shows no arrow. */
+const STEADY = 0.0005;
+
 /**
- * A small controls hint in the corner that fades once the player starts moving; while the hawk has
- * struck, marks for the hits the lizard can still take; a red flash round the edges as a strike
- * lands; and the countdown while it lies knocked down.
+ * A small controls hint in the corner that fades once the player starts moving; bars in the other
+ * corner for health, warmth, food and air; a red flash round the edges as a strike lands; and the
+ * countdown while it lies knocked down.
  */
-export function createHud(): { hideHint(): void; wounds(hits: number, max: number, countdown: number | null): void; flash(): void } {
+export function createHud(): {
+  hideHint(): void;
+  vitals(v: HudVitals): void;
+  down(cause: DownCause | null, countdown: number | null): void;
+  flash(): void;
+} {
   const el = document.createElement('div');
   el.style.cssText =
     'position:fixed;left:16px;bottom:16px;padding:6px 10px;border-radius:6px;background:#fffc;' +
@@ -11,11 +38,35 @@ export function createHud(): { hideHint(): void; wounds(hits: number, max: numbe
   el.textContent = 'W/S move · A/D steer, or look around when still · Shift run · Space jump, or tilt up when swimming · F bite · drag or Q/E orbit · wheel zoom';
   document.body.appendChild(el);
 
-  const marks = document.createElement('div');
-  marks.style.cssText =
-    'position:fixed;left:16px;top:16px;display:flex;gap:6px;transition:opacity 0.6s;opacity:0;pointer-events:none';
-  document.body.appendChild(marks);
-  const dots: HTMLElement[] = [];
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'position:fixed;right:16px;bottom:16px;padding:8px 10px;border-radius:8px;background:#fffc;' +
+    'font:12px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto 120px 10px;' +
+    'gap:5px 8px;align-items:center;pointer-events:none';
+  document.body.appendChild(panel);
+  const bar = (label: string, color: string) => {
+    const name = document.createElement('div');
+    name.textContent = label;
+    const track = document.createElement('div');
+    track.style.cssText = 'height:9px;border-radius:5px;background:#0002;overflow:hidden';
+    const fill = document.createElement('div');
+    fill.style.cssText = `height:100%;width:100%;border-radius:5px;background:${color}`;
+    track.appendChild(fill);
+    const trend = document.createElement('div');
+    trend.style.cssText = 'font-size:9px;line-height:1;text-align:center';
+    panel.append(name, track, trend);
+    return { fill, trend, rows: [name, track, trend] };
+  };
+  const bars = {
+    health: bar('Health', '#c8402e'),
+    warmth: bar('Warmth', '#e8902a'),
+    fullness: bar('Food', '#5a9a3a'),
+    air: bar('Air', '#3a8ac8'),
+  };
+  const arrow = (el: HTMLElement, rate: number) => {
+    el.textContent = rate > STEADY ? '▲' : rate < -STEADY ? '▼' : '';
+    el.style.color = rate > 0 ? '#3a7a2a' : '#a03020';
+  };
 
   const banner = document.createElement('div');
   banner.style.cssText =
@@ -42,16 +93,22 @@ export function createHud(): { hideHint(): void; wounds(hits: number, max: numbe
       flash.style.transition = 'opacity 0.5s ease-out';
       flash.style.opacity = '0';
     },
-    wounds(hits, max, countdown) {
-      while (dots.length < max) {
-        const d = document.createElement('div');
-        d.style.cssText = 'width:14px;height:14px;border-radius:50%;border:2px solid #3a2a20;box-sizing:border-box';
-        marks.appendChild(d);
-        dots.push(d);
-      }
-      marks.style.opacity = hits > 0 ? '1' : '0';
-      dots.forEach((d, i) => (d.style.background = i < max - hits ? '#e0a83a' : 'transparent'));
-      const text = countdown === null ? '' : `Caught by the hawk. Back in ${countdown}…`;
+    vitals(v) {
+      bars.health.fill.style.width = `${v.health * 100}%`;
+      bars.warmth.fill.style.width = `${v.warmth * 100}%`;
+      // Freezing shows blue, warm enough to run at full speed orange, and in between a mix of the two.
+      const t = Math.min(1, Math.max(0, (v.warmth - 0.15) / 0.35));
+      const mix = (cold: number, warm: number) => Math.round(cold + (warm - cold) * t);
+      bars.warmth.fill.style.background = `rgb(${mix(74, 232)},${mix(144, 144)},${mix(217, 42)})`;
+      bars.fullness.fill.style.width = `${v.fullness * 100}%`;
+      bars.air.fill.style.width = `${v.air * 100}%`;
+      // Air only matters in the water: faint while it's full.
+      for (const el of bars.air.rows) el.style.opacity = v.air < 1 ? '1' : '0.35';
+      arrow(bars.health.trend, v.healthRate);
+      arrow(bars.warmth.trend, v.warmthRate);
+    },
+    down(cause, countdown) {
+      const text = countdown === null || cause === null ? '' : `${DOWN_TEXT[cause]} Back in ${countdown}…`;
       if (text !== shown) {
         shown = text;
         banner.textContent = text;

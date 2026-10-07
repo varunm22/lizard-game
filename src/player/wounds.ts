@@ -1,8 +1,7 @@
 import type { PlayerController } from './controller';
 import type { LizardModel } from './lizardModel';
+import { VITALS, type DownCause, type Vitals } from './vitals';
 
-/** Strikes it takes to knock the lizard down. */
-export const MAX_HITS = 3;
 /** A strike throws the lizard this far sideways (m), over this long (s), fast at first and easing off. */
 const JERK = 0.08;
 const JERK_TIME = 0.14;
@@ -12,29 +11,30 @@ const JERK_TIME = 0.14;
  */
 const COLLAPSE_TIME = 1.0;
 export const COUNTDOWN = 5;
-/** With nothing hunting it, one hit heals every this many seconds. */
-const HEAL_EVERY = 1;
 
 /**
- * What the hawk does to the lizard. A strike that lands jerks it aside, with a flinch toward the side
- * it was hit on, and counts a hit; the third knocks it down: it rolls onto its side and lies still
- * while a countdown runs, then comes back at the spawn with no hits. Hits heal quickly once nothing
- * is hunting it (the hawk sets `hunted`).
+ * What the hawk does to the lizard, and what happens when its health runs out. A strike that lands
+ * jerks it aside, with a flinch toward the side it was hit on, and takes `VITALS.hawkHit` of its
+ * health. At no health, whatever took it (the hawk, the cold, hunger, drowning), it rolls onto its
+ * side and lies still while a countdown runs, then comes back at the spawn with its vitals reset.
  */
 export class Wounds {
+  /** Strikes landed since it last came back at the spawn. */
   hits = 0;
   /** A hawk is after the lizard right now. */
   hunted = false;
+  /** What put it down, while it's down. */
+  downBy: DownCause | null = null;
   /** Seconds left lying down before coming back, or null while up. */
   private downFor: number | null = null;
   private jerk = { x: 0, z: 0, t: 0 };
-  private healing = 0;
   /** Called when a strike lands, with the side of the lizard it came from and the way it's thrown (unit, level). */
   onStrike: ((side: 'left' | 'right', dx: number, dz: number) => void) | null = null;
 
   constructor(
     private player: PlayerController,
     private model: LizardModel,
+    private vitals: Vitals,
     private respawn: () => void,
   ) {}
 
@@ -62,12 +62,20 @@ export class Wounds {
     this.jerk = { x: lx * side * JERK, z: lz * side * JERK, t: JERK_TIME };
     this.model.flinch(side > 0 ? 'right' : 'left');
     this.onStrike?.(side > 0 ? 'right' : 'left', lx * side, lz * side);
-    this.healing = 0;
-    if (++this.hits >= MAX_HITS) this.downFor = COLLAPSE_TIME + COUNTDOWN;
+    this.hits++;
+    this.vitals.hurt(VITALS.hawkHit, 'hawk');
+    this.knockDown();
     return true;
   }
 
-  /** Advance one fixed step, before the player's own move. */
+  /** At no health, it goes down. */
+  private knockDown() {
+    if (this.down || !this.vitals.dead) return;
+    this.downFor = COLLAPSE_TIME + COUNTDOWN;
+    this.downBy = this.vitals.cause ?? 'hawk';
+  }
+
+  /** Advance one fixed step, before the player's own move (and after the vitals'). */
   step(dt: number) {
     if (this.jerk.t > 0) {
       // Eased out: the share of the throw done by time left t is 1 - (t / JERK_TIME)^2.
@@ -81,20 +89,14 @@ export class Wounds {
       this.downFor -= dt;
       if (this.downFor <= 0) {
         this.downFor = null;
+        this.downBy = null;
         this.hits = 0;
         this.jerk.t = 0;
+        this.vitals.reset();
         this.respawn();
       }
       return;
     }
-    if (this.hunted || this.hits === 0) {
-      this.healing = 0;
-      return;
-    }
-    this.healing += dt;
-    if (this.healing >= HEAL_EVERY) {
-      this.healing = 0;
-      this.hits--;
-    }
+    this.knockDown();
   }
 }

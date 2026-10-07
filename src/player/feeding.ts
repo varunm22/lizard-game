@@ -16,6 +16,8 @@ export class Feeding {
   mouthfuls = 0;
   /** The patch the last bite got, or null if it closed on nothing. */
   lastBite: { id: number; ate: boolean } | null = null;
+  /** Called for each mouthful of algae swallowed. */
+  onMouthful: (() => void) | null = null;
 
   constructor(
     private model: LizardModel,
@@ -37,6 +39,7 @@ export class Feeding {
       return;
     }
     this.mouthfuls++;
+    this.onMouthful?.();
     this.lastBite = { id: patch.id, ate: this.algae.bite(patch.id, BITE_SHARE) };
   }
 }
