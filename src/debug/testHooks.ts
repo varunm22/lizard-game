@@ -104,6 +104,8 @@ export interface GameTestHooks {
     yaw: number;
     state: string;
     clip: string | undefined;
+    /** The lizard is riding on its shell. */
+    ridden: boolean;
     along: number;
     ahead: { x: number; z: number };
     route: { x: number; z: number; rx: number; rz: number };

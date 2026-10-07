@@ -89,6 +89,8 @@ export class Tortoise {
   private standingHeight: number;
   private lift = 0;
   private riderRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  /** The lizard was on the shell last step. */
+  ridden = false;
 
   private constructor(
     gltf: Awaited<ReturnType<typeof loadGltf>>,
@@ -167,6 +169,7 @@ export class Tortoise {
   /** Advance one fixed step. */
   step(dt: number, player: PlayerController) {
     const rider = this.carrying(player);
+    this.ridden = rider;
     this.prevPos.copy(this.pos);
     this.prevRot.copy(this.rot);
     this.stateTime += dt;
