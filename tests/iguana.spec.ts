@@ -296,10 +296,15 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
     let ig = g.iguanas()[0];
     let mate: string | number | null = null;
     let took = 0;
+    // Steps spent walking at the lizard from close by, getting nowhere.
+    let pushing = 0;
     for (; took < 1500; took++) {
+      const was = ig;
       g.advance(1, false);
       ig = g.iguanas()[0];
       mate ??= ig.mate;
+      const p = g.player();
+      if (ig.activity !== 'bask' && Math.hypot(ig.x - p.x, ig.z - p.z) < 0.09 && Math.hypot(ig.x - was.x, ig.z - was.z) < 0.001) pushing++;
       if (took > 300 && ig.activity === 'bask' && ig.state === 'idle') break;
     }
     g.advance(240, false);
@@ -307,15 +312,17 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
     const p = g.player();
     g.viewFrom({ x: -0.18, y: 0.14, z: 0.12 }, { x: (ig.x + p.x) / 2, y: p.y + 0.02, z: (ig.z + p.z) / 2 });
     g.advance(2);
-    return { mate, took, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
+    return { mate, took, pushing, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
   });
   await page.screenshot({ path: 'test-results/screenshots/iguana-bask-together.png' });
   // It went to the lizard, and lies alongside it, the same way round, on the lava.
   expect(run.mate).toBe('player');
   expect(run.ig.activity).toBe('bask');
-  expect(run.apart).toBeLessThan(0.07);
-  // Lined up and walked in along the lizard in one go, not round and round its spot first.
+  expect(run.apart).toBeLessThan(0.09);
+  // Lined up and walked in along the lizard in one go, not round and round its spot first, and lay
+  // down once close enough beside it rather than pushing on at it.
   expect(run.took).toBeLessThan(800);
+  expect(run.pushing).toBeLessThan(40);
   expect(Math.abs(Math.cos(run.ig.yaw - run.p.yaw))).toBeGreaterThan(0.9);
   expect(run.ig.lava).toBeGreaterThan(0.8);
   expect(errors).toEqual([]);

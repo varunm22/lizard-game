@@ -134,9 +134,13 @@ const CARROT = 0.04;
 const VIA_REACH = 0.03;
 /** The line in is clear of rocks this far (m) either side: half a body's width, its controller's skin and a little. */
 const LANE = 0.03;
-/** Beside a mate, it's there once within this of level with its spot, and this near the line in (m). */
-const MATE_LEVEL = 0.01;
-const MATE_LINE = 0.025;
+/**
+ * Beside a mate, it's close enough to lie down once within this of level with its spot (m, either
+ * way) and this near the line in: alongside, even if a body or the lie of the rock keeps it a little
+ * short of the exact spot or a little wide of it, rather than pushing on at the mate.
+ */
+const MATE_LEVEL = 0.035;
+const MATE_LINE = 0.04;
 /** The mate it's going to lie beside moving this far (m) sends it to look again. */
 const MATE_MOVED = 0.05;
 /**
@@ -666,8 +670,8 @@ class Iguana {
     const ez = m ? Math.cos(m.yaw) * m.end : 0;
     const out = (this.feet.x - g.x) * ex + (this.feet.z - g.z) * ez;
     const off = Math.abs((this.feet.x - g.x) * ez - (this.feet.z - g.z) * ex);
-    // Beside the mate it's there once level with its spot, not just near it, so it lies alongside, not off its end.
-    const there = g.food ? flat < FOOD_REACH && Math.abs(dy) < FOOD_LEVEL : m ? !g.via.length && out < MATE_LEVEL && off < MATE_LINE : flat < SPOT_REACH;
+    // Beside the mate it's there once about level with its spot, not just near it, so it lies alongside, not off its end.
+    const there = g.food ? flat < FOOD_REACH && Math.abs(dy) < FOOD_LEVEL : m ? Math.abs(out) < MATE_LEVEL && off < MATE_LINE : flat < SPOT_REACH;
     if (there) return 'arrived';
     // Someone's lying where it meant to bask, or the mate it was going to lie beside has gone: look again.
     const taken = this.herd.others(this).some((o) => o !== g.mate?.body && Math.hypot(o.position.x - g.x, o.position.z - g.z) < SPOT_TAKEN);

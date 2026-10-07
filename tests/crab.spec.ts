@@ -64,6 +64,35 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
   expect(errors).toEqual([]);
 });
 
+test('a crab runs from another iguana coming close too, not just the lizard', async ({ page }) => {
+  const errors = await boot(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    // A shore crab with black lava 15 cm to its west for the iguana to stand on.
+    const i = g.crabs().findIndex((c) => !c.onPile && g.lava(c.x - 0.15, c.z) > 0.85);
+    const c0 = g.crabs()[i];
+    // An iguana that has just got there, facing it: up and about, not lain still yet.
+    g.iguanaPlace(0, c0.x - 0.15, c0.z, Math.PI / 2);
+    g.advance(10, false);
+    const fled = g.crabs()[i];
+    g.advance(110, false);
+    const ig = g.iguanas()[0];
+    const later = g.crabs()[i];
+    return {
+      first: fled.state,
+      player: Math.hypot(c0.x - g.player().x, c0.z - g.player().z),
+      before: Math.hypot(c0.x - ig.x, c0.z - ig.z),
+      after: Math.hypot(later.x - ig.x, later.z - ig.z),
+    };
+  });
+  // The lizard is nowhere near it: it ran from the iguana.
+  expect(run.player).toBeGreaterThan(0.5);
+  expect(run.first).toBe('flee');
+  expect(run.after - run.before).toBeGreaterThan(0.08);
+  expect(errors).toEqual([]);
+});
+
 test('a crab runs off sideways when the lizard comes close', async ({ page }) => {
   const errors = await boot(page);
   const run = await page.evaluate(() => {
