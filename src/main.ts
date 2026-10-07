@@ -216,6 +216,7 @@ async function main() {
       else if (action === 'move') ig.moveOn();
       else ig.sneeze();
     },
+    iguanaPlace: (i, x, z, yaw, stay) => iguanas.list[i].place(x, z, yaw, stay),
     saltSpray: () => iguanas.spray.live,
     lava: lavaCover,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),
@@ -267,7 +268,10 @@ async function main() {
     hawk.step(dt);
     wounds.step(dt);
     // Knocked down, the lizard lies still whatever the controls say.
-    player.step(dt, wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput);
+    const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    player.step(dt, input);
+    // Walking into another iguana pushes it slowly out of the way.
+    if (input.move.y > 0) iguanas.pushedBy(player, dt);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
     const state = states.update(
