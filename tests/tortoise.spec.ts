@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
 
 test('the tortoise walks its round, leaving the plants it walks over flat for about a minute, and new ones come up along it', async ({ page }) => {
+  // 85 simulated seconds: close to a minute on CI's software renderer.
+  test.setTimeout(120_000);
   const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
