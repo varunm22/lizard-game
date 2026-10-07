@@ -259,6 +259,11 @@ export interface GameTestHooks {
    * never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'.
    */
   hawkDo: (action: 'hunt' | 'hunt_iguana' | 'hunt_crab' | 'off' | 'on' | 'perch' | 'soar') => void;
+  /**
+   * Stop the other iguanas or the crabs where they stand, for tests that aren't about them: they
+   * cost most of each step. Paused iguanas stay solid; the hawk passes paused animals over.
+   */
+  pause: (systems: ('iguanas' | 'crabs')[]) => void;
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
   /**

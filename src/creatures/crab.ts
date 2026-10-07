@@ -616,6 +616,8 @@ export class Crabs {
   private settled = false;
   /** The lizard first, then the other iguanas. */
   private hosts: Host[];
+  /** Tests that aren't about them stop the crabs where they are to save time. */
+  paused = false;
 
   private constructor(
     gltf: Awaited<ReturnType<typeof loadGltf>>,
@@ -697,6 +699,7 @@ export class Crabs {
   }
 
   step(dt: number) {
+    if (this.paused) return;
     if (!this.settled) {
       if (this.surface(0, 0, 1) === null) return;
       this.settle();
@@ -780,6 +783,7 @@ export class Crabs {
 
   /** Scare every crab within `r` of (x, z): a shadow going over. */
   scare(x: number, z: number, r: number) {
+    if (this.paused) return;
     for (const c of this.list) {
       if (Math.hypot(c.pos.x - x, c.pos.z - z) < r) c.scare(x, z);
     }
@@ -805,6 +809,7 @@ export class Crabs {
   }
 
   update(alpha: number, frameDt: number) {
+    if (this.paused) return;
     for (const c of this.list) if (!c.gone) c.update(alpha, frameDt);
   }
 }

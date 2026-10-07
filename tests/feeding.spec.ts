@@ -80,7 +80,7 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
 
 test('a wild iguana grazing plays the bite, and each bite takes some of the patch', async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await bootGame(page);
+  const errors = await bootGame(page, { iguanas: true });
   await page.evaluate(() => (window.__game!.advance(2, false), window.__game!.iguanaDo(0, 'feed')));
   let sawBiting = false;
   let bites = 0;

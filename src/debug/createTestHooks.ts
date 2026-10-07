@@ -217,6 +217,10 @@ export function createTestHooks({
     hawkLowest: () => hawk.lowest(),
     hawkSit: (i) => hawk.sitAt(i),
     hawkDo: (action) => hawk.request(action),
+    pause: (systems) => {
+      iguanas.paused = systems.includes('iguanas');
+      crabs.paused = systems.includes('crabs');
+    },
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
     lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),
     wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),

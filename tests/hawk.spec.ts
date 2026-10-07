@@ -235,7 +235,7 @@ test('riding the tortoise the lizard is out of reach: the hawk pulls out of its 
 
 test('it catches a crab, comes down on it to eat, and another crab is out on the rocks later', async ({ page }) => {
   test.setTimeout(240_000);
-  const errors = await bootGame(page, { hawk: true });
+  const errors = await bootGame(page, { hawk: true, crabs: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -298,7 +298,7 @@ test('it catches a crab, comes down on it to eat, and another crab is out on the
 
 test('it takes two strikes to put another iguana down, then the hawk eats it and it comes back', async ({ page }) => {
   test.setTimeout(240_000);
-  const errors = await bootGame(page, { hawk: true });
+  const errors = await bootGame(page, { hawk: true, iguanas: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -396,7 +396,7 @@ test('after knocking the lizard down the hawk stands on it, eating, until it com
 
 test("the hawk's shadow passing over sends crabs and iguanas running", async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await bootGame(page, { hawk: true });
+  const errors = await bootGame(page, { hawk: true, iguanas: true, crabs: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
