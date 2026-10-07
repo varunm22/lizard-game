@@ -2,12 +2,13 @@ import type { InputState } from '../input';
 
 /** State exposed on `window.__game` so Playwright tests can check the game without reading pixels. */
 export interface GameTestHooks {
+  /** Loaded and drawn once, or with `?test` in the URL, loaded (then nothing is drawn until asked). */
   ready: boolean;
   physicsSteps: number;
   /**
    * Stop real time and run exactly `n` fixed physics steps right now, with input, camera and
-   * animation updated each step, then draw one frame (unless `draw` is false). Headless Chromium
-   * renders slowly, so tests use this instead of waiting for frames.
+   * animation updated each step, then draw one frame if `draw`. Headless Chromium renders slowly,
+   * so tests use this instead of waiting for frames.
    */
   advance: (n: number, draw?: boolean) => void;
   /**

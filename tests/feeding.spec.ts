@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('F bites: the head lifts with the mouth open, lunges and snaps shut, and nothing is eaten with no algae at the mouth', async ({ page }) => {
   const errors = await bootGame(page);
@@ -111,7 +112,7 @@ test('a wild iguana grazing plays the bite, and each bite takes some of the patc
     bites = r.bites;
     if (r.shot) {
       shot = true;
-      await page.screenshot({ path: 'test-results/screenshots/iguana-bite.png' });
+      await screenshot(page, 'iguana-bite.png');
       await page.evaluate(() => window.__game!.viewFrom(null));
     }
   }

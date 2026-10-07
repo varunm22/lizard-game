@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('trees are solid: the lizard can walk into a trunk and round it, never through or up it', async ({ page }) => {
   const errors = await bootGame(page);
@@ -29,7 +30,7 @@ test('trees are solid: the lizard can walk into a trunk and round it, never thro
     let highest = -Infinity;
     let stalled = 0;
     for (let k = 0; k < 240; k++) {
-      g.advance(1, k === 239);
+      g.advance(1, false);
       const p = g.player();
       closest = Math.min(closest, Math.hypot(p.x - t.x, p.z - t.z));
       highest = Math.max(highest, p.y - g.terrainHeight(p.x, p.z));
@@ -44,7 +45,7 @@ test('trees are solid: the lizard can walk into a trunk and round it, never thro
   expect(walk.closest).toBeGreaterThan(tree.radius + 0.012);
   expect(walk.highest).toBeLessThan(0.02);
   expect(walk.end.climbing).toBe(false);
-  await page.screenshot({ path: 'test-results/screenshots/forest.png' });
+  await screenshot(page, 'forest.png');
   expect(errors).toEqual([]);
 });
 
@@ -66,7 +67,7 @@ test('algae grow on the rocky shore at and under the waterline, and each patch c
     g.viewFrom({ x: -0.12, y: 0.06, z: 0.14 });
     g.advance(5);
   });
-  await page.screenshot({ path: 'test-results/screenshots/algae.png' });
+  await screenshot(page, 'algae.png');
   const eaten = await page.evaluate((p) => {
     const g = window.__game!;
     const near = g.algae({ x: p.x, y: p.y, z: p.z, r: 0.05 });
@@ -127,6 +128,6 @@ test('rock piles on the rocky shore can be climbed to the crest, from the lava a
     g.viewFrom({ x: -0.35, y: 0.25, z: 0.45 });
     g.advance(1);
   });
-  await page.screenshot({ path: 'test-results/screenshots/rock-pile.png' });
+  await screenshot(page, 'rock-pile.png');
   expect(errors).toEqual([]);
 });

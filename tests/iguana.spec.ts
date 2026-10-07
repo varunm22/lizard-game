@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('other marine iguanas bask on the lava shore, lying across the sun, and sneeze salt', async ({ page }) => {
   test.setTimeout(120_000);
@@ -46,7 +47,7 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
   expect(sneeze.sneezing).toBe(true);
   expect(sneeze.sneezes).toBe(1);
   expect(sneeze.spray).toBeGreaterThan(5);
-  await page.screenshot({ path: 'test-results/screenshots/iguana-sneeze.png' });
+  await screenshot(page, 'iguana-sneeze.png');
   // The spray settles in a second.
   expect(await page.evaluate(() => (window.__game!.advance(60, false), window.__game!.saltSpray()))).toBe(0);
 
@@ -69,7 +70,7 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
     g.viewFrom({ x: -0.2, y: 0.09, z: 0.16 }, { x: ig.x, y: ig.y + 0.02, z: ig.z });
     g.advance(2);
   });
-  await page.screenshot({ path: 'test-results/screenshots/iguana-bask.png' });
+  await screenshot(page, 'iguana-bask.png');
   await page.evaluate(() => window.__game!.viewFrom(null));
   const sunYaw = Math.atan2(2.5, 1.7);
   for (const [i, ig] of later.now.entries()) {
@@ -126,7 +127,7 @@ test('a hungry iguana goes down to the sea, puts its snout to the algae and eats
     for (const v of r.seen) grazed.set(v.id, { touch: Math.min(v.touch, grazed.get(v.id)?.touch ?? Infinity), under: v.under || !!grazed.get(v.id)?.under });
     if (r.shot) {
       shot = true;
-      await page.screenshot({ path: 'test-results/screenshots/iguana-graze.png' });
+      await screenshot(page, 'iguana-graze.png');
       await page.evaluate(() => window.__game!.viewFrom(null));
     }
   }
@@ -307,7 +308,7 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
     g.advance(2);
     return { mate, took, pushing, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
   });
-  await page.screenshot({ path: 'test-results/screenshots/iguana-bask-together.png' });
+  await screenshot(page, 'iguana-bask-together.png');
   // It went to the lizard, and lies alongside it, the same way round, on the lava.
   expect(run.mate).toBe('player');
   expect(run.ig.activity).toBe('bask');
@@ -351,7 +352,7 @@ test('crabs groom the other iguanas too, hopping onto a still one and off again 
     }
     return { groomed, count: g.crabs().length, onBack, off, igState: g.iguanas()[groomed.iguana].activity };
   });
-  await page.screenshot({ path: 'test-results/screenshots/crab-grooms-iguana.png' });
+  await screenshot(page, 'crab-grooms-iguana.png');
   expect(run.count).toBeGreaterThanOrEqual(15);
   expect(run.groomed).not.toBeNull();
   expect(run.onBack).toBeGreaterThan(0.015);
@@ -365,6 +366,9 @@ async function openGround(page: Page) {
     const g = window.__game!;
     g.advance(2, false);
     const yaw = g.iguanas()[0].yaw;
+    const { waterY } = g.ocean();
+    const others = g.iguanas().slice(1);
+    const obstacles = g.obstacles();
     let best: { x: number; z: number; yaw: number; room: number } | null = null;
     for (let z = -2.5; z < 3.5; z += 0.05) {
       for (const up of [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]) {
@@ -373,11 +377,11 @@ async function openGround(page: Page) {
           [-0.15, 0, 0.15].every((t) => {
             const qx = x + s;
             const qz = z + t;
-            return Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) < 0.003 && g.terrainHeight(qx, qz) > g.ocean().waterY + 0.01;
+            return Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) < 0.003 && g.terrainHeight(qx, qz) > waterY + 0.01;
           }),
         );
-        if (!flat || g.plants({ x, z, r: 0.3 }).length > 0 || g.iguanas().some((o, i) => i > 0 && Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
-        const room = Math.min(...g.obstacles().map((o) => Math.hypot(o.x - x, o.z - z) - o.radius));
+        if (!flat || g.plants({ x, z, r: 0.3 }).length > 0 || others.some((o) => Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
+        const room = Math.min(...obstacles.map((o) => Math.hypot(o.x - x, o.z - z) - o.radius));
         if (!best || room > best.room) best = { x, z, yaw, room };
       }
     }
@@ -461,7 +465,7 @@ test("an iguana passing close behind the lizard doesn't pull the camera in", asy
     g.teleport(spot.x + lx * 0.07, spot.z + lz * 0.07, Math.atan2(lx, lz));
     let arm = Infinity;
     for (let k = 0; k < 60; k++) {
-      g.advance(1);
+      g.advance(1, false);
       arm = Math.min(arm, g.camera().arm);
     }
     return { arm, distance: g.camera().distance };

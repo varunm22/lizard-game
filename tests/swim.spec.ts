@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 /** Like traversal.spec.ts, every test drives time itself with `window.__game.advance`. */
-const steps = (page: Page, n: number, draw = true) =>
+const steps = (page: Page, n: number, draw = false) =>
   page.evaluate(([n, draw]) => window.__game!.advance(n as number, draw as boolean), [n, draw] as const);
 const player = (page: Page) => page.evaluate(() => window.__game!.player());
 /** Capsule centre to top: feet + skin + diameter. */
@@ -56,7 +57,7 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   expect(entry.p.y + BODY_TOP).toBeLessThan(sea.waterY);
   // Slowed from walking pace to swimming pace.
   expect(entry.p.speed).toBeLessThan(0.15);
-  await page.screenshot({ path: 'test-results/screenshots/swim.png' });
+  await screenshot(page, 'swim.png');
 
   // Mid-water with no input it sinks slowly, then A turns it on the spot.
   await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, Math.PI / 2, y), [sea.shore + 1.3, sea.z, sea.waterY - 0.06]);
@@ -105,7 +106,7 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
   const resting = await player(page);
   expect(resting.swimming).toBe(true);
   expect(resting.y).toBeGreaterThan(rockTop - 0.004);
-  await page.screenshot({ path: 'test-results/screenshots/swim-on-rock.png' });
+  await screenshot(page, 'swim-on-rock.png');
 
   // Swimming back west over the shelf, it comes out onto the beach and walks again.
   await page.evaluate(([x, z, y]) => window.__game!.teleport(x, z, -Math.PI / 2, y), [sea.shore + 0.9, sea.z, sea.waterY - 0.06]);
@@ -158,7 +159,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
   expect(splash).not.toBeNull();
   expect(splash!.ripple.strength).toBeGreaterThan(wade!.ripple.strength + 0.4);
   await page.evaluate(() => window.__game!.advance(20));
-  await page.screenshot({ path: 'test-results/screenshots/ripple-splash.png' });
+  await screenshot(page, 'ripple-splash.png');
 
   // Rising from under water with Space, its back reaching the surface rings it (once the splash
   // is a couple of seconds old: gentle ripples are kept sparse).
@@ -210,6 +211,6 @@ test('swimming: climbs out of the sea onto a domed rock without falling back in'
   expect(runs.length).toBeGreaterThan(4);
   for (const r of runs) expect(r).toEqual({ side: r.side, backIn: 0, swimming: false, onTop: true });
   await page.evaluate(() => window.__game!.advance(1));
-  await page.screenshot({ path: 'test-results/screenshots/swim-climb-out.png' });
+  await screenshot(page, 'swim-climb-out.png');
   expect(errors).toEqual([]);
 });
