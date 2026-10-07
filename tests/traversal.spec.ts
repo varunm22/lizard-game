@@ -316,6 +316,23 @@ test('resting beside the big rock, the tail sways up to the rock and stops there
   expect(deepest).toBeLessThan(0.002);
 });
 
+test('resting with its tail angled in past the low mid rock, the tail stays down instead of riding up over it', async ({ page }) => {
+  await boot(page);
+  const rock = await obstacle(page, 'rock-mid');
+  // Hips just off the rock's east side, turned so the tail runs back in past it.
+  const yaw = 0.6;
+  await teleport(page, rock.x + rock.radius + 0.02 + 0.06 * Math.sin(yaw), rock.z + 0.06 * Math.cos(yaw), yaw);
+  await steps(page, 200, false);
+  const heights: number[] = [];
+  for (let i = 0; i < 45; i++) {
+    await steps(page, 4, false);
+    const tail = (await page.evaluate(() => window.__game!.clearancePoints())).slice(0, 8);
+    heights.push(Math.max(...tail.map((p) => p.y)));
+  }
+  // It used to ride up and down over the rock by about 5 cm as it swayed.
+  expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.005);
+});
+
 test('landing on the mid rock and the log: stands on top and stays put', async ({ page }) => {
   await boot(page);
   // The mid rock is narrower than the lizard is long: a running jump carries it over and off.
