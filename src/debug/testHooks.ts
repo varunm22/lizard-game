@@ -240,10 +240,18 @@ export interface GameTestHooks {
     seesPrey: boolean;
     strikes: number;
     hitsLanded: number;
+    /** How many times the lizard has flushed it off a perch. */
+    flushed: number;
     perch: number;
     enabled: boolean;
   };
   hawkClips: () => string[];
+  /** Where the hawk can perch: a spot on top of a rock or a tree, and the way it faces. */
+  hawkPerches: () => { x: number; y: number; z: number; yaw: number; on: string }[];
+  /** The lowest drawn point of the hawk's toes and of its tail (world y). */
+  hawkLowest: () => { feet: number; tail: number };
+  /** Put the hawk straight onto perch `i`, sitting. */
+  hawkSit: (i: number) => void;
   /**
    * 'hunt': go for the lizard now; 'hunt_iguana' and 'hunt_crab': for the nearest of those; 'off':
    * never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'.
@@ -251,6 +259,11 @@ export interface GameTestHooks {
   hawkDo: (action: 'hunt' | 'hunt_iguana' | 'hunt_crab' | 'off' | 'on' | 'perch' | 'soar') => void;
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
+  /**
+   * How many of the lizard's watched spheres (head to tail base) an eye at `from` sees, out of how
+   * many, and whether that's enough for the hawk to see the lizard (more than half).
+   */
+  lizardInView: (from: { x: number; y: number; z: number }) => { seen: number; of: number; sees: boolean };
   /**
    * The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether
    * it's hunted, a flinch under way, and the dust and feathers in the air from strikes.

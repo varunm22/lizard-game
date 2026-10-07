@@ -25,6 +25,78 @@ test('the hawk loads with its clips and sits on a perch, calm, at the start', as
   expect(errors).toEqual([]);
 });
 
+test('perched on a rock or a tree, the hawk stands on its toes with its tail clear behind', async ({ page }) => {
+  const errors = await boot(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.hawkDo('off');
+    g.advance(2, false);
+    return g.hawkPerches().map((p, i) => {
+      g.hawkSit(i);
+      g.advance(10);
+      const low = g.hawkLowest();
+      // Rocks have colliders the shape of what's drawn; trees are only drawn up top.
+      const ground = /^(rock|pile)/.test(p.on) ? g.groundAt(p.x, p.z, p.y + 0.2) : null;
+      return { on: p.on, y: p.y, low, ground, state: g.hawk().state };
+    });
+  });
+  expect(r.length).toBeGreaterThanOrEqual(4);
+  // Rocks, the rock piles' crests among them, and at least one tree or cactus.
+  expect(r.some((p) => p.on.startsWith('pile'))).toBe(true);
+  expect(r.some((p) => !/^(rock|pile)/.test(p.on))).toBe(true);
+  for (const p of r) {
+    expect(p.state, p.on).toBe('perch');
+    // The tail angles down past its toes, behind it, rather than holding it up off the rock.
+    expect(p.low.tail, p.on).toBeLessThan(p.low.feet);
+    if (p.ground === null) continue;
+    // The toes rest on the rock: gripping it a little, never standing off it.
+    expect(p.low.feet - p.ground, p.on).toBeLessThan(0.002);
+    expect(p.low.feet - p.ground, p.on).toBeGreaterThan(-0.004);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('walking up to the perched hawk flushes it to the perch furthest away, not hunting', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = await boot(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const perches = g.hawkPerches();
+    const from = perches[g.hawk().perch];
+    // On the ground a little way from the perch, toward the middle of the island.
+    const d = Math.hypot(from.x, from.z);
+    const x = from.x - (from.x / d) * 0.3;
+    const z = from.z - (from.z / d) * 0.3;
+    g.teleport(x, z, 0);
+    g.advance(2, false);
+    const lizard = g.player();
+    let took = -1;
+    let hunted = false;
+    let i = 0;
+    for (; i < 30 * 60; i++) {
+      g.advance(1, false);
+      const h = g.hawk();
+      if (took < 0 && h.state === 'take_off') took = i;
+      hunted ||= h.hunting;
+      if (took >= 0 && h.state === 'perch') break;
+    }
+    const h = g.hawk();
+    const to = perches[h.perch];
+    const far = Math.max(...perches.map((p) => Math.hypot(p.x - lizard.x, p.z - lizard.z)));
+    return { took, settled: i, state: h.state, flushed: h.flushed, hunted, strikes: h.strikes, away: Math.hypot(to.x - lizard.x, to.z - lizard.z), far };
+  });
+  expect(r.took).toBeGreaterThanOrEqual(0);
+  expect(r.took).toBeLessThan(30);
+  expect(r.flushed).toBe(1);
+  expect(r.state).toBe('perch');
+  expect(r.away).toBeCloseTo(r.far, 5);
+  expect(r.away).toBeGreaterThan(2);
+  expect(r.hunted).toBe(false);
+  expect(r.strikes).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('hunting in the open, three strikes jerk the lizard aside, knock it down and it comes back at the spawn', async ({ page }) => {
   test.setTimeout(180_000);
   const errors = await boot(page);
@@ -134,6 +206,9 @@ test('it catches a crab, comes down on it to eat, and another crab is out on the
     const g = window.__game!;
     g.advance(2, false);
     const before = g.crabs().length;
+    // From the wing: taking off, its shadow sends the crabs round its perch running for cover.
+    g.hawkDo('soar');
+    g.advance(240, false);
     g.hawkDo('hunt_crab');
     let struck = -1;
     for (let i = 0; i < 90 * 60 && struck < 0; i++) {
@@ -359,5 +434,52 @@ test('the rock piles have gaps to hide in where the hawk cannot see the lizard',
     expect(s.slant, s.name).toBe(false);
     expect(s.out, s.name).toBe(true);
   }
+  expect(errors).toEqual([]);
+});
+
+test('peeking out of a shelter with only the head showing, the hawk cannot make the lizard out', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.hawkDo('off');
+    g.advance(2, false);
+    // Facing out of each shelter, head and neck past the roof's edge, then stepped right out.
+    const views = g.shelters().map((s) => {
+      const dir = s.name.endsWith('n') ? 1 : -1;
+      const look = (d: number) => {
+        g.teleport(s.x, s.z + dir * d, dir > 0 ? 0 : Math.PI);
+        g.advance(20, false);
+        const p = g.player();
+        return g.lizardInView({ x: p.x, y: p.y + 1.2, z: p.z });
+      };
+      return { name: s.name, peek: look(0.1), out: look(0.15) };
+    });
+    // Head out of the first one while the hawk hunts: it circles, gets the odd glimpse from low over
+    // the sea, never strikes, and gives up.
+    const s = g.shelters()[0];
+    const dir = s.name.endsWith('n') ? 1 : -1;
+    g.teleport(s.x, s.z + dir * 0.08, dir > 0 ? 0 : Math.PI);
+    g.advance(20, false);
+    g.hawkDo('on');
+    g.hawkDo('hunt');
+    let gaveUp = -1;
+    for (let i = 0; i < 12 * 60; i++) {
+      g.advance(1, false);
+      if (!g.hawk().hunting) {
+        gaveUp = i;
+        break;
+      }
+    }
+    return { views, gaveUp, hits: g.wounds().hits };
+  });
+  for (const v of r.views) {
+    // Some of it shows, but not enough; a step further out and it's plain to see.
+    expect(v.peek.seen, v.name).toBeGreaterThan(0);
+    expect(v.peek.sees, v.name).toBe(false);
+    expect(v.out.sees, v.name).toBe(true);
+  }
+  expect(r.gaveUp).toBeGreaterThan(0);
+  expect(r.hits).toBe(0);
   expect(errors).toEqual([]);
 });

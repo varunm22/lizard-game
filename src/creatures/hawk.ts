@@ -7,10 +7,12 @@ import { WATER_Y } from '../world/shore';
 import { SUN_OFFSET } from '../render/scene';
 import type { Cover } from '../world/cover';
 import type { Quarry } from './quarry';
+import type { Perch, PerchFit } from './perches';
 
 /**
- * A Galapagos hawk (assets-src/hawk.py), the island's predator. It sits on a high rock watching, or
- * soars in wide circles over the island. When it sees the lizard (cover.ts: not under water, in a
+ * A Galapagos hawk (assets-src/hawk.py), the island's predator. It rests on a high rock or a tree
+ * (perches.ts), flying off to a far perch if the lizard comes near, or soars in wide circles over the
+ * island, watching. When it sees the lizard (cover.ts: not under water, in a
  * plant, or behind a rock, log, trunk or tree crown) for a moment it comes for it: it circles low
  * over it, then stoops, throws its talons forward and strikes, climbs away and comes round again.
  * Three strikes and the lizard is down (wounds.ts); one or two put a smaller animal down. Then it
@@ -23,13 +25,6 @@ import type { Quarry } from './quarry';
  */
 export type HawkState = 'perch' | 'take_off' | 'soar' | 'stalk' | 'stoop' | 'strike' | 'climb' | 'return' | 'land' | 'feed';
 
-/** Where the hawk can sit: a point on top of something high, and the way it faces there. */
-export interface Perch {
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-}
 
 interface Extras {
   strike_time: number;
@@ -39,6 +34,8 @@ interface Extras {
   strike_talons: [number, number, number];
   /** The perched feet relative to the origin. */
   perch_feet: [number, number, number];
+  /** The perched tail from the feet: [back, out to either side, up] (m). */
+  perch_tail: [number, number, number][];
 }
 
 /** Flight speeds (m/s) and how fast it changes velocity (m/s²). */
@@ -49,7 +46,7 @@ const STOOP_SPEED = 1.7;
 const ACCEL = 1.4;
 const STOOP_ACCEL = 3;
 /** Its round over the island: centre, radius and height (m). */
-const PATROL = { x: 0.4, z: 0.2, r: 2.0, y: 1.3 };
+export const PATROL = { x: 0.4, z: 0.2, r: 2.0, y: 1.3 };
 /** Steering aims this far round a circle ahead of where it is (radians). */
 const LOOK_AHEAD = 0.5;
 /** Never lower than this over the ground or the sea while just flying (m). */
@@ -74,6 +71,16 @@ const HIT_REACH = 0.012;
 /** Of a lizard's spheres, the ones it aims at: head, neck, chest, hips, tail base. A crab has one. */
 const TARGET_SPHERES = [1, 2, 3, 4, 5];
 const AIM_SPHERE = 3;
+/** It only sees an animal when more than this share of those spheres is in plain view. */
+const SEEN_SHARE = 0.5;
+/** Out of its sight this long in the stoop (s), it pulls up rather than dive into cover. */
+const STOOP_BLIND = 0.25;
+/**
+ * Perched, it's resting, not hunting: the lizard coming this near (m, level and up or down) flushes
+ * it, and it flies off to the perch furthest from the lizard and won't hunt for a while (s).
+ */
+const FLUSH = { near: 0.5, below: 0.6 };
+const CALM_AFTER_FLUSH = 12;
 /** Having passed over something it decided against, it won't weigh that one again for this long (s). */
 const IGNORE_TIME = 12;
 /** Standing over a kill, it eats for this long before the last of it is gone (s). */
@@ -145,6 +152,10 @@ export class Hawk {
   private sightTimer = 0;
   /** Won't look for the lizard again until this runs out (s). */
   private calm = CALM_AT_START;
+  /** Flushed from its perch by the lizard here: the next perch it picks is as far from it as can be. */
+  private awayFrom: THREE.Vector3 | null = null;
+  /** How many times the lizard has flushed it off a perch. */
+  flushed = 0;
   private stalkFor = STALK_FIRST;
   /** Per prey: seconds of sight building toward a hunt, and how long it stays passed over. */
   private watch: { seen: number; ignore: number }[];
@@ -167,13 +178,14 @@ export class Hawk {
   private v2 = new THREE.Vector3();
   private e = new THREE.Euler(0, 0, 0, 'YXZ');
 
+  private perches: Perch[] = [];
+
   private constructor(
     gltf: Awaited<ReturnType<typeof loadGltf>>,
-    private perches: Perch[],
+    findPerches: (fit: PerchFit) => Perch[],
     private cover: Cover,
     private prey: Quarry[],
   ) {
-    if (perches.length === 0) throw new Error('the hawk needs somewhere to perch');
     this.watch = prey.map(() => ({ seen: 0, ignore: 0 }));
     this.root = gltf.scene;
     toonify(this.root);
@@ -188,7 +200,13 @@ export class Hawk {
       this.actions[name].setLoop(THREE.LoopOnce, 1);
       this.actions[name].clampWhenFinished = true;
     }
-    this.perch = perches[0];
+    // Perched with its feet at the origin, how far do its curled toes reach below them?
+    this.pos.set(0, this.perchHeight(), 0);
+    this.prevPos.copy(this.pos);
+    this.update(1, 0);
+    this.perches = findPerches({ sole: -this.lowest().feet, tail: this.extras.perch_tail });
+    if (this.perches.length === 0) throw new Error('the hawk needs somewhere to perch');
+    this.perch = this.perches[0];
     this.spell = this.span(PERCH_SPELL);
     this.sitOn(this.perch);
     this.prevPos.copy(this.pos);
@@ -196,8 +214,8 @@ export class Hawk {
     this.update(1, 0);
   }
 
-  static async load(url: string, scene: THREE.Scene, perches: Perch[], cover: Cover, prey: Quarry[]) {
-    const hawk = new Hawk(await loadGltf(url), perches, cover, prey);
+  static async load(url: string, scene: THREE.Scene, findPerches: (fit: PerchFit) => Perch[], cover: Cover, prey: Quarry[]) {
+    const hawk = new Hawk(await loadGltf(url), findPerches, cover, prey);
     scene.add(hawk.root);
     return hawk;
   }
@@ -218,6 +236,47 @@ export class Hawk {
   /** Standing on a kill, eating it. */
   get feeding(): boolean {
     return this.state === 'feed';
+  }
+
+  /**
+   * The lowest drawn point of its toes and of its tail (world y), from the skinned mesh as it's posed
+   * now: to check that a perched hawk stands on its feet.
+   */
+  lowest(): { feet: number; tail: number } {
+    this.root.updateMatrixWorld(true);
+    const out = { feet: Infinity, tail: Infinity };
+    const v = new THREE.Vector3();
+    this.root.traverse((o) => {
+      if (!(o instanceof THREE.SkinnedMesh)) return;
+      const bones = o.skeleton.bones;
+      const index = o.geometry.getAttribute('skinIndex');
+      const weight = o.geometry.getAttribute('skinWeight');
+      for (let i = 0; i < index.count; i++) {
+        let best = 0;
+        for (let k = 1; k < 4; k++) if (weight.getComponent(i, k) > weight.getComponent(i, best)) best = k;
+        const name = bones[index.getComponent(i, best)].name;
+        const part = /^(toes|hallux|shank)/.test(name) ? 'feet' : name === 'tail' ? 'tail' : null;
+        if (!part) continue;
+        o.getVertexPosition(i, v);
+        o.localToWorld(v);
+        out[part] = Math.min(out[part], v.y);
+      }
+    });
+    return out;
+  }
+
+  /** Put it straight onto perch `i`, sitting (tests). */
+  sitAt(i: number) {
+    this.perch = this.perches[i];
+    this.goTo('perch');
+    this.sitOn(this.perch);
+    this.prevPos.copy(this.pos);
+    this.prevQuat.copy(this.quat);
+  }
+
+  /** Where it can perch. */
+  get perchSpots(): readonly Perch[] {
+    return this.perches;
   }
 
   /** The perch it's on or heading for. */
@@ -339,7 +398,8 @@ export class Hawk {
       return;
     }
     // Coming down onto a kill, it has what it wants and looks at nothing else.
-    const watching = this.state === 'perch' || this.state === 'soar' || (this.state === 'return' && this.landFor === 'perch');
+    // Perched it's resting, not hunting; on the wing it looks about.
+    const watching = this.state === 'soar' || (this.state === 'return' && this.landFor === 'perch');
     if (!watching || this.calm > 0 || !this.enabled) {
       for (const w of this.watch) w.seen = 0;
       this.seesPrey = false;
@@ -374,7 +434,18 @@ export class Hawk {
     if (!this.hunting && Math.hypot(mid.x - this.pos.x, mid.z - this.pos.z) > SPOT_RANGE * p.acuity) return false;
     // Its eyes are a little ahead of and above its middle.
     this.eye.set(0, 0.008, 0.026).applyQuaternion(this.quat).add(this.pos);
-    return this.aimSpheres(p).some((s) => this.cover.inSight(this.eye, s, p.body));
+    return this.inView(p, this.eye).sees;
+  }
+
+  /**
+   * How much of `p` is in plain view from `eye`: a head or a tail poking out of cover isn't enough,
+   * the hawk has to see most of the body.
+   */
+  inView(p: Quarry, eye: THREE.Vector3) {
+    const spheres = this.aimSpheres(p);
+    let seen = 0;
+    for (const s of spheres) if (this.cover.inSight(eye, s, p.body)) seen++;
+    return { seen, of: spheres.length, sees: seen > spheres.length * SEEN_SHARE };
   }
 
   /** The spheres of `p` the hawk watches and strikes at. */
@@ -425,6 +496,18 @@ export class Hawk {
   private stepPerch() {
     this.sitOn(this.perch);
     this.vel.set(0, 0, 0);
+    const lizard = this.prey.find((p) => p.kind === 'player');
+    if (this.enabled && lizard && !lizard.down) {
+      const f = lizard.feet(this.v);
+      const p = this.perch;
+      if (Math.hypot(f.x - p.x, f.z - p.z) < FLUSH.near && p.y - f.y < FLUSH.below) {
+        this.flushed++;
+        this.awayFrom = f.clone();
+        this.calm = Math.max(this.calm, CALM_AFTER_FLUSH);
+        this.takeOff(false);
+        return;
+      }
+    }
     if (this.stateTime >= this.spell) this.takeOff(false);
   }
 
@@ -455,7 +538,7 @@ export class Hawk {
       if (this.huntNext) {
         this.huntNext = false;
         this.goTo('stalk');
-      } else this.goTo('soar');
+      } else this.goTo(this.awayFrom ? 'return' : 'soar');
     }
   }
 
@@ -498,7 +581,7 @@ export class Hawk {
       return;
     }
     this.dive(target, STOOP_SPEED, STOOP_ACCEL, dt);
-    if (this.stateTime > 4) this.goTo('climb');
+    if (this.stateTime > 4 || this.unseen > STOOP_BLIND) this.goTo('climb');
   }
 
   /**
@@ -558,7 +641,9 @@ export class Hawk {
   private contact() {
     this.struck = true;
     const t = this.v.copy(this.talons).applyQuaternion(this.quat).add(this.pos);
-    const hit = this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
+    // Gone mostly into cover at the last moment, the talons close on rock.
+    const open = this.quarry!.down || this.canSee(this.quarry!);
+    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
     if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
   }
 
@@ -586,7 +671,7 @@ export class Hawk {
     const yaw = Math.atan2(f.x - this.pos.x, f.z - this.pos.z);
     this.goTo('return');
     this.landFor = 'feed';
-    this.perch = { x: f.x - Math.sin(yaw) * FEED_BACK, y: f.y, z: f.z - Math.cos(yaw) * FEED_BACK, yaw };
+    this.perch = { x: f.x - Math.sin(yaw) * FEED_BACK, y: f.y, z: f.z - Math.cos(yaw) * FEED_BACK, yaw, on: 'kill' };
   }
 
   /** Standing over the kill, eating: until it's gone, or until the lizard comes back at the spawn. */
@@ -650,6 +735,7 @@ export class Hawk {
       }
       this.goTo('perch');
       this.spell = this.span(PERCH_SPELL);
+      this.awayFrom = null;
     }
   }
 
@@ -798,6 +884,9 @@ export class Hawk {
   }
 
   private choosePerch(): Perch {
+    // Put off its perch by the lizard: as far from it as it can get.
+    const from = this.awayFrom;
+    if (from) return this.perches.reduce((a, b) => (Math.hypot(b.x - from.x, b.z - from.z) > Math.hypot(a.x - from.x, a.z - from.z) ? b : a));
     // Somewhere other than where it just was, when it can.
     const others = this.perches.filter((p) => p !== this.perch);
     const pool = others.length ? others : this.perches;
@@ -807,22 +896,4 @@ export class Hawk {
   private span([a, b]: readonly [number, number]): number {
     return a + (b - a) * this.rand();
   }
-}
-
-/**
- * Perches: the tops of the tallest rocks out of the forest (the rock piles' crests among them), at
- * least a metre apart, the hawk facing inland over the island from each.
- */
-export function findPerches(obstacles: { kind: string; position: THREE.Vector3; height: number }[], forest: (x: number, z: number) => number, count = 4): Perch[] {
-  const found: Perch[] = [];
-  const tops = obstacles
-    .filter((o) => o.kind === 'rock' && o.height > 0.06 && forest(o.position.x, o.position.z) < 0.3)
-    .map((o) => ({ x: o.position.x, z: o.position.z, y: terrainHeight(o.position.x, o.position.z) + o.height }))
-    .sort((a, b) => b.y - a.y);
-  for (const t of tops) {
-    if (found.length >= count) break;
-    if (found.some((p) => Math.hypot(p.x - t.x, p.z - t.z) < 1)) continue;
-    found.push({ ...t, yaw: Math.atan2(PATROL.x - t.x, PATROL.z - t.z) });
-  }
-  return found;
 }
