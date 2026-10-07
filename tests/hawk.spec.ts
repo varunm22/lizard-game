@@ -199,6 +199,47 @@ test('hiding under water, the hawk loses interest and the hits heal', async ({ p
   expect(errors).toEqual([]);
 });
 
+test('riding the tortoise the lizard is out of reach: the hawk pulls out of its hunt and leaves it be', async ({ page }) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    g.hawkDo('hunt');
+    for (let i = 0; i < 60 * 60 && g.wounds().hits < 1; i++) g.advance(1, false);
+    const hit = g.wounds().hits;
+    // Up onto the shell while the hawk is still after it.
+    const t = g.tortoise();
+    g.teleport(t.x, t.z, t.yaw, t.y + 0.16);
+    let dropped = -1;
+    for (let i = 0; i < 60; i++) {
+      g.advance(1, false);
+      if (!g.hawk().hunting) {
+        dropped = i;
+        break;
+      }
+    }
+    // Told to hunt again, it won't go for a lizard on the shell either; meanwhile the hits heal.
+    let hunted = 0;
+    let ridden = 0;
+    for (let i = 0; i < 8 * 60; i++) {
+      if (i % 60 === 0) g.hawkDo('hunt');
+      g.advance(1, false);
+      if (g.hawk().hunting) hunted++;
+      if (g.tortoise().ridden) ridden++;
+    }
+    return { hit, dropped, hunted, ridden, wounds: g.wounds() };
+  });
+  expect(r.hit).toBe(1);
+  expect(r.dropped).toBeGreaterThanOrEqual(0);
+  expect(r.dropped).toBeLessThan(15);
+  expect(r.ridden).toBe(8 * 60);
+  // A hunt it's told to start lasts no longer than its next look round (every few steps).
+  expect(r.hunted).toBeLessThan(8 * 15);
+  expect(r.wounds.hits).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('it catches a crab, comes down on it to eat, and another crab is out on the rocks later', async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await boot(page);

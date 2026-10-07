@@ -29,8 +29,19 @@ const MAX_LEG_TURN = 0.6;
  */
 const TAIL_TOLERANCE = 0.0015;
 const LEG_TOLERANCE = 0.003;
-/** Halvings when searching for the smallest turn that clears. */
-const SEARCH_STEPS = 6;
+/**
+ * How far above and below the hips to look for what the lizard is on (m). A tail bone in anything
+ * else (a rock beside it) turns aside first, level with the ground, so the sway stops against the
+ * rock instead of lifting over it; one in what the lizard is on (the ground, a bobbing shell) is
+ * lifted out of it, not swung about.
+ */
+const SUPPORT_ABOVE = 0.01;
+const SUPPORT_BELOW = 0.03;
+/** Most more (radians) a bone keeps turning the way it's turned already, before trying the other ways. */
+const KEEP_SLACK = 0.3;
+/** Step out (radians), then halvings, when searching for the smallest turn that clears. */
+const SEARCH_STEP = 0.1;
+const SEARCH_STEPS = 4;
 /**
  * How fast a bone's turn eases toward the turn it needs (per second, exponential): quickly out of
  * something, slowly back to its pose, so it doesn't flick back and forth.
@@ -49,6 +60,8 @@ interface Link {
   points: { at: THREE.Vector3; r: number; from?: THREE.Object3D }[];
   max: number;
   tolerance: number;
+  /** Turn aside first (the tail) when in something beside the lizard, before out along the push or up. */
+  aside: boolean;
   /** The turn applied last frame, in the parent bone's frame, eased toward what the pose needs. */
   turn: THREE.Quaternion;
 }
@@ -72,6 +85,13 @@ export class BodyClearance {
   private push = new THREE.Vector3();
   private worstPush = new THREE.Vector3();
   private worstAt = new THREE.Vector3();
+  /** The collider the last point `pushOut` measured needs moving out of most, and the worst point's. */
+  private from: number | null = null;
+  private worstFrom: number | null = null;
+  /** The collider under the hips this frame: what the lizard is lying or standing on. */
+  private support: number | null = null;
+  private down = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  private hips: THREE.Object3D;
   private joint = new THREE.Vector3();
   private q = new THREE.Quaternion();
   private parentQ = new THREE.Quaternion();
@@ -87,6 +107,7 @@ export class BodyClearance {
   ) {
     const root = model.root;
     root.updateMatrixWorld(true);
+    this.hips = root.getObjectByName(TAIL[0][0])!;
     TAIL.forEach(([name, r], i) => {
       const bone = root.getObjectByName(name)!;
       const next = TAIL[i + 1];
@@ -94,16 +115,21 @@ export class BodyClearance {
         ? root.getObjectByName(next[0])!.getWorldPosition(new THREE.Vector3())
         : root.localToWorld(new THREE.Vector3(...model.tailTip));
       bone.worldToLocal(end);
-      this.links.push({ bone, points: ALONG.map((t) => ({ at: end.clone().multiplyScalar(t), r })), max: MAX_TAIL_TURN, tolerance: TAIL_TOLERANCE, turn: new THREE.Quaternion() });
+      this.links.push({ bone, points: ALONG.map((t) => ({ at: end.clone().multiplyScalar(t), r })), max: MAX_TAIL_TURN, tolerance: TAIL_TOLERANCE, aside: true, turn: new THREE.Quaternion() });
     });
     for (const { upper, lower, foot } of model.legs) {
-      this.links.push({ bone: upper, points: [{ at: foot, r: SOLE_RADIUS, from: lower }], max: MAX_LEG_TURN, tolerance: LEG_TOLERANCE, turn: new THREE.Quaternion() });
+      this.links.push({ bone: upper, points: [{ at: foot, r: SOLE_RADIUS, from: lower }], max: MAX_LEG_TURN, tolerance: LEG_TOLERANCE, aside: false, turn: new THREE.Quaternion() });
     }
   }
 
   /** @param dt Seconds since the last frame, for easing the turns. */
   apply(dt: number) {
     this.model.root.updateMatrixWorld(true);
+    // What it's lying or standing on, from just above the hips (where the tail joins) down.
+    const at = this.hips.getWorldPosition(this.p);
+    this.down.origin = { x: at.x, y: at.y + SUPPORT_ABOVE, z: at.z };
+    const hit = this.world.castRay(this.down, SUPPORT_ABOVE + SUPPORT_BELOW, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, IGNORE_STEMS, undefined, this.exclude);
+    this.support = hit ? hit.collider.handle : null;
     for (const link of this.links) {
       const bone = link.bone;
       this.posed.copy(bone.quaternion);
@@ -144,31 +170,48 @@ export class BodyClearance {
     // Keep turning the way it's already turned if that still works, so it doesn't swap sides of a
     // rock (and pass through it on the way) as the overlap shifts.
     const turned = 2 * Math.acos(Math.min(1, Math.abs(link.turn.w)));
-    if (turned > 0.01) {
-      const sign = link.turn.w < 0 ? -1 : 1;
-      const axis = new THREE.Vector3(link.turn.x, link.turn.y, link.turn.z).multiplyScalar(sign).normalize();
-      ways.unshift(axis.applyQuaternion(link.bone.parent!.getWorldQuaternion(this.parentQ)));
+    const current = turned > 0.01 ? this.turnAxis(link) : null;
+    const asideNow = current !== null && Math.abs(current.y) > 0.7;
+    const beside = link.aside && this.support !== null && this.worstFrom !== this.support;
+    if (beside) {
+      // A tail turns aside first, whichever side needs less, so a sway into a rock stops at it.
+      const level = new THREE.Vector3().crossVectors(along, sideways).normalize();
+      let best: THREE.Vector3 | null = null;
+      let bestAngle = link.max;
+      // The way it's already turned aside if that still works (as above), else the nearer side.
+      for (const asides of [asideNow ? [current] : [], [level, level.clone().negate()]]) {
+        for (const axis of asides) {
+          const angle = this.smallest(link, axis, bestAngle);
+          if (angle !== null && (best === null || angle < bestAngle)) {
+            best = axis;
+            bestAngle = angle;
+          }
+        }
+        if (best) break;
+      }
+      if (best) {
+        this.turnBy(link, best, bestAngle);
+        this.target.copy(link.bone.quaternion).multiply(this.posedInverse());
+        return;
+      }
     }
+    if (current && !(beside && asideNow)) ways.unshift(current);
     let fallback: THREE.Vector3 | null = null;
     let fallbackDepth = depth;
     for (const axis of ways) {
-      const atMax = this.turnBy(link, axis, link.max);
-      if (atMax > link.tolerance) {
+      const angle = this.smallest(link, axis, link.max);
+      // The way it's turned already only while it needs about as much as it has: a much bigger turn
+      // that way is swinging round into something else.
+      if (axis === current && angle !== null && angle > turned + KEEP_SLACK) continue;
+      if (angle === null) {
+        const atMax = this.turnBy(link, axis, link.max);
         if (atMax < fallbackDepth) {
           fallbackDepth = atMax;
           fallback = axis;
         }
         continue;
       }
-      // Clear at the limit: halve down to the smallest turn that still clears.
-      let lo = 0;
-      let hi = link.max;
-      for (let i = 0; i < SEARCH_STEPS && hi - lo > 0.01; i++) {
-        const mid = (lo + hi) / 2;
-        if (this.turnBy(link, axis, mid) > link.tolerance) lo = mid;
-        else hi = mid;
-      }
-      this.turnBy(link, axis, hi);
+      this.turnBy(link, axis, angle);
       this.target.copy(link.bone.quaternion).multiply(this.posedInverse());
       return;
     }
@@ -176,6 +219,37 @@ export class BodyClearance {
       this.turnBy(link, fallback, link.max);
       this.target.copy(link.bone.quaternion).multiply(this.posedInverse());
     }
+  }
+
+  /** The world axis the bone is turned about now (from `link.turn`, in its parent's frame). */
+  private turnAxis(link: Link): THREE.Vector3 {
+    const sign = link.turn.w < 0 ? -1 : 1;
+    const axis = new THREE.Vector3(link.turn.x, link.turn.y, link.turn.z).multiplyScalar(sign).normalize();
+    return axis.applyQuaternion(link.bone.parent!.getWorldQuaternion(this.parentQ));
+  }
+
+  /**
+   * The smallest turn about `axis`, up to `max`, that brings `link` within its tolerance of clear;
+   * null if none does. Stepped out from no turn, since turning far enough one way can swing the
+   * bone into something else (a tail lifted out of the ground and into the side of a rock).
+   */
+  private smallest(link: Link, axis: THREE.Vector3, max: number): number | null {
+    let lo = 0;
+    let hi = -1;
+    for (let a = Math.min(SEARCH_STEP, max); ; a = Math.min(a + SEARCH_STEP, max)) {
+      if (this.turnBy(link, axis, a) <= link.tolerance) {
+        hi = a;
+        break;
+      }
+      lo = a;
+      if (a >= max) return null;
+    }
+    for (let i = 0; i < SEARCH_STEPS && hi - lo > 0.01; i++) {
+      const mid = (lo + hi) / 2;
+      if (this.turnBy(link, axis, mid) > link.tolerance) lo = mid;
+      else hi = mid;
+    }
+    return hi;
   }
 
   private posedInverse() {
@@ -232,6 +306,7 @@ export class BodyClearance {
         most = d;
         this.worstPush.copy(this.push);
         this.worstAt.copy(p);
+        this.worstFrom = this.from;
       }
     }
     return most;
@@ -244,6 +319,7 @@ export class BodyClearance {
   private pushOut(p: THREE.Vector3, r: number, out: THREE.Vector3): number {
     out.set(0, 0, 0);
     let most = 0;
+    this.from = null;
     this.ball.radius = Math.max(r, 1e-4);
     this.world.intersectionsWithShape(
       p,
@@ -279,6 +355,7 @@ export class BodyClearance {
         }
         if (need > most) {
           most = need;
+          this.from = c.handle;
           out.set(ox, oy, oz);
         }
         return true;

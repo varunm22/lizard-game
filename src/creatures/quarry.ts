@@ -5,6 +5,7 @@ import type { LizardModel } from '../player/lizardModel';
 import type { Wounds } from '../player/wounds';
 import type { Crabs } from './crab';
 import type { Iguanas } from './iguana';
+import type { Tortoise } from './tortoise';
 
 /**
  * What the hawk can hunt. The lizard, the other iguanas and the crabs are each built very
@@ -33,6 +34,8 @@ export interface Quarry {
   readonly acuity: number;
   /** The chance it bothers, once it has one in its eye: a crab is barely worth the dive. */
   readonly appeal: number;
+  /** Out of the hawk's reach where it is (the lizard riding the tortoise): it won't go for it. */
+  readonly safe?: boolean;
   /** A strike landed, the blow travelling (dx, dz). False if it was already down. */
   strike(dx: number, dz: number): boolean;
   /** Down: lying there to be eaten. */
@@ -63,8 +66,12 @@ class PlayerQuarry implements Quarry {
     private player: PlayerController,
     private model: LizardModel,
     private wounds: Wounds,
+    private onTortoise: () => boolean,
   ) {}
 
+  get safe() {
+    return this.onTortoise();
+  }
   get available() {
     // Always there: knocked down it's a kill to stand over, and it comes back at the spawn.
     return true;
@@ -191,9 +198,9 @@ class CrabQuarry implements Quarry {
 }
 
 /** Everything on the island the hawk hunts: the lizard first, then the other iguanas, then the crabs. */
-export function quarries(player: PlayerController, lizard: LizardModel, wounds: Wounds, herd: Iguanas, crabs: Crabs): Quarry[] {
+export function quarries(player: PlayerController, lizard: LizardModel, wounds: Wounds, herd: Iguanas, crabs: Crabs, tortoise: Tortoise): Quarry[] {
   return [
-    new PlayerQuarry(player, lizard, wounds),
+    new PlayerQuarry(player, lizard, wounds, () => tortoise.ridden),
     ...herd.list.map((_, i) => new IguanaQuarry(herd, i)),
     ...crabs.list.map((_, i) => new CrabQuarry(crabs, i)),
   ];

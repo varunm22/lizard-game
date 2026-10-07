@@ -292,6 +292,47 @@ test('backing into the big rock, the tail bends round it instead of going into i
   expect(deepest).toBeLessThan(0.001);
 });
 
+test('resting beside the big rock, the tail sways up to the rock and stops there instead of lifting over it', async ({ page }) => {
+  await boot(page);
+  const rock = await obstacle(page, 'rock-big');
+  // Facing away from the rock's east side, the tail running back past it: its sway swings it in.
+  await teleport(page, rock.x + 0.085, rock.z + 0.1, 0);
+  await steps(page, 240, false);
+  const tips: { x: number; y: number }[] = [];
+  let deepest = 0;
+  // One idle cycle (3 s), the tail tip in the lizard's own frame.
+  for (let i = 0; i < 60; i++) {
+    await steps(page, 3, false);
+    tips.push(await page.evaluate(() => window.__game!.clearancePoints()[7]));
+    deepest = Math.max(deepest, ...(await page.evaluate(() => window.__game!.clearance())).slice(0, 8));
+  }
+  const xs = tips.map((t) => t.x);
+  const ys = tips.map((t) => t.y);
+  // Out in the open it sways 27 mm either side. Here it stops short on the rock's side, still swings
+  // fully the other way, and doesn't rise or dip (it used to move 13 mm off the ground at the rock).
+  expect(Math.min(...xs)).toBeGreaterThan(-0.02);
+  expect(Math.max(...xs)).toBeGreaterThan(0.025);
+  expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.003);
+  expect(deepest).toBeLessThan(0.002);
+});
+
+test('resting with its tail angled in past the low mid rock, the tail stays down instead of riding up over it', async ({ page }) => {
+  await boot(page);
+  const rock = await obstacle(page, 'rock-mid');
+  // Hips just off the rock's east side, turned so the tail runs back in past it.
+  const yaw = 0.6;
+  await teleport(page, rock.x + rock.radius + 0.02 + 0.06 * Math.sin(yaw), rock.z + 0.06 * Math.cos(yaw), yaw);
+  await steps(page, 200, false);
+  const heights: number[] = [];
+  for (let i = 0; i < 45; i++) {
+    await steps(page, 4, false);
+    const tail = (await page.evaluate(() => window.__game!.clearancePoints())).slice(0, 8);
+    heights.push(Math.max(...tail.map((p) => p.y)));
+  }
+  // It used to ride up and down over the rock by about 5 cm as it swayed.
+  expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.005);
+});
+
 test('landing on the mid rock and the log: stands on top and stays put', async ({ page }) => {
   await boot(page);
   // The mid rock is narrower than the lizard is long: a running jump carries it over and off.

@@ -392,7 +392,8 @@ export class Hawk {
       const q = this.quarry;
       if (now) this.seesPrey = !!q && this.canSee(q);
       if (this.state === 'feed') return;
-      if (!q || !q.available) return this.giveUp(CALM_AFTER_LOSING);
+      // Out of reach (the lizard got onto the tortoise): it pulls out at once, even mid-dive.
+      if (!q || !q.available || q.safe) return this.giveUp(CALM_AFTER_LOSING);
       this.unseen = this.seesPrey ? 0 : this.unseen + dt;
       if (this.unseen >= LOSE_INTEREST && this.state !== 'strike') this.giveUp(CALM_AFTER_LOSING);
       return;
@@ -427,7 +428,7 @@ export class Hawk {
   }
 
   private canSee(p: Quarry): boolean {
-    if (!this.enabled || !p.available) return false;
+    if (!this.enabled || !p.available || p.safe) return false;
     if (p.down) return true;
     const spheres = p.spheres;
     const mid = spheres[Math.min(AIM_SPHERE, spheres.length - 1)];

@@ -76,7 +76,7 @@ async function main() {
     followCam.yaw = SPAWN.yaw;
   });
   const cover = new Cover(world, obstacles, plants);
-  const prey = quarries(player, lizard, wounds, iguanas, crabs);
+  const prey = quarries(player, lizard, wounds, iguanas, crabs, tortoise);
   const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(obstacles, forestCover, PATROL, fit), cover, prey);
 
   const fade = new OccluderFade(world, obstacles);
@@ -184,7 +184,7 @@ async function main() {
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
         .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
     sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
-    tortoise: () => ({ ...tortoise.position, state: tortoise.state, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
+    tortoise: () => ({ ...tortoise.position, state: tortoise.state, ridden: tortoise.ridden, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),
     crabs: () =>
       crabs.list.map((c) => ({
