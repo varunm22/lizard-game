@@ -126,6 +126,9 @@ export interface GameTestHooks {
     hops: number;
     /** Who it's grooming or on its way to groom: 'player', another iguana's index, or null. */
     grooming: 'player' | number | null;
+    /** Caught by the hawk and lying there, and eaten (off the rocks until it comes back). */
+    dead: boolean;
+    gone: boolean;
   }[];
   /** The crab's animation clips. */
   crabClips: () => string[];
@@ -161,6 +164,10 @@ export interface GameTestHooks {
     touch: number | null;
     /** How much the ground under it is bare black lava, 0 (sand, soil) to 1. */
     lava: number;
+    /** Strikes the hawk has landed on it, whether it's down, and whether it's been eaten. */
+    hits: number;
+    down: boolean;
+    gone: boolean;
     /** Who it's going to bask beside: 'player', an iguana's index, or null. */
     mate: 'player' | number | null;
   }[];
@@ -184,6 +191,11 @@ export interface GameTestHooks {
    * water, its crest `peak` above the sea surface. Their slabs are obstacles named after the pile.
    */
   rockPiles: () => { name: string; z: number; x0: number; x1: number; peak: number }[];
+  /**
+   * The sheltered gaps beside the rock piles: a broad slab on two low ones, with room under it to
+   * hide from the hawk. `reach` is how far out from the middle the roof covers (m).
+   */
+  shelters: () => { name: string; x: number; y: number; z: number; roofY: number; reach: number }[];
   /** Algae patches still growing, or only those within r of (x, y, z), nearest first; `grown` is how far in (0 to 1). */
   algae: (near?: { x: number; y: number; z: number; r: number }) => { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
   /** Remove (eat) the algae patch with this id; false if there's none. */
@@ -209,6 +221,41 @@ export interface GameTestHooks {
    */
   viewFrom: (offset: { x: number; y: number; z: number } | null, at?: { x: number; y: number; z: number }) => void;
   /** Place the player's feet at (x, z) facing `yaw`, on the ground or at height `y`, with the camera behind. */
+  /**
+   * The hawk: where it is (its middle, world m), its speed, state and clip, what it's hunting and
+   * whether it could see it at its last look, whether it's eating a kill, how many animals its shadow
+   * has sent running, strikes made and landed, and the perch it's on or bound for.
+   */
+  hawk: () => {
+    x: number;
+    y: number;
+    z: number;
+    speed: number;
+    state: string;
+    clip: string | null;
+    hunting: boolean;
+    feeding: boolean;
+    quarry: { kind: string; index: number } | null;
+    scared: number;
+    seesPrey: boolean;
+    strikes: number;
+    hitsLanded: number;
+    perch: number;
+    enabled: boolean;
+  };
+  hawkClips: () => string[];
+  /**
+   * 'hunt': go for the lizard now; 'hunt_iguana' and 'hunt_crab': for the nearest of those; 'off':
+   * never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'.
+   */
+  hawkDo: (action: 'hunt' | 'hunt_iguana' | 'hunt_crab' | 'off' | 'on' | 'perch' | 'soar') => void;
+  /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
+  inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
+  /**
+   * The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether
+   * it's hunted, a flinch under way, and the dust and feathers in the air from strikes.
+   */
+  wounds: () => { hits: number; down: boolean; countdown: number | null; hunted: boolean; flinching: boolean; puff: number };
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 

@@ -23,7 +23,7 @@ export interface SceneContext {
  * Where the sun sits relative to the point it lights; the shadow box follows the player. High enough
  * to be above the forest canopy, so the trees dapple the ground in their shade.
  */
-const SUN_OFFSET = new THREE.Vector3(2.5, 5, 1.7);
+export const SUN_OFFSET = new THREE.Vector3(2.5, 5, 1.7);
 
 export function createScene(container: HTMLElement): SceneContext {
   const renderer = new THREE.WebGLRenderer({ antialias: true });

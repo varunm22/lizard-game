@@ -5,6 +5,8 @@ async function boot(page: Page) {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.waitForFunction(() => window.__game?.ready === true);
+  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
+  await page.evaluate(() => window.__game!.hawkDo('off'));
   return errors;
 }
 
@@ -193,6 +195,8 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
 });
 
 test('standing still, on the ground or riding, the tail and feet hold steady', async ({ page }) => {
+  // Thousands of display frames with the clearance queries on: a good minute on a software renderer.
+  test.setTimeout(180_000);
   const errors = await boot(page);
   const worst = await page.evaluate(() => {
     const g = window.__game!;
