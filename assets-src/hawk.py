@@ -966,6 +966,10 @@ def strike_pose(f):
 PERCH_FRAMES = 120
 PERCH_PITCH = 0.85  # body raised from horizontal (radians)
 PERCH_HEAD = PERCH_PITCH - 0.15  # the head tipped back down to look out level, a little down
+# The tail carried straight on down the line of the body, angled back from the perch rather than
+# hanging straight down below the feet: the game seats the hawk with its feet on a rock or branch and
+# its tail clear behind (`perch_tail`).
+PERCH_TAIL = 0.0
 PERCH_LOOK = [(0, 0.0), (8, 0.0), (11, 0.55), (34, 0.55), (37, -0.2), (60, -0.2), (63, -0.6), (88, -0.6), (91, 0.15),
               (112, 0.15), (115, 0.0), (120, 0.0)]
 
@@ -974,7 +978,7 @@ def perch_base(p, breath=0.0):
     p.root(pitch=PERCH_PITCH, dz=PERCH_DZ, dy=PERCH_DY)
     p.wing(dihedral=0.0, sweep=0.6, elbow=1.2, wrist=1.6, span=0.001)
     p.fold(1.0 + 0.02 * breath)
-    p.tail(lift=-0.55, fan=0.85)
+    p.tail(lift=PERCH_TAIL, fan=0.85)
     # Legs straight down under the body (counter the body's pitch), toes round the perch.
     p.legs(swing=PERCH_PITCH - 0.35, knee=0.55, grip=0.35, spread=0.04)
     return p
@@ -985,7 +989,7 @@ def perch_pose(f):
     p = perch_base(P(), math.sin(3 * w))
     p.head(pitch_down=PERCH_HEAD + 0.12 * max(0.0, math.sin(2 * w)), turn=track(f, PERCH_LOOK), neck_up=0.15)
     # A flick of the tail now and then.
-    p.tail(lift=-0.55 + track(f, [(0, 0), (70, 0), (73, 0.18), (78, 0)]), fan=0.85)
+    p.tail(lift=PERCH_TAIL + track(f, [(0, 0), (70, 0), (73, 0.18), (78, 0)]), fan=0.85)
     return p.d
 
 
@@ -1064,7 +1068,7 @@ def take_off_pose(f):
     lean = track(f, [(0, 0.0), (5, 1.0), (14, 1.0)])
     pitch = PERCH_PITCH - 0.4 * lean
     p.root(pitch=pitch * stand, dz=(PERCH_DZ - 0.003 * crouch) * stand, dy=PERCH_DY * stand)
-    p.tail(lift=-0.55 * stand - 0.05 * (1 - stand), fan=0.85 * stand + 1.2 * (1 - stand))
+    p.tail(lift=PERCH_TAIL * stand - 0.05 * (1 - stand), fan=0.85 * stand + 1.2 * (1 - stand))
     p.head(pitch_down=PERCH_HEAD * stand + 0.2 * (1 - stand), neck_up=0.15 * stand)
     tuck = track(f, [(TAKE_OFF_FRAME, 0.0), (18, 1.0)])
     p.legs(swing=lerp(PERCH_PITCH - 0.35 - 0.3 * crouch, 1.25, tuck), knee=lerp(0.55 + 0.4 * crouch, 0.9, tuck),
@@ -1128,6 +1132,20 @@ def gltf(v):
     return [v.x, v.z, -v.y]
 
 
+def perch_tail(rig, feet):
+    """The perched tail as points relative to the feet: [back, out to the side, up] (m) down each
+    feather row's middle and edge, so the game can seat the hawk where its tail clears the perch."""
+    pose = perch_base(P()).d
+    _, world = pose_matrices(rig, pose)
+    feet = feet_point(rig, pose)
+    pts = []
+    for i, (y, hw) in enumerate(TAIL[1:], 1):
+        for x in (0.0, hw):
+            q = world['tail'] @ Vector((x, y, TAIL_Z - 0.0006 * i / (len(TAIL) - 1)))
+            pts.append([round(q.y - feet.y, 4), round(abs(q.x - feet.x), 4), round(q.z - feet.z, 4)])
+    return pts
+
+
 def export(rig, feet):
     talons = talon_point(rig, strike_pose(STRIKE_FRAME))
     rig['strike_time'] = STRIKE_FRAME / FPS
@@ -1136,6 +1154,7 @@ def export(rig, feet):
     # The talons at the moment of the strike, and the perched feet, relative to the origin.
     rig['strike_talons'] = gltf(talons)
     rig['perch_feet'] = gltf(Vector((0, 0, feet.z)))
+    rig['perch_tail'] = perch_tail(rig, feet)
     rig['wingspan'] = 2 * PRIMARIES[2][2]
     bpy.ops.export_scene.gltf(
         filepath=os.path.abspath(OUT), export_format='GLB', export_yup=True, export_apply=False,

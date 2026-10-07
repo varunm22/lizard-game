@@ -18,7 +18,8 @@ export function startLoop({ step, render }: LoopCallbacks): () => void {
   let handle = 0;
 
   const frame = (now: number) => {
-    const frameDt = Math.min((now - last) / 1000, MAX_STEPS_PER_FRAME * FIXED_DT);
+    // A frame's timestamp is when it began, which after a long task (loading) can be before `last`.
+    const frameDt = Math.max(0, Math.min((now - last) / 1000, MAX_STEPS_PER_FRAME * FIXED_DT));
     last = now;
     accumulator += frameDt;
 
