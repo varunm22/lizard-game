@@ -33,6 +33,8 @@ import bpy
 import numpy as np
 from mathutils import Euler, Matrix, Vector
 
+from common import lerp, srgb_lin, smooth, track, hexrgb, blur, check_winding, make_materials
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[-1] if sys.argv[-1].endswith('.glb') else os.path.join(HERE, '..', 'src', 'assets', 'hawk.glb')
 FPS = 30
@@ -113,33 +115,6 @@ FOLD = [
 FOLD_TIP_X = 0.0030  # where the two wing tips cross over the tail
 
 
-def lerp(a, b, t):
-    return a + (b - a) * t
-
-
-def smooth(t):
-    t = min(1.0, max(0.0, t))
-    return t * t * (3 - 2 * t)
-
-
-def track(f, keys):
-    """Scalar channel: keys [(frame, value), ...], eased between keys, held past the ends."""
-    if f <= keys[0][0]:
-        return keys[0][1]
-    for (f0, v0), (f1, v1) in zip(keys, keys[1:]):
-        if f <= f1:
-            return lerp(v0, v1, smooth((f - f0) / (f1 - f0)))
-    return keys[-1][1]
-
-
-def srgb_lin(c):
-    return tuple(v ** 2.2 for v in c)
-
-
-def hexrgb(h):
-    return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
-
-
 def loft_at(y):
     """Half width, half height and centre z of the body loft at y."""
     pts = LOFT
@@ -177,12 +152,6 @@ def region_uv(name, u, v):
     u = min(0.995, max(0.005, u))
     v = min(0.995, max(0.005, v))
     return (lerp(u0, u1, u), lerp(v0, v1, v))
-
-
-def blur(a, n=2):
-    for _ in range(n):
-        a = (a + np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1)) / 5
-    return a
 
 
 def mix(img, colour, mask):
@@ -311,23 +280,6 @@ COLORS = {
     'Eye': srgb_lin(hexrgb('#1a120c')),
 }
 SOLID_UV = (0.5, 0.5)
-
-
-def make_materials():
-    mats = {}
-    tex = make_texture()
-    for name, rgb in COLORS.items():
-        m = bpy.data.materials.new(name)
-        bsdf = m.node_tree.nodes['Principled BSDF']
-        bsdf.inputs['Roughness'].default_value = 0.85
-        if rgb is None:
-            node = m.node_tree.nodes.new('ShaderNodeTexImage')
-            node.image = tex
-            m.node_tree.links.new(node.outputs['Color'], bsdf.inputs['Base Color'])
-        else:
-            bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
-        mats[name] = m
-    return mats
 
 
 # ---------------------------------------------------------------------------------------------
@@ -653,39 +605,6 @@ def build_legs(mb):
         c1 = p1 + d * 0.0018 + Vector((0, 0, -0.0005))
         c2 = c1 + d * 0.0012 + Vector((0, 0, -0.0016))
         tube(mb, [p1, c1, c2], [TOE_R * 0.8, TOE_R * 0.55, 0.0001], lambda t: {'hallux' + n: 1.0}, 'Talon', sides=6)
-
-
-def check_winding(me):
-    """Every piece is a closed shell, so its signed volume must be positive (faces pointing out).
-    Inside-out pieces render see-through in the game, so stop the build if there are any."""
-    import bmesh
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    seen, bad, count = set(), [], 0
-    for f0 in bm.faces:
-        if f0.index in seen:
-            continue
-        stack, vol, comp = [f0], 0.0, []
-        seen.add(f0.index)
-        while stack:
-            f = stack.pop()
-            comp.append(f)
-            for e in f.edges:
-                for g in e.link_faces:
-                    if g.index not in seen:
-                        seen.add(g.index)
-                        stack.append(g)
-        for f in comp:
-            vs = [v.co for v in f.verts]
-            for i in range(1, len(vs) - 1):
-                vol += vs[0].dot(vs[i].cross(vs[i + 1])) / 6
-        count += 1
-        if vol <= 0:
-            bad.append((len(comp), vol))
-    bm.free()
-    print('winding:', count, 'pieces,', len(bad), 'inside out', bad[:5], '|', len(me.vertices), 'verts', len(me.polygons), 'faces')
-    if bad:
-        raise SystemExit('inside-out mesh pieces')
 
 
 def build_mesh(rig, mats):
@@ -1168,7 +1087,7 @@ def export(rig, feet):
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.render.fps = FPS
-    mats = make_materials()
+    mats = make_materials(COLORS, make_texture)
     rig = build_armature()
     build_mesh(rig, mats)
     feet = build_animations(rig)

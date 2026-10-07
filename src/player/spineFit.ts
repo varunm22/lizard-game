@@ -1,3 +1,4 @@
+import { wrapAngle } from '../math/angles';
 /**
  * Fits the lizard's spine to the surface under it, in the side-on plane of its body.
  *
@@ -81,10 +82,9 @@ function aim(v: Point, fromY: number, toY: number, near: number): number {
   const r = Math.hypot(v.s, v.y);
   const phi = Math.atan2(v.y, v.s);
   const x = Math.asin(clamp((toY - fromY) / r, -1, 1));
-  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-  const a1 = wrap(x - phi);
-  const a2 = wrap(Math.PI - x - phi);
-  return Math.abs(wrap(a1 - near)) <= Math.abs(wrap(a2 - near)) ? a1 : a2;
+  const a1 = wrapAngle(x - phi);
+  const a2 = wrapAngle(Math.PI - x - phi);
+  return Math.abs(wrapAngle(a1 - near)) <= Math.abs(wrapAngle(a2 - near)) ? a1 : a2;
 }
 
 /**

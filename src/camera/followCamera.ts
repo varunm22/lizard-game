@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
 import { EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 
@@ -94,7 +95,7 @@ export class FollowCamera {
     this.sinceLook += dt;
     this.sinceSteer = steering ? 0 : this.sinceSteer + dt;
     if (this.sinceSteer < CAM.recenterLinger && this.sinceLook > CAM.recenterDelay) {
-      const diff = Math.atan2(Math.sin(facingYaw - this.yaw), Math.cos(facingYaw - this.yaw));
+      const diff = wrapAngle(facingYaw - this.yaw);
       this.yaw += diff * (1 - Math.exp(-CAM.recenterRate * dt));
     }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
@@ -110,11 +111,7 @@ export class Tortoise {
     this.shellBone = shellBone;
     this.standingHeight = this.shellHeight();
     this.mixer = new THREE.AnimationMixer(this.root);
-    this.actions = Object.fromEntries(gltf.animations.map((c) => [c.name, this.mixer.clipAction(c)]));
-    for (const name of ['eat', 'lie_down', 'get_up']) {
-      this.actions[name].setLoop(THREE.LoopOnce, 1);
-      this.actions[name].clampWhenFinished = true;
-    }
+    this.actions = createAnimationActions(this.mixer, gltf.animations, ['eat', 'lie_down', 'get_up']);
 
     this.world = world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
@@ -284,7 +281,7 @@ export class Tortoise {
   private enter(state: TortoiseState) {
     this.state = state;
     this.stateTime = 0;
-    this.play(state === 'walk' ? 'walk' : state);
+    this.play(state);
   }
 
   private play(name: string) {

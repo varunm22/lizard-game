@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 /**
  * Every test drives time itself with `window.__game.advance`: the game stops its real-time loop and
@@ -26,12 +27,7 @@ async function teleport(page: Page, x: number, z: number, yaw: number) {
 }
 
 async function boot(page: Page, x = 0.6, z = 0.3, yaw = 0) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
   await teleport(page, x, z, yaw);
   return errors;
 }
@@ -50,10 +46,7 @@ async function driveUntilZBelow(page: Page, input: Drive, z: number, max = 300) 
 
 test('walking with W follows the ground and comes to rest; Shift runs', async ({ page }) => {
   // Open ground with no plants near the way (they slow the lizard), camera behind looking +Z: forward is +Z.
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  await bootGame(page);
   const laneX = await page.evaluate(() => {
     const ps = window.__game!.plants();
     const near = (x: number) => ps.filter((p) => Math.abs(p.x - x) < 0.06 && p.z > 0.15 && p.z < 1.3).length;

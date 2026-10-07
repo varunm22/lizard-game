@@ -1,18 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
-
-/** Like the other specs, every test drives time itself with `window.__game.advance`. */
-async function boot(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
-  return errors;
-}
+import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('trees are solid: the lizard can walk into a trunk and round it, never through or up it', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   // A forest tree with open ground for 30 cm south of it (+Z), so the walk up to it is clear.
   const tree = await page.evaluate(() => {
     const g = window.__game!;
@@ -59,7 +49,7 @@ test('trees are solid: the lizard can walk into a trunk and round it, never thro
 });
 
 test('algae grow on the rocky shore at and under the waterline, and each patch can be removed', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
   const algae = await page.evaluate(() => window.__game!.algae());
   expect(algae.length).toBeGreaterThan(300);
@@ -93,7 +83,7 @@ test('algae grow on the rocky shore at and under the waterline, and each patch c
 });
 
 test('rock piles on the rocky shore can be climbed to the crest, from the lava and out of the sea', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const runs = await page.evaluate(() => {
     const g = window.__game!;
     const w = g.ocean().waterY;

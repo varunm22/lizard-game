@@ -1,3 +1,4 @@
+import type { PlayerController } from './controller';
 import type { LizardClip } from './lizardModel';
 import { MOVEMENT } from './movement';
 
@@ -47,4 +48,17 @@ export class MovementStateMachine {
     if (this.state !== 'land' || gait !== 'idle' || this.landTimer <= 0) this.state = gait;
     return this.state;
   }
+}
+
+/** Snapshot the controller after its physics step for gait selection. */
+export function movementFacts(body: PlayerController): PhysicsFacts {
+  return {
+    grounded: body.grounded,
+    jumped: body.jumped,
+    landed: body.landed,
+    verticalSpeed: body.velocity.y,
+    horizontalSpeed: body.horizontalSpeed,
+    climbing: body.climbing,
+    swimming: body.swimming,
+  };
 }

@@ -1,13 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard loads idle', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
   await page.evaluate(() => window.__game!.advance(30));
 
   // Sample a grid over forest, clearing, beach and sea floor, away from obstacles: the collider and

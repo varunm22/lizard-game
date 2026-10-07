@@ -16,12 +16,9 @@ import random
 
 import bpy
 
+from common import srgb
+
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'plants.glb')
-
-
-def srgb(hex_colour):
-    """'#rrggbb' as linear RGB, which is what glTF vertex colours are."""
-    return tuple(((int(hex_colour[i:i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))
 
 
 def mix(a, b, t):

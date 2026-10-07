@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';
 import { WATER_Y, waterDepth } from '../world/shore';
@@ -378,7 +379,7 @@ export class PlayerController {
     this.turning = input;
     this.bodyTurning = false;
     if (input !== 0 && allowed) {
-      const yaw = Math.atan2(Math.sin(this.yaw - input * M.turnRate * dt), Math.cos(this.yaw - input * M.turnRate * dt));
+      const yaw = wrapAngle(this.yaw - input * M.turnRate * dt);
       const blocked = this.world.intersectionWithShape(
         this.position,
         this.bodyRotation(yaw),
@@ -585,7 +586,7 @@ export class PlayerController {
   }
 
   yawAt(alpha: number): number {
-    const diff = Math.atan2(Math.sin(this.yaw - this.prevYaw), Math.cos(this.yaw - this.prevYaw));
+    const diff = wrapAngle(this.yaw - this.prevYaw);
     return this.prevYaw + diff * alpha;
   }
 

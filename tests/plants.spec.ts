@@ -1,12 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('plant stems block the lizard and lean a little, thick plants slow it, and they creep back upright', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
 
   const plants = await page.evaluate(() => window.__game!.plants());
   const kinds = new Set(plants.map((p) => p.kind));
