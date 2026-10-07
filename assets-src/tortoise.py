@@ -25,6 +25,8 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from common import lerp, srgb_lin, leg_name, smooth, track, hexrgb, make_materials
+
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'tortoise.glb')
 FPS = 30
 
@@ -66,33 +68,6 @@ def leg_points(side, front):
 
 HEAD_CENTRE = (0, -0.152, 0.0760)
 NECK_PATH = [(0, -0.080, 0.048), (0, -0.099, 0.056), (0, -0.117, 0.064), (0, -0.136, 0.071)]
-
-
-def lerp(a, b, t):
-    return a + (b - a) * t
-
-
-def smooth(t):
-    t = min(1.0, max(0.0, t))
-    return t * t * (3 - 2 * t)
-
-
-def track(f, keys):
-    """Scalar animation channel: keys [(frame, value), ...], eased between keys, held past the ends."""
-    if f <= keys[0][0]:
-        return keys[0][1]
-    for (f0, v0), (f1, v1) in zip(keys, keys[1:]):
-        if f <= f1:
-            return lerp(v0, v1, smooth((f - f0) / (f1 - f0)))
-    return keys[-1][1]
-
-
-def srgb_lin(c):
-    return tuple(v ** 2.2 for v in c)
-
-
-def hexrgb(h):
-    return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -231,23 +206,6 @@ COLORS = {
     'Shine': (1.0, 1.0, 1.0),
 }
 SOLID_UV = (0.75, 0.5)
-
-
-def make_materials():
-    mats = {}
-    tex = make_texture()
-    for name, rgb in COLORS.items():
-        m = bpy.data.materials.new(name)
-        bsdf = m.node_tree.nodes['Principled BSDF']
-        bsdf.inputs['Roughness'].default_value = 0.85
-        if rgb is None:
-            node = m.node_tree.nodes.new('ShaderNodeTexImage')
-            node.image = tex
-            m.node_tree.links.new(node.outputs['Color'], bsdf.inputs['Base Color'])
-        else:
-            bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
-        mats[name] = m
-    return mats
 
 
 # ---------------------------------------------------------------------------------------------
@@ -428,10 +386,6 @@ def build_neck_head(mb):
         # Heavy lid folds over each eye, and the nostrils.
         blob(mb, (side * 0.0111, -0.1585, 0.0824), (0.0032, 0.0034, 0.0013), 'head', 'Skin', rings=5, sides=10, band='head')
         blob(mb, (side * 0.0026, -0.1710, 0.0792), (0.0011, 0.0009, 0.0008), 'head', 'Eye', rings=4, sides=6)
-
-
-def leg_name(side, front):
-    return ('front' if front else 'hind') + ('_L' if side > 0 else '_R')
 
 
 LEGS = [leg_name(s, f) for f in (True, False) for s in (1, -1)]
@@ -850,7 +804,7 @@ def export(rig):
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.render.fps = FPS
-    mats = make_materials()
+    mats = make_materials(COLORS, make_texture)
     rig = build_armature()
     build_mesh(rig, mats)
     build_animations(rig)

@@ -32,6 +32,8 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+from common import lerp, srgb_lin, smooth, track, hexrgb, blur, check_winding
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[-1] if sys.argv[-1].endswith('.glb') else os.path.join(HERE, '..', 'src', 'assets', 'crab.glb')
 FPS = 60
@@ -71,33 +73,6 @@ CRAB_GAIT_SPEED = gait_speed(WALK)
 CRAB_RUN_SPEED = gait_speed(RUN)
 
 
-def lerp(a, b, t):
-    return a + (b - a) * t
-
-
-def smooth(t):
-    t = min(1.0, max(0.0, t))
-    return t * t * (3 - 2 * t)
-
-
-def track(f, keys):
-    """Scalar animation channel: keys [(frame, value), ...], eased between keys, held past the ends."""
-    if f <= keys[0][0]:
-        return keys[0][1]
-    for (f0, v0), (f1, v1) in zip(keys, keys[1:]):
-        if f <= f1:
-            return lerp(v0, v1, smooth((f - f0) / (f1 - f0)))
-    return keys[-1][1]
-
-
-def srgb_lin(c):
-    return tuple(v ** 2.2 for v in c)
-
-
-def hexrgb(h):
-    return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
-
-
 # ---------------------------------------------------------------------------------------------
 # Texture atlas, 512 x 256, painted with numpy (row 0 is the bottom). Left half: the carapace seen
 # from above. Right half: leg and claw bands (u around the segment, v along it).
@@ -114,12 +89,6 @@ def cara_uv(xn, yn):
 def leg_uv(band, t, a):
     v0, v1 = LEG_BANDS[band]
     return 0.5 + 0.5 * ((a / (2 * math.pi)) % 1.0) * 0.998, lerp(v0, v1, min(0.995, max(0.005, t)))
-
-
-def blur(a, n=2):
-    for _ in range(n):
-        a = (a + np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1)) / 5
-    return a
 
 
 def paint_carapace(rng):
@@ -641,39 +610,6 @@ def build_eyes(mb, chains):
     # Mouthparts: the flat third maxillipeds closing the mouth under the front margin.
     for side in (1, -1):
         blob(mb, (side * 0.0011, -CL * 0.72, BODY_Z - 0.0005), (0.0010, 0.0012, 0.0004), 'body', 'Belly', 5, 10)
-
-
-def check_winding(me):
-    """Every piece is a closed shell, so its signed volume must be positive (faces pointing out).
-    Inside-out pieces render see-through in the game, so stop the build if there are any."""
-    import bmesh
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    seen, bad, count = set(), [], 0
-    for f0 in bm.faces:
-        if f0.index in seen:
-            continue
-        stack, vol, comp = [f0], 0.0, []
-        seen.add(f0.index)
-        while stack:
-            f = stack.pop()
-            comp.append(f)
-            for e in f.edges:
-                for g in e.link_faces:
-                    if g.index not in seen:
-                        seen.add(g.index)
-                        stack.append(g)
-        for f in comp:
-            vs = [v.co for v in f.verts]
-            for i in range(1, len(vs) - 1):
-                vol += vs[0].dot(vs[i].cross(vs[i + 1])) / 6
-        count += 1
-        if vol <= 0:
-            bad.append((len(comp), vol))
-    bm.free()
-    print('winding:', count, 'pieces,', len(bad), 'inside out', bad[:5], '|', len(me.vertices), 'verts', len(me.polygons), 'faces')
-    if bad:
-        raise SystemExit('inside-out mesh pieces')
 
 
 def build_mesh(rig, mats, chains):

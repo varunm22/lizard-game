@@ -1,15 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
-
-async function boot(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  return errors;
-}
+import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('the hawk loads with its clips and sits on a perch, calm, at the start', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(60, false);
@@ -26,7 +19,7 @@ test('the hawk loads with its clips and sits on a perch, calm, at the start', as
 });
 
 test('perched on a rock or a tree, the hawk stands on its toes with its tail clear behind', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.hawkDo('off');
@@ -58,7 +51,7 @@ test('perched on a rock or a tree, the hawk stands on its toes with its tail cle
 
 test('walking up to the perched hawk flushes it to the perch furthest away, not hunting', async ({ page }) => {
   test.setTimeout(120_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -99,7 +92,7 @@ test('walking up to the perched hawk flushes it to the perch furthest away, not 
 
 test('hunting in the open, three strikes jerk the lizard aside, knock it down and it comes back at the spawn', async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -161,7 +154,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
 
 test('hiding under water, the hawk loses interest and the hits heal', async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -201,7 +194,7 @@ test('hiding under water, the hawk loses interest and the hits heal', async ({ p
 
 test('riding the tortoise the lizard is out of reach: the hawk pulls out of its hunt and leaves it be', async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -242,7 +235,7 @@ test('riding the tortoise the lizard is out of reach: the hawk pulls out of its 
 
 test('it catches a crab, comes down on it to eat, and another crab is out on the rocks later', async ({ page }) => {
   test.setTimeout(240_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -305,7 +298,7 @@ test('it catches a crab, comes down on it to eat, and another crab is out on the
 
 test('it takes two strikes to put another iguana down, then the hawk eats it and it comes back', async ({ page }) => {
   test.setTimeout(240_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -358,7 +351,7 @@ test('it takes two strikes to put another iguana down, then the hawk eats it and
 
 test('after knocking the lizard down the hawk stands on it, eating, until it comes back at the spawn', async ({ page }) => {
   test.setTimeout(240_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -403,7 +396,7 @@ test('after knocking the lizard down the hawk stands on it, eating, until it com
 
 test("the hawk's shadow passing over sends crabs and iguanas running", async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -438,7 +431,7 @@ test("the hawk's shadow passing over sends crabs and iguanas running", async ({ 
 });
 
 test('the rock piles have gaps to hide in where the hawk cannot see the lizard', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.hawkDo('off');
@@ -480,7 +473,7 @@ test('the rock piles have gaps to hide in where the hawk cannot see the lizard',
 
 test('peeking out of a shelter with only the head showing, the hawk cannot make the lizard out', async ({ page }) => {
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.hawkDo('off');

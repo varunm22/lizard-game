@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 /** Like traversal.spec.ts, every test drives time itself with `window.__game.advance`. */
 const steps = (page: Page, n: number, draw = true) =>
@@ -26,12 +27,7 @@ async function beachLane(page: Page) {
 }
 
 test('swimming: wades in until fully under, sinks, Space tilts it up, rocks still block it, swims out', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
   const sea = await beachLane(page);
 
   // Off the beach the sea floor shelves down to a couple of lizard lengths deep.
@@ -128,12 +124,7 @@ test('swimming: wades in until fully under, sinks, Space tilts it up, rocks stil
 });
 
 test('ripples: wading in rings the water gently, jumping in makes a bigger splash, surfacing rings it too', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
   const sea = await beachLane(page);
   /** Run up to `n` steps with `input`, returning the first new ripple and where the lizard was then. */
   const firstRipple = (input: object, n: number) =>
@@ -182,12 +173,7 @@ test('ripples: wading in rings the water gently, jumping in makes a bigger splas
 });
 
 test('swimming: climbs out of the sea onto a domed rock without falling back in', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
+  const errors = await bootGame(page);
 
   // Swim at the rock island from every side, holding W and tapping Space to keep near the surface.
   // Its crown is a dome with no flat spot right past the rim, which used to refuse the climb: the

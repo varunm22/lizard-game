@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { wrapAngle } from '../math/angles';
+import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
@@ -195,11 +197,7 @@ export class Hawk {
     this.extras = rig.userData as Extras;
     this.talons = new THREE.Vector3(...this.extras.strike_talons);
     this.mixer = new THREE.AnimationMixer(this.root);
-    this.actions = Object.fromEntries(gltf.animations.map((c) => [c.name, this.mixer.clipAction(c)]));
-    for (const name of ONE_SHOT) {
-      this.actions[name].setLoop(THREE.LoopOnce, 1);
-      this.actions[name].clampWhenFinished = true;
-    }
+    this.actions = createAnimationActions(this.mixer, gltf.animations, ONE_SHOT);
     // Perched with its feet at the origin, how far do its curled toes reach below them?
     this.pos.set(0, this.perchHeight(), 0);
     this.prevPos.copy(this.pos);
@@ -568,7 +566,7 @@ export class Hawk {
     this.steer(this.v, STALK_SPEED, ACCEL, dt);
     const close = Math.abs(this.pos.y - (c.y + STALK.up)) < 0.25 && Math.hypot(this.pos.x - c.x, this.pos.z - c.z) < STALK.r * 1.6;
     const off = Math.atan2(c.x - this.pos.x, c.z - this.pos.z) - Math.atan2(this.vel.x, this.vel.z);
-    const ahead = Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) < STOOP_CONE;
+    const ahead = Math.abs(wrapAngle(off)) < STOOP_CONE;
     if (ready && close && ahead) this.goTo('stoop');
   }
 
@@ -753,7 +751,7 @@ export class Hawk {
     let level = Math.hypot(this.vel.x, this.vel.z);
     let heading = level > 1e-4 ? Math.atan2(this.vel.x, this.vel.z) : this.yaw;
     if (Math.hypot(dx, dz) > 1e-4) {
-      const turn = Math.atan2(Math.sin(Math.atan2(dx, dz) - heading), Math.cos(Math.atan2(dx, dz) - heading));
+      const turn = wrapAngle(Math.atan2(dx, dz) - heading);
       heading += THREE.MathUtils.clamp(turn, -TURN_SPEED * dt, TURN_SPEED * dt);
     }
     const dv = accel * dt;
@@ -821,7 +819,7 @@ export class Hawk {
         pitch = THREE.MathUtils.clamp(Math.atan2(-this.vel.y, level), -max, max);
       }
     }
-    const turn = Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw));
+    const turn = wrapAngle(yaw - this.yaw);
     const rate = dt > 0 ? turn / dt : 0;
     const ease = 1 - Math.exp(-TURN_RATE * dt);
     this.yaw += turn * (sitting ? 1 : ease);

@@ -1,17 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
-
-async function boot(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
-  return errors;
-}
+import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('crabs live on the lava shore and the rock piles, standing on the rock out of the sea, and get about', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -67,7 +58,7 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
 });
 
 test('a crab runs from another iguana coming close too, not just the lizard', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -96,7 +87,7 @@ test('a crab runs from another iguana coming close too, not just the lizard', as
 });
 
 test('a crab runs off sideways when the lizard comes close', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -125,7 +116,7 @@ test('a crab runs off sideways when the lizard comes close', async ({ page }) =>
 });
 
 test('a crab under the lizard is pushed out from under it, and two crabs never stand in each other', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -158,7 +149,7 @@ test('a crab under the lizard is pushed out from under it, and two crabs never s
 });
 
 test('once the lizard lies still a crab comes and grooms it, riding its back, and hops off when it moves', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -228,7 +219,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
 });
 
 test('a crab climbs a rock pile to the crest, hopping up its steps', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);

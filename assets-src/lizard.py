@@ -25,6 +25,8 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from common import lerp, srgb_lin, leg_name
+
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'lizard.glb')
 FPS = 30
 
@@ -80,10 +82,6 @@ MOUTH_ACROSS = 6  # faces across the palate and the floor of the mouth
 def srgb(hex_colour):
     """'#rrggbb' as linear RGB, which is what glTF base colours are."""
     return tuple(((int(hex_colour[i:i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))
-
-
-def lerp(a, b, t):
-    return a + (b - a) * t
 
 
 def profile_at(y):
@@ -319,10 +317,6 @@ def make_texture():
     img.file_format = 'JPEG'
     img.pack()
     return img
-
-
-def srgb_lin(c):
-    return tuple(v ** 2.2 for v in c)
 
 
 COLORS = {
@@ -660,10 +654,6 @@ def blob(mb, centre, radii, part, mat, rings=6, sides=10):
         for k in range(sides):
             k2 = (k + 1) % sides
             mb.add_face([grid[i][k], grid[i][k2], grid[i + 1][k2], grid[i + 1][k]], mat)
-
-
-def leg_name(side, front):
-    return ('front' if front else 'hind') + ('_L' if side > 0 else '_R')
 
 
 # ---------------------------------------------------------------------------------------------

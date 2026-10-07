@@ -1,17 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
-
-async function boot(page: Page) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.waitForFunction(() => window.__game?.ready === true);
-  // Keep the hawk from striking the lizard mid-test (hawk.spec.ts is about it).
-  await page.evaluate(() => window.__game!.hawkDo('off'));
-  return errors;
-}
+import { expect, test } from '@playwright/test';
+import { bootGame } from './helpers/bootGame';
 
 test('the tortoise walks its round, leaving the plants it walks over flat for about a minute, and new ones come up along it', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
@@ -66,7 +57,7 @@ test('the tortoise walks its round, leaving the plants it walks over flat for ab
 });
 
 test('the tortoise stops to eat a plant at its mouth, and lies down to rest', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const meal = await page.evaluate(() => {
     const g = window.__game!;
     const t = g.tortoise();
@@ -114,7 +105,7 @@ test('the tortoise stops to eat a plant at its mouth, and lies down to rest', as
 });
 
 test('the tortoise shoves the lizard out of its way instead of stopping for it', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
@@ -145,7 +136,7 @@ test('the tortoise shoves the lizard out of its way instead of stopping for it',
 });
 
 test('the lizard rides on the shell, carried round with the tortoise while it stands still', async ({ page }) => {
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const ride = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
@@ -197,7 +188,7 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
 test('standing still, on the ground or riding, the tail and feet hold steady', async ({ page }) => {
   // Thousands of display frames with the clearance queries on: a good minute on a software renderer.
   test.setTimeout(180_000);
-  const errors = await boot(page);
+  const errors = await bootGame(page);
   const worst = await page.evaluate(() => {
     const g = window.__game!;
     // The biggest jump of any kept-clear point (tail, then feet) in the lizard's own frame from one

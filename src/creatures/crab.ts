@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { wrapAngle } from '../math/angles';
+import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
@@ -221,11 +223,7 @@ class Crab {
     this.root = clone(source);
     this.root.traverse((o) => (o.frustumCulled = false));
     this.mixer = new THREE.AnimationMixer(this.root);
-    this.actions = Object.fromEntries(animations.map((c) => [c.name, this.mixer.clipAction(c)]));
-    for (const name of ['hop_left', 'hop_right', 'duck', 'display']) {
-      this.actions[name].setLoop(THREE.LoopOnce, 1);
-      this.actions[name].clampWhenFinished = true;
-    }
+    this.actions = createAnimationActions(this.mixer, animations, ['hop_left', 'hop_right', 'duck', 'display']);
     this.yaw = rand() * Math.PI * 2;
     // Hidden until it's put down on the rock (Crabs.settle).
     this.root.visible = false;
@@ -438,7 +436,7 @@ class Crab {
     // Turn so its side faces the target. Its left is (cos yaw, -sin yaw).
     const want = Math.atan2(-dz * this.side, dx * this.side);
     let turn = want - this.yaw;
-    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    turn = wrapAngle(turn);
     const rate = (run ? TURN_RUN : TURN_WALK) * dt;
     this.yaw += Math.max(-rate, Math.min(rate, turn));
     this.play(`${run ? 'run' : 'walk'}_${this.side > 0 ? 'left' : 'right'}`);
