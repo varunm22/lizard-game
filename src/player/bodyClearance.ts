@@ -30,14 +30,11 @@ const MAX_LEG_TURN = 0.6;
 const TAIL_TOLERANCE = 0.0015;
 const LEG_TOLERANCE = 0.003;
 /**
- * A tail bone in something it's down beside turns aside first, level with the ground, so the sway
- * stops against a rock instead of lifting over it. Down beside is anything other than what the
- * lizard is on, or that but at least this far below its top (m), or against a steep face of it. A
- * tail only just into the top of what it's lying on (a bobbing shell) is lifted out instead, not
- * swung about.
+ * How far above and below the hips to look for what the lizard is on (m). A tail bone in anything
+ * else (a rock beside it) turns aside first, level with the ground, so the sway stops against the
+ * rock instead of lifting over it; one in what the lizard is on (the ground, a bobbing shell) is
+ * lifted out of it, not swung about.
  */
-const ASIDE_BELOW = 0.008;
-/** How far above and below the hips to look for what the lizard is on (m). */
 const SUPPORT_ABOVE = 0.01;
 const SUPPORT_BELOW = 0.03;
 /** Most more (radians) a bone keeps turning the way it's turned already, before trying the other ways. */
@@ -63,7 +60,7 @@ interface Link {
   points: { at: THREE.Vector3; r: number; from?: THREE.Object3D }[];
   max: number;
   tolerance: number;
-  /** Turn aside first (the tail) when down beside something, before out along the push or up. */
+  /** Turn aside first (the tail) when in something beside the lizard, before out along the push or up. */
   aside: boolean;
   /** The turn applied last frame, in the parent bone's frame, eased toward what the pose needs. */
   turn: THREE.Quaternion;
@@ -88,9 +85,6 @@ export class BodyClearance {
   private push = new THREE.Vector3();
   private worstPush = new THREE.Vector3();
   private worstAt = new THREE.Vector3();
-  /** How far below the top of anything it's in the last point `pushOut` measured is, and the worst point (m). */
-  private below = 0;
-  private worstBelow = 0;
   /** The collider the last point `pushOut` measured needs moving out of most, and the worst point's. */
   private from: number | null = null;
   private worstFrom: number | null = null;
@@ -165,7 +159,6 @@ export class BodyClearance {
     this.target.identity();
     const depth = this.turnBy(link, null, 0);
     if (depth <= link.tolerance) return;
-    const below = this.worstBelow;
     link.bone.getWorldPosition(this.joint);
     const along = this.p.copy(this.worstAt).sub(this.joint).normalize().clone();
     // Ways to turn the worst point, each perpendicular to the bone: out along its push, up, either side.
@@ -179,7 +172,7 @@ export class BodyClearance {
     const turned = 2 * Math.acos(Math.min(1, Math.abs(link.turn.w)));
     const current = turned > 0.01 ? this.turnAxis(link) : null;
     const asideNow = current !== null && Math.abs(current.y) > 0.7;
-    const beside = link.aside && (below > ASIDE_BELOW || this.worstFrom !== this.support);
+    const beside = link.aside && this.support !== null && this.worstFrom !== this.support;
     if (beside) {
       // A tail turns aside first, whichever side needs less, so a sway into a rock stops at it.
       const level = new THREE.Vector3().crossVectors(along, sideways).normalize();
@@ -313,7 +306,6 @@ export class BodyClearance {
         most = d;
         this.worstPush.copy(this.push);
         this.worstAt.copy(p);
-        this.worstBelow = this.below;
         this.worstFrom = this.from;
       }
     }
@@ -327,7 +319,6 @@ export class BodyClearance {
   private pushOut(p: THREE.Vector3, r: number, out: THREE.Vector3): number {
     out.set(0, 0, 0);
     let most = 0;
-    this.below = 0;
     this.from = null;
     this.ball.radius = Math.max(r, 1e-4);
     this.world.intersectionsWithShape(
@@ -350,14 +341,11 @@ export class BodyClearance {
         let ox = dx * s;
         let oy = dy * s;
         let oz = dz * s;
-        // Touching from outside, it's beside the face if that's steep, on top of it if not.
-        let under = Math.abs(oy) < 0.7 * need ? LOOK_UP : 0;
         if (hit.isInside) {
           // Just inside a convex hull, the projection can come out through its far side (down through
           // the bottom of a shell the point is grazing). Up to the top is the move when that's shorter.
           this.up.origin = p;
           const toTop = pose ? exact.castRay(this.up, pose.pos, pose.rot, LOOK_UP, false) : c.castRay(this.up, LOOK_UP, false);
-          under = toTop >= 0 ? toTop : LOOK_UP;
           if (toTop >= 0 && toTop + r < need) {
             need = toTop + r;
             ox = 0;
@@ -365,7 +353,6 @@ export class BodyClearance {
             oz = 0;
           }
         }
-        this.below = Math.max(this.below, under);
         if (need > most) {
           most = need;
           this.from = c.handle;
