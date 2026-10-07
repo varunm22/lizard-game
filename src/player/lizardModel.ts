@@ -4,7 +4,7 @@ import { loadGltf } from '../render/gltf';
 import type { Point, SpineRig } from './spineFit';
 
 /** Animation clips baked by assets-src/lizard.py. */
-export const LIZARD_CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'land', 'swim'] as const;
+export const LIZARD_CLIPS = ['idle', 'walk', 'run', 'jump', 'fall', 'land', 'swim', 'collapse'] as const;
 export type LizardClip = (typeof LIZARD_CLIPS)[number];
 
 /**
@@ -15,14 +15,22 @@ export const LIZARD_GAIT_SPEED = { walk: 0.15, run: 0.3 } as const;
 /** The swim clip's tail beat at playback rate 1 (one cycle per 0.67 s) suits this swimming speed. */
 export const LIZARD_SWIM_SPEED = 0.14;
 
-const ONE_SHOT: LizardClip[] = ['jump', 'land'];
+const ONE_SHOT: LizardClip[] = ['jump', 'land', 'collapse'];
 /**
  * The bite clip moves only the neck, head and jaw, and is layered over the body's clip. Its jaws
  * snap shut this far into it (s): frame 10 of `BITE` in assets-src/lizard.py.
  */
 const BITE_CLIP = 'bite';
 export const BITE_SNAP = 10 / 30;
-const BITE_TRACKS = ['neck.quaternion', 'head.quaternion', 'jaw.quaternion'];
+/**
+ * Clips layered over the body's clip (additively, against their first frame, the rest pose), and
+ * the bones each moves: the bite, and the flinch when the hawk strikes (one per side struck).
+ */
+const LAYERED: Record<string, string[]> = {
+  [BITE_CLIP]: ['neck', 'head', 'jaw'],
+  flinch_left: ['root', 'chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
+  flinch_right: ['root', 'chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
+};
 /** How a head turn splits between the neck and head bones. */
 const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
 /** How a nod splits between the neck and head bones. */
@@ -56,6 +64,8 @@ export class LizardModel {
   nod = 0;
   private turnBones: { bone: THREE.Object3D; share: number }[] = [];
   private biteAction: THREE.AnimationAction | undefined;
+  /** Other layered clips (the flinches), by name. */
+  private layers = new Map<string, THREE.AnimationAction>();
   /** Called as the jaws snap shut on the bite under way. */
   private onSnap: (() => void) | null = null;
   /**
@@ -109,14 +119,17 @@ export class LizardModel {
     });
     this.mixer = new THREE.AnimationMixer(root);
     for (const clip of clips) {
-      if (clip.name === BITE_CLIP) {
+      const layered = LAYERED[clip.name];
+      if (layered) {
         // Additive against its first frame, the rest pose, so it adds to whatever else is playing. Only
         // the bones it moves, on copies of their keys: the GLB shares key arrays between clips.
         const tracks = clip.tracks
-          .filter((t) => BITE_TRACKS.includes(t.name))
+          .filter((t) => layered.some((bone) => t.name === bone + '.quaternion'))
           .map((t) => new THREE.QuaternionKeyframeTrack(t.name, t.times.slice(), t.values.slice()));
-        const bite = THREE.AnimationUtils.makeClipAdditive(new THREE.AnimationClip(BITE_CLIP, clip.duration, tracks));
-        this.biteAction = this.mixer.clipAction(bite).setLoop(THREE.LoopOnce, 1);
+        const additive = THREE.AnimationUtils.makeClipAdditive(new THREE.AnimationClip(clip.name, clip.duration, tracks));
+        const action = this.mixer.clipAction(additive).setLoop(THREE.LoopOnce, 1);
+        if (clip.name === BITE_CLIP) this.biteAction = action;
+        else this.layers.set(clip.name, action);
         continue;
       }
       const action = this.mixer.clipAction(clip);
@@ -199,6 +212,16 @@ export class LizardModel {
     this.biteAction.reset().play();
     this.onSnap = onSnap ?? null;
     return true;
+  }
+
+  /** Jerk as if struck on that side: the body tips away from it and curls toward it, the head ducks and the tail lashes. */
+  flinch(side: 'left' | 'right') {
+    this.layers.get('flinch_' + side)?.reset().play();
+  }
+
+  /** Whether a flinch is under way. */
+  get flinching(): boolean {
+    return [...this.layers.values()].some((a) => a.isRunning());
   }
 
   /** Playback rate of the current clip (1 = as authored). */

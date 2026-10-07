@@ -56,6 +56,18 @@ const CLIMB_LIFT = 0.016;
 const CLIMB_BASE_TIME = 0.2;
 const CLIMB_TIME_PER_M = 6;
 
+/**
+ * Rapier's controller can jam on a rounded or flat top it's resting on (another lizard's back, the
+ * top of a cactus): every pass of its sweep hits that top at once and nothing moves, even straight
+ * along it, and on some gentle slopes of the ground it creeps at a fraction of the pace. Asked to move
+ * this much (m) and getting under JAM_SHARE of it, blocked only by ground it could walk up met within
+ * JAM_TOI (m), it tries again without sinking, and then lifted this much clear of the top.
+ */
+const JAM_MOVE = 1e-4;
+const JAM_SHARE = 0.5;
+const JAM_TOI = 1e-3;
+const JAM_LIFT = 5e-4;
+
 const smooth = (t: number) => {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
@@ -115,6 +127,10 @@ export class PlayerController {
   private riding = false;
   /** Collision groups standing still checks against (Rapier's packed membership and filter); default everything. */
   stillGroups: number | undefined = undefined;
+  /** What it can climb onto (Rapier's packed membership and filter): anything but plant stems by default. */
+  climbGroups = IGNORE_STEMS;
+  /** Colliders the last step's move on land ran into from the side. */
+  readonly blockers: RAPIER.Collider[] = [];
   /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
   speedScale = 1;
   private world: RAPIER.World;
@@ -152,6 +168,7 @@ export class PlayerController {
     this.prevYaw = this.yaw;
     this.prevSwimPitch = this.swimPitch;
     this.landed = this.jumped = false;
+    this.blockers.length = 0;
     this.applyCarry();
     if (this.climb) {
       this.stepClimb(dt);
@@ -243,7 +260,15 @@ export class PlayerController {
     // kinematic body the controller lets a lizard on a slope slip, and nothing should nudge a still one.
     const still = this.grounded && !hasInput && Math.hypot(vx, vz) < 1e-3;
     this.kcc.computeColliderMovement(this.collider, this.desired, undefined, still ? this.stillGroups : undefined);
-    const moved = this.kcc.computedMovement();
+    let moved = this.kcc.computedMovement();
+    if (Math.hypot(this.desired.x, this.desired.z) > JAM_MOVE && this.jammed(moved)) {
+      for (const lift of [0, JAM_LIFT]) {
+        this.kcc.computeColliderMovement(this.collider, { x: this.desired.x, y: Math.max(this.desired.y, lift), z: this.desired.z });
+        moved = this.kcc.computedMovement();
+        if (!this.jammed(moved)) break;
+      }
+    }
+    this.noteBlockers();
     const wasGrounded = this.grounded;
     // Rapier still reports grounded on the step a jump leaves the floor; rising from a jump is airborne.
     // It also reports grounded early when falling fast, as soon as the ground is within this step's
@@ -294,6 +319,25 @@ export class PlayerController {
 
     if (this.grounded && !wasGrounded && this.airTime > 0.05) this.landed = true;
     this.airTime = this.grounded ? 0 : this.airTime + dt;
+  }
+
+  /** The last move got under JAM_SHARE of the way asked along the ground, every hit on it being walkable ground met at once. */
+  private jammed(moved: { x: number; z: number }): boolean {
+    const n = this.kcc.numComputedCollisions();
+    if (n === 0 || Math.hypot(moved.x, moved.z) > Math.hypot(this.desired.x, this.desired.z) * JAM_SHARE) return false;
+    for (let i = 0; i < n; i++) {
+      const c = this.kcc.computedCollision(i);
+      if (!c || c.toi > JAM_TOI || c.normal1.y < 0.7) return false;
+    }
+    return true;
+  }
+
+  /** Remember what the last move ran into side-on (not stood on), for whoever wants to push it. */
+  private noteBlockers() {
+    for (let i = 0; i < this.kcc.numComputedCollisions(); i++) {
+      const c = this.kcc.computedCollision(i);
+      if (c?.collider && Math.abs(c.normal1.y) < 0.7 && !this.blockers.includes(c.collider)) this.blockers.push(c.collider);
+    }
   }
 
   /**
@@ -447,7 +491,7 @@ export class PlayerController {
     const lowest = perched ? feetY - PERCH_DROP : feetY + CLIMB_MIN;
     const topAt = (s: number) => {
       this.supportRay.origin = { x: this.position.x + fx * s, y: from, z: this.position.z + fz * s };
-      const hit = this.world.castRay(this.supportRay, from - lowest, true, undefined, IGNORE_STEMS, undefined, this.body);
+      const hit = this.world.castRay(this.supportRay, from - lowest, true, undefined, this.climbGroups, undefined, this.body);
       // A ray that starts inside something means its top is out of reach.
       return hit && hit.timeOfImpact > 1e-4 ? from - hit.timeOfImpact : null;
     };

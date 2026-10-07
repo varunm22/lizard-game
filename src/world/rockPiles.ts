@@ -36,6 +36,40 @@ const JITTER = 0.01;
 const LAYER = 0.07;
 const MAX_LAYERS = 4;
 
+/**
+ * Shelters: at the land end of each pile, off to one side, a broad slab lies across two low ones,
+ * leaving a gap under it the lizard can crawl into, out of sight of anything overhead. How far along
+ * the pile they are (0 land end), the roof's radius, the supports' radius and how far apart they
+ * stand, and the clear height under the roof (m).
+ */
+const SHELTER = { along: 0.12, roof: 0.15, leg: 0.05, legs: 0.11, gap: 0.05, thick: 0.03 };
+
+export interface Shelter {
+  name: string;
+  /** Middle of the space under the roof, on the ground. */
+  x: number;
+  y: number;
+  z: number;
+  /** Underside of the roof. */
+  roofY: number;
+  /** How far out from the middle the roof reaches (m). */
+  reach: number;
+}
+
+/** Where the shelters are: one each side of each pile, at its land end. */
+export function pileShelters(): Shelter[] {
+  return ROCK_PILES.flatMap((pile) => {
+    const x = shoreX(pile.z) + pile.from + SHELTER.along * (pile.to - pile.from);
+    return [1, -1].map((side) => {
+      const z = pile.z + side * (pile.width + 0.03);
+      // Clear of the highest ground under the roof.
+      let ground = -Infinity;
+      for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) ground = Math.max(ground, terrainHeight(x + dx * SHELTER.roof, z + dz * SHELTER.roof));
+      return { name: `${pile.name}-shelter-${side > 0 ? 'n' : 's'}`, x, y: terrainHeight(x, z), z, roofY: ground + SHELTER.gap, reach: SHELTER.roof * 0.8 };
+    });
+  });
+}
+
 /** Tint over the slabs' grey: the same black basalt as the shore boulders. */
 const TINT = 0x6c6763;
 
@@ -63,6 +97,10 @@ export function buildRockPiles(
   material: (tint: THREE.ColorRepresentation) => THREE.Material,
 ): Obstacle[] {
   const obstacles: Obstacle[] = [];
+  const shelters = pileShelters();
+  // Loose slabs that would fill a shelter are left out (after drawing the same random numbers, so
+  // every other slab comes out as it would without the shelters).
+  const inShelter = (x: number, z: number, r: number) => shelters.some((s) => Math.hypot(x - s.x, z - s.z) < SHELTER.roof + 0.6 * r);
   for (const pile of ROCK_PILES) {
     const x0 = shoreX(pile.z) + pile.from;
     const x1 = shoreX(pile.z) + pile.to;
@@ -95,17 +133,19 @@ export function buildRockPiles(
         addSlab(lx, lz, lTop, lBase, lr, level ? 0.03 : (0.05 + 0.15 * Math.abs(v)) * rand(), v, top - ground);
       }
     };
-    const addSlab = (x: number, z: number, top: number, base: number, r: number, tip: number, v: number, height: number) => {
-      const k = Math.floor(rand() * kit.geometry.length);
+    const addSlab = (x: number, z: number, top: number, base: number, r: number, tip: number, v: number, height: number, k = -1, turn = -1, shade = -1) => {
+      const fixed = k >= 0;
+      if (!fixed) k = Math.floor(rand() * kit.geometry.length);
       const { top: t, bottom: b } = kit.extent[k];
       const sy = (top - base) / (t - b);
       const scale = new THREE.Vector3(r, sy, r);
       // Slabs on the flanks lie tipped outward and down, as if tumbled; the spine stays level.
       const rot = new THREE.Quaternion()
         .setFromAxisAngle(new THREE.Vector3(1, 0, 0), tip * (v >= 0 ? 1 : -1))
-        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 2 * Math.PI));
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), fixed ? turn : rand() * 2 * Math.PI));
       const position = new THREE.Vector3(x, top - t * sy, z);
-      const shade = 0.85 + 0.3 * rand();
+      if (!fixed) shade = 0.85 + 0.3 * rand();
+      if (!fixed && Math.abs(v) > 0 && inShelter(x, z, r)) return;
       const mesh = new THREE.Mesh(kit.geometry[k], material(new THREE.Color(TINT).multiplyScalar(shade)));
       mesh.position.copy(position);
       mesh.quaternion.copy(rot);
@@ -129,6 +169,14 @@ export function buildRockPiles(
       const u = rand();
       const v = rand() * 2 - 1;
       slab(u, v, x0 + u * length, pile.z + v * pile.width, false);
+    }
+    // The shelters: two low supports along the pile and a broad slab across them.
+    for (const s of shelters.filter((s) => s.name.startsWith(pile.name))) {
+      for (const along of [-1, 1]) {
+        const lx = s.x + along * SHELTER.legs;
+        addSlab(lx, s.z, s.roofY + 0.004, terrainHeight(lx, s.z) - BED, SHELTER.leg / 0.8, 0, 0, s.roofY - s.y, 1, 0.7 * along, 0.9);
+      }
+      addSlab(s.x, s.z, s.roofY + SHELTER.thick, s.roofY, SHELTER.roof / 0.8, 0, 0, s.roofY + SHELTER.thick - s.y, 0, 0.3, 1.05);
     }
   }
   return obstacles;
