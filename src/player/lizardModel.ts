@@ -28,8 +28,8 @@ export const BITE_SNAP = 10 / 30;
  */
 const LAYERED: Record<string, string[]> = {
   [BITE_CLIP]: ['neck', 'head', 'jaw'],
-  flinch_left: ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
-  flinch_right: ['chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
+  flinch_left: ['root', 'chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
+  flinch_right: ['root', 'chest', 'neck', 'head', 'tail1', 'tail2', 'tail3', 'tail4'],
 };
 /** How a head turn splits between the neck and head bones. */
 const HEAD_TURN_SPLIT = { neck: 0.6, head: 0.4 } as const;
@@ -214,7 +214,7 @@ export class LizardModel {
     return true;
   }
 
-  /** Jerk as if struck on that side: the body curls toward it, the head ducks and the tail lashes. */
+  /** Jerk as if struck on that side: the body tips away from it and curls toward it, the head ducks and the tail lashes. */
   flinch(side: 'left' | 'right') {
     this.layers.get('flinch_' + side)?.reset().play();
   }

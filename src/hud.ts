@@ -1,8 +1,9 @@
 /**
  * A small controls hint in the corner that fades once the player starts moving; while the hawk has
- * struck, marks for the hits the lizard can still take; and the countdown while it lies knocked down.
+ * struck, marks for the hits the lizard can still take; a red flash round the edges as a strike
+ * lands; and the countdown while it lies knocked down.
  */
-export function createHud(): { hideHint(): void; wounds(hits: number, max: number, countdown: number | null): void } {
+export function createHud(): { hideHint(): void; wounds(hits: number, max: number, countdown: number | null): void; flash(): void } {
   const el = document.createElement('div');
   el.style.cssText =
     'position:fixed;left:16px;bottom:16px;padding:6px 10px;border-radius:6px;background:#fffc;' +
@@ -23,9 +24,23 @@ export function createHud(): { hideHint(): void; wounds(hits: number, max: numbe
   document.body.appendChild(banner);
   let shown = '';
 
+  const flash = document.createElement('div');
+  flash.style.cssText =
+    'position:fixed;inset:0;pointer-events:none;opacity:0;' +
+    'background:radial-gradient(ellipse at center,transparent 45%,rgba(160,20,10,0.6) 100%)';
+  document.body.appendChild(flash);
+
   return {
     hideHint() {
       el.style.opacity = '0';
+    },
+    flash() {
+      // Show at once, then fade.
+      flash.style.transition = 'none';
+      flash.style.opacity = '1';
+      void flash.offsetWidth;
+      flash.style.transition = 'opacity 0.5s ease-out';
+      flash.style.opacity = '0';
     },
     wounds(hits, max, countdown) {
       while (dots.length < max) {

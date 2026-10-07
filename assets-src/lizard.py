@@ -984,58 +984,114 @@ def bite(rig):
         key(rig, f, {'neck': (neck, 0, 0), 'head': (head, 0, turn), 'jaw': (jaw, 0, 0)})
 
 
-# Struck by the hawk: the body jerks into a curve with both ends thrown toward the side it was hit
-# on, the head ducks and the tail lashes, then it straightens. One clip per side; like the bite it's
-# layered over whatever the body is doing (additively; first and last frames are the rest pose), so
-# only the spine and tail move. (frame, curve, duck, lash): duck dips the head, curve and lash are
-# fractions of the turns below, positive toward the struck side.
-FLINCH = ((0, 0.0, 0.0, 0.0), (2, 1.0, 0.30, 0.6), (5, -0.35, 0.22, -1.0), (9, 0.12, 0.08, 0.4), (14, 0.0, 0.0, 0.0))
+# Struck by the hawk: the body is knocked over toward the far side and jerks into a curve with both
+# ends thrown toward the side it was hit on, the head ducks and the tail lashes, then it rights itself
+# and straightens. One clip per side; like the bite it's layered over whatever the body is doing
+# (additively; first and last frames are the rest pose), so only the root, spine and tail move.
+# (frame, curve, duck, lash, tip): duck dips the head, curve and lash are fractions of the turns
+# below, positive toward the struck side, and tip rolls the body away from the blow (radians).
+FLINCH = (
+    (0, 0.0, 0.0, 0.0, 0.0),
+    (2, 1.0, 0.40, 0.6, 0.30),
+    (5, -0.40, 0.28, -1.0, -0.10),
+    (9, 0.15, 0.10, 0.45, 0.04),
+    (14, 0.0, 0.0, 0.0, 0.0),
+)
 
 
 def flinch(rig, name, side):
     """side 1: struck on its left; -1: on its right."""
     new_action(rig, name)
-    for f, curve, duck, lash in FLINCH:
+    for f, curve, duck, lash, tip in FLINCH:
         c = side * curve
-        rot = {'chest': (0, 0, 0.30 * c), 'neck': (duck * 0.6, 0, 0.30 * c), 'head': (duck * 0.4, 0, 0.20 * c)}
+        rot = {
+            # Rolling the left side up is a positive turn of the root.
+            'root': (0, 0, side * tip),
+            'chest': (0, 0, 0.42 * c),
+            'neck': (duck * 0.6, 0, 0.40 * c),
+            'head': (duck * 0.4, 0, 0.28 * c),
+        }
         for i, tb in enumerate(TAIL):
-            rot[tb] = (0, 0, side * (0.22 * curve + 0.12 * lash) * (1 + 0.25 * i))
+            rot[tb] = (0, 0, side * (0.28 * curve + 0.16 * lash) * (1 + 0.25 * i))
         key(rig, f, rot)
 
 
-# Caught a third time: it staggers, rolls over onto its right side and lies there limp, legs out,
-# mouth a little open (plays once and holds the last frame). The root bone points up, so its local Z
-# is the body's long axis (snout forward) and rolling the left side up is a positive turn about it;
-# its local Y is up. COLLAPSE_LIFT raises the body as it rolls so it rests on its flank on the
-# ground instead of sinking into it.
-COLLAPSE_ROLL = ((0, 0.0), (4, 0.10), (12, 1.42), (15, 1.30), (19, 1.38))
-COLLAPSE_LIFT = 0.0085
+# Caught a third time: it buckles, rolls over onto its right side, bounces once and lies there with
+# its legs settling the way gravity leaves them (plays once and holds the last frame). The root bone
+# points up, so its local Z is the body's long axis (snout forward) and rolling the left side up is a
+# positive turn about it; its local Y is up. COLLAPSE_LIFT raises the body as it rolls so it rests on
+# its flank on the ground instead of sinking into it.
+COLLAPSE_FRAMES = 30
+COLLAPSE_ROLL = ((0, 0.0), (3, 0.12), (7, 0.55), (11, 1.47), (14, 1.30), (18, 1.40), (22, 1.38))
+COLLAPSE_LIFT = 0.0105
 COLLAPSE_SHIFT = 0.006
+# Where each leg comes to rest, lying on the right side: (upper tilt, upper sweep, knee fold), found by
+# searching for the pose with each foot as low as it reaches, clear of the ground and the body by the
+# leg's thickness, front feet just ahead of the shoulder and hind feet trailing. The right legs lie on
+# the ground; the left ones can't reach it and drape back across the belly.
+LEG_REST = {
+    'front_L': (-1.80, 0.00, 0.45),
+    'front_R': (-1.35, 0.30, 0.75),
+    'hind_L': (-0.90, 0.90, 0.60),
+    'hind_R': (-1.80, 1.20, 0.00),
+}
+# The right legs lift as it buckles, fold up under the body as it rolls onto them (found the same
+# way, kept clear of the ground all through the roll), then stretch out to rest.
+LEG_TUCK = {
+    'front_R': (-2.10, 0.90, -0.60),
+    'hind_R': (-0.90, -2.10, 1.20),
+}
+# How far the left legs have gone from their stance to the rest pose, by frame: they flail out as it
+# goes over, then flop down past rest and back, the front one last.
+LEG_SETTLE = {
+    'front_L': ((0, 0.0), (6, -0.25), (11, -0.15), (16, 1.12), (20, 0.95), (23, 1.0), (25, 1.04), (28, 1.0)),
+    'hind_L': ((0, 0.0), (6, -0.30), (10, -0.15), (14, 1.10), (18, 0.96), (21, 1.0)),
+}
+LEG_LIFT = {
+    'front_R': (2.10, 2.10, 0.00),
+    'hind_R': (0.30, 0.60, 0.60),
+}
+LEG_TUCK_FRAMES = (0, 2, 4, 8, 13)
+
+
+def leg_pose(leg, f):
+    """(upper tilt, upper sweep, knee fold) of a leg at frame f of the collapse."""
+    rest = LEG_REST[leg]
+    if leg in LEG_SETTLE:
+        k = track(f, LEG_SETTLE[leg])
+        return tuple(k * v for v in rest)
+    poses = ((0.0, 0.0, 0.0), LEG_LIFT[leg], LEG_TUCK[leg], LEG_TUCK[leg], rest)
+    return tuple(track(f, list(zip(LEG_TUCK_FRAMES, (p[i] for p in poses)))) for i in range(3))
 
 
 def collapse(rig):
     new_action(rig, 'collapse')
-    for f in range(0, 20):
+    final = COLLAPSE_ROLL[-1][1]
+    for f in range(COLLAPSE_FRAMES + 1):
         roll = track(f, COLLAPSE_ROLL)
-        t = roll / COLLAPSE_ROLL[-1][1]
-        sag = track(f, ((0, 0.0), (5, 1.0)))
+        t = min(1.0, roll / final)
+        # Buckling at the start: the body drops and the head sags before it goes over.
+        sag = track(f, ((0, 0.0), (3, 1.0), (9, 0.0)))
+        # The head hits the ground as the body lands, bounces a little, then lies still.
+        nod = track(f, ((0, 0.0), (3, 0.12), (8, -0.10), (12, 0.35), (15, 0.22), (19, 0.30)))
+        # The tail whips round as it rolls (up, once it's on its side), then curls slack on the ground.
+        whip = track(f, ((0, 0.0), (5, 0.3), (11, -0.6), (16, -0.1), (22, 0.15)))
         rot = {
             'root': (0, 0, roll),
-            'neck': (0.25 * sag + 0.15 * t, 0, -0.25 * t),
-            'head': (0.15 * t, 0, -0.15 * t),
-            'jaw': (0.15 * t, 0, 0),
-            'chest': (0.05 * sag, 0, -0.10 * t),
+            'neck': (nod, 0, -0.25 * t),
+            'head': (0.5 * nod, 0, -0.15 * t),
+            'jaw': (track(f, ((0, 0.0), (12, 0.0), (16, 0.18), (22, 0.12))), 0, 0),
+            'chest': (0.05 * t + 0.08 * sag, 0, -0.10 * t),
+            'hips': (0.04 * sag, 0, 0.05 * t),
         }
         for i, tb in enumerate(TAIL):
-            rot[tb] = (0, 0, 0.01 * t * (1 + 0.3 * i))
-        sweep, tilt, fold = SWIM['legs']['front']
+            rot[tb] = (0, 0, 0.12 * whip * (1 + 0.3 * i))
         for leg in LEGS:
-            s = leg_sign(leg)
-            # Limp: the legs fold partway back as when swimming, and the upper side's lift off the ground.
-            k = 1.0 * t if s < 0 else 0.7 * t
-            rot['upper_' + leg] = (tilt * k, 0, s * sweep * k)
-            rot['lower_' + leg] = (fold * k * 0.7, 0, 0)
-        key(rig, f, rot, {'root': (-COLLAPSE_SHIFT * t, COLLAPSE_LIFT * math.sin(roll) / math.sin(COLLAPSE_ROLL[-1][1]) - 0.002 * sag * (1 - t), 0)})
+            ux, uz, lx = leg_pose(leg, f)
+            rot['upper_' + leg] = (ux, 0, uz)
+            rot['lower_' + leg] = (lx, 0, 0)
+        lift = COLLAPSE_LIFT * math.sin(max(0.0, roll)) / math.sin(final)
+        key(rig, f, rot, {'root': (-COLLAPSE_SHIFT * t, lift - 0.0008 * sag, 0)})
 
 
 def track(f, keys):

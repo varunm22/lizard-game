@@ -33,7 +33,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
     g.advance(2, false);
     const spawn = g.player();
     g.hawkDo('hunt');
-    const hits: { jerk: number; flinched: boolean; clip: string | null }[] = [];
+    const hits: { jerk: number; flinched: boolean; clip: string | null; puff: number }[] = [];
     let downAt = -1;
     let i = 0;
     for (; i < 60 * 60 && hits.length < 3; i++) {
@@ -44,7 +44,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
         const clip = g.hawk().clip;
         g.advance(8, false);
         const after = g.player();
-        hits.push({ jerk: Math.hypot(after.x - before.x, after.z - before.z), flinched: g.wounds().flinching, clip });
+        hits.push({ jerk: Math.hypot(after.x - before.x, after.z - before.z), flinched: g.wounds().flinching, clip, puff: g.wounds().puff });
         if (g.wounds().down) downAt = i;
       }
     }
@@ -68,9 +68,10 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
   });
   expect(r.hits).toHaveLength(3);
   for (const h of r.hits) {
-    // Each strike throws the lizard a few cm sideways and it flinches.
-    expect(h.jerk).toBeGreaterThan(0.025);
+    // Each strike throws the lizard several cm sideways, it flinches, and dust and feathers fly.
+    expect(h.jerk).toBeGreaterThan(0.05);
     expect(h.flinched).toBe(true);
+    expect(h.puff).toBeGreaterThan(10);
     expect(h.clip).toBe('strike');
   }
   expect(r.downAt).toBeGreaterThan(0);

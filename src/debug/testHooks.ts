@@ -232,8 +232,11 @@ export interface GameTestHooks {
   hawkDo: (action: 'hunt' | 'off' | 'on' | 'perch' | 'soar') => void;
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
-  /** The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether it's hunted, and a flinch under way. */
-  wounds: () => { hits: number; down: boolean; countdown: number | null; hunted: boolean; flinching: boolean };
+  /**
+   * The hawk's hits on the lizard, whether it's knocked down and the countdown's whole seconds, whether
+   * it's hunted, a flinch under way, and the dust and feathers in the air from strikes.
+   */
+  wounds: () => { hits: number; down: boolean; countdown: number | null; hunted: boolean; flinching: boolean; puff: number };
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 

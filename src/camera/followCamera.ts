@@ -31,6 +31,8 @@ const CAM = {
   /** Never closer than this to the ground directly under the camera. */
   groundClearance: 0.012,
 };
+/** A shake when the lizard is struck: strength (radians), how long it lasts (s) and how fast it shakes (Hz). */
+const SHAKE = { strength: 0.035, time: 0.35, rate: 18 };
 
 /**
  * Third-person orbit camera with a spring arm: mouse or right stick orbit, wheel zoom, and a
@@ -54,6 +56,8 @@ export class FollowCamera {
   /** Feet height at the last grounded frame; the camera doesn't rise with jumps above it. */
   private groundY = 0;
   private skip: (c: RAPIER.Collider) => boolean;
+  /** A shake under way: its strength (radians) and how long it has run (s). */
+  private shaking = { strength: 0, t: Infinity };
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -63,6 +67,11 @@ export class FollowCamera {
     passThrough: Set<number>,
   ) {
     this.skip = (c) => !passThrough.has(c.handle);
+  }
+
+  /** Jolt the view, as when the lizard is struck: a quick shake that dies away. */
+  shake(strength = SHAKE.strength) {
+    this.shaking = { strength, t: 0 };
   }
 
   applyInput(input: InputState) {
@@ -134,5 +143,15 @@ export class FollowCamera {
     const pos = this.camera.position.copy(this.target).addScaledVector(this.dir, -this.arm);
     pos.y = Math.max(pos.y, terrainHeight(pos.x, pos.z) + CAM.groundClearance);
     this.camera.lookAt(this.target);
+
+    // Shake by turning the view, not moving it, so it can't push the camera into anything.
+    if (this.shaking.t < SHAKE.time) {
+      const t = this.shaking.t;
+      const a = this.shaking.strength * (1 - t / SHAKE.time) ** 2;
+      const w = 2 * Math.PI * SHAKE.rate * t;
+      this.camera.rotateX(a * Math.sin(w));
+      this.camera.rotateY(a * 0.7 * Math.sin(1.37 * w + 1));
+      this.shaking.t += dt;
+    }
   }
 }

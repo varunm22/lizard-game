@@ -3,11 +3,11 @@ import type { LizardModel } from './lizardModel';
 
 /** Strikes it takes to knock the lizard down. */
 export const MAX_HITS = 3;
-/** A strike throws the lizard this far sideways (m), over this long (s). */
-const JERK = 0.05;
-const JERK_TIME = 0.12;
+/** A strike throws the lizard this far sideways (m), over this long (s), fast at first and easing off. */
+const JERK = 0.08;
+const JERK_TIME = 0.14;
 /** Knocked down, it collapses for this long, then lies still while a countdown runs (s). */
-const COLLAPSE_TIME = 0.8;
+const COLLAPSE_TIME = 1.0;
 export const COUNTDOWN = 3;
 /** With nothing hunting it, one hit heals every this many seconds. */
 const HEAL_EVERY = 1;
@@ -26,6 +26,8 @@ export class Wounds {
   private downFor: number | null = null;
   private jerk = { x: 0, z: 0, t: 0 };
   private healing = 0;
+  /** Called when a strike lands, with the side of the lizard it came from and the way it's thrown (unit, level). */
+  onStrike: ((side: 'left' | 'right', dx: number, dz: number) => void) | null = null;
 
   constructor(
     private player: PlayerController,
@@ -56,6 +58,7 @@ export class Wounds {
     const side = dx * lx + dz * lz >= 0 ? 1 : -1;
     this.jerk = { x: lx * side * JERK, z: lz * side * JERK, t: JERK_TIME };
     this.model.flinch(side > 0 ? 'right' : 'left');
+    this.onStrike?.(side > 0 ? 'right' : 'left', lx * side, lz * side);
     this.healing = 0;
     if (++this.hits >= MAX_HITS) this.downFor = COLLAPSE_TIME + COUNTDOWN;
     return true;
@@ -64,7 +67,10 @@ export class Wounds {
   /** Advance one fixed step, before the player's own move. */
   step(dt: number) {
     if (this.jerk.t > 0) {
-      const share = Math.min(dt, this.jerk.t) / JERK_TIME;
+      // Eased out: the share of the throw done by time left t is 1 - (t / JERK_TIME)^2.
+      const before = this.jerk.t / JERK_TIME;
+      const after = Math.max(0, this.jerk.t - dt) / JERK_TIME;
+      const share = before * before - after * after;
       this.player.shove(this.jerk.x * share, this.jerk.z * share, this.player.collider);
       this.jerk.t -= dt;
     }

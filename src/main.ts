@@ -16,6 +16,7 @@ import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
 import { Iguanas } from './creatures/iguana';
 import { Hawk, findPerches } from './creatures/hawk';
+import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
 import { MAX_HITS, Wounds } from './player/wounds';
 import { Input, type InputState } from './input';
@@ -80,6 +81,16 @@ async function main() {
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
+  // A strike that lands: dust and feathers fly off the lizard's back, the view jolts and reddens.
+  const puff = new StrikePuff(scene);
+  const struckAt = new THREE.Vector3();
+  const struckDir = new THREE.Vector3();
+  wounds.onStrike = (_side, dx, dz) => {
+    player.feetAt(1, struckAt).y += 0.018;
+    puff.burst(struckAt, struckDir.set(dx, 0, dz));
+    followCam.shake();
+    hud.flash();
+  };
   // Tests can override the live input; null hands control back to the keyboard and gamepad.
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -248,7 +259,7 @@ async function main() {
     hawkClips: () => hawk.clipNames,
     hawkDo: (action) => hawk.request(action),
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
-    wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching }),
+    wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;
@@ -303,6 +314,7 @@ async function main() {
     visual.downed = wounds.down;
     visual.update(states.state, alpha, frameDt);
     hawk.update(alpha, frameDt);
+    puff.update(frameDt);
     hud.wounds(wounds.hits, MAX_HITS, wounds.countdown);
     iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
