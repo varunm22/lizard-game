@@ -4,23 +4,24 @@ import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import { WATER_Y } from '../world/shore';
+import { SUN_OFFSET } from '../render/scene';
 import type { Cover } from '../world/cover';
-import type { PlayerController } from '../player/controller';
-import type { LizardModel } from '../player/lizardModel';
-import type { Wounds } from '../player/wounds';
+import type { Quarry } from './quarry';
 
 /**
  * A Galapagos hawk (assets-src/hawk.py), the island's predator. It sits on a high rock watching, or
  * soars in wide circles over the island. When it sees the lizard (cover.ts: not under water, in a
  * plant, or behind a rock, log, trunk or tree crown) for a moment it comes for it: it circles low
  * over it, then stoops, throws its talons forward and strikes, climbs away and comes round again.
- * Three strikes and the lizard is down (wounds.ts); the hawk has had its kill and goes back to a
- * perch. Out of its sight for a few seconds, the lizard is forgotten and the hawk goes back to its
- * rounds. It is drawn, not simulated: no collider, flown along steered paths.
+ * Three strikes and the lizard is down (wounds.ts); one or two put a smaller animal down. Then it
+ * lands on its kill and eats, and goes back to a perch. Out of its sight for a few seconds, prey is
+ * forgotten and the hawk goes back to its rounds. It is drawn, not simulated: no collider, flown
+ * along steered paths.
  *
- * For now it only hunts the player; crabs and the other iguanas are left alone.
+ * It hunts the lizard, the other iguanas and the crabs (quarry.ts), but it picks out the small ones
+ * less well and mostly can't be bothered with them. Its shadow going over sends them running.
  */
-export type HawkState = 'perch' | 'take_off' | 'soar' | 'stalk' | 'stoop' | 'strike' | 'climb' | 'return' | 'land';
+export type HawkState = 'perch' | 'take_off' | 'soar' | 'stalk' | 'stoop' | 'strike' | 'climb' | 'return' | 'land' | 'feed';
 
 /** Where the hawk can sit: a point on top of something high, and the way it faces there. */
 export interface Perch {
@@ -68,11 +69,23 @@ const CLIMB_TIME = 1.6;
 const LOSE_INTEREST = 3;
 const CALM_AFTER_LOSING = 8;
 const CALM_AFTER_KILL = 20;
-/** A strike lands if the talons come within this of the lizard's body (m, outside its spheres). */
+/** A strike lands if the talons come within this of the prey's body (m, outside its spheres). */
 const HIT_REACH = 0.012;
-/** The body spheres it aims at and strikes: head, neck, chest, hips, tail base (LizardModel.bodySpheres). */
+/** Of a lizard's spheres, the ones it aims at: head, neck, chest, hips, tail base. A crab has one. */
 const TARGET_SPHERES = [1, 2, 3, 4, 5];
 const AIM_SPHERE = 3;
+/** Having passed over something it decided against, it won't weigh that one again for this long (s). */
+const IGNORE_TIME = 12;
+/** Standing over a kill, it eats for this long before the last of it is gone (s). */
+const FEED_TIME = 9;
+/** It lands this far back from the kill, facing it (m). */
+const FEED_BACK = 0.025;
+/**
+ * Its shadow sweeping the ground panics what it crosses: only below this height (m), and everything
+ * within this far of the shadow bolts.
+ */
+const SHADOW_BELOW = 1.1;
+const SHADOW_SCARE = 0.13;
 /** Where the stoop aims: the lizard's position this far ahead along its velocity (s). */
 const LEAD = 0.2;
 /** Leaving the strike: forward and up (m/s). */
@@ -107,8 +120,12 @@ export class Hawk {
   state: HawkState = 'perch';
   /** Off: it never hunts (tests turn it off). */
   enabled = true;
-  /** Whether it could see the lizard at its last look. */
+  /** Whether it could see what it's hunting at its last look. */
   seesPrey = false;
+  /** What it's hunting, or standing over, right now. */
+  quarry: Quarry | null = null;
+  /** Prey scared off by its shadow, for tests. */
+  scared = 0;
   /** Strikes made, and strikes that landed. */
   strikes = 0;
   hitsLanded = 0;
@@ -123,13 +140,16 @@ export class Hawk {
   private stateTime = 0;
   private spell = 0;
   private perch: Perch;
-  /** Seconds of sight of the lizard building toward a hunt; seconds out of sight while hunting. */
-  private seen = 0;
+  /** Seconds its quarry has been out of sight while hunting. */
   private unseen = 0;
   private sightTimer = 0;
   /** Won't look for the lizard again until this runs out (s). */
   private calm = CALM_AT_START;
   private stalkFor = STALK_FIRST;
+  /** Per prey: seconds of sight building toward a hunt, and how long it stays passed over. */
+  private watch: { seen: number; ignore: number }[];
+  /** Coming down to a perch, or onto a kill. */
+  private landFor: 'perch' | 'feed' = 'perch';
   /** After taking off, hunt rather than soar. */
   private huntNext = false;
   /** A path being followed (strike, landing, take-off): Hermite from p0, v0 to p1, v1 over `time`. */
@@ -151,11 +171,10 @@ export class Hawk {
     gltf: Awaited<ReturnType<typeof loadGltf>>,
     private perches: Perch[],
     private cover: Cover,
-    private player: PlayerController,
-    private lizard: LizardModel,
-    private wounds: Wounds,
+    private prey: Quarry[],
   ) {
     if (perches.length === 0) throw new Error('the hawk needs somewhere to perch');
+    this.watch = prey.map(() => ({ seen: 0, ignore: 0 }));
     this.root = gltf.scene;
     toonify(this.root);
     this.root.traverse((o) => (o.frustumCulled = false));
@@ -177,8 +196,8 @@ export class Hawk {
     this.update(1, 0);
   }
 
-  static async load(url: string, scene: THREE.Scene, perches: Perch[], cover: Cover, player: PlayerController, lizard: LizardModel, wounds: Wounds) {
-    const hawk = new Hawk(await loadGltf(url), perches, cover, player, lizard, wounds);
+  static async load(url: string, scene: THREE.Scene, perches: Perch[], cover: Cover, prey: Quarry[]) {
+    const hawk = new Hawk(await loadGltf(url), perches, cover, prey);
     scene.add(hawk.root);
     return hawk;
   }
@@ -191,9 +210,14 @@ export class Hawk {
     return Object.keys(this.actions);
   }
 
-  /** After the hunt: going for the lizard, or about to. */
+  /** After the hunt: going for its quarry, or about to. */
   get hunting(): boolean {
     return this.state === 'stalk' || this.state === 'stoop' || this.state === 'strike' || this.state === 'climb' || (this.state === 'take_off' && this.huntNext);
+  }
+
+  /** Standing on a kill, eating it. */
+  get feeding(): boolean {
+    return this.state === 'feed';
   }
 
   /** The perch it's on or heading for. */
@@ -201,17 +225,24 @@ export class Hawk {
     return this.perches.indexOf(this.perch);
   }
 
-  /** Tests: 'hunt' goes for the lizard at once wherever it is, 'off' stops hunting for good, 'on' allows it again. */
-  request(action: 'hunt' | 'off' | 'on' | 'perch' | 'soar') {
+  /**
+   * Tests: 'hunt' goes for the lizard at once wherever it is, 'hunt_iguana' and 'hunt_crab' for the
+   * nearest of those, 'off' stops hunting for good, 'on' allows it again.
+   */
+  request(action: 'hunt' | 'hunt_iguana' | 'hunt_crab' | 'off' | 'on' | 'perch' | 'soar') {
     if (action === 'off') {
       this.enabled = false;
+      this.quarry = null;
       if (this.hunting) this.giveUp(0);
     } else if (action === 'on') {
       this.enabled = true;
-    } else if (action === 'hunt') {
+    } else if (action === 'hunt' || action === 'hunt_iguana' || action === 'hunt_crab') {
+      const kind = action === 'hunt' ? 'player' : action === 'hunt_iguana' ? 'iguana' : 'crab';
+      const pick = this.prey.filter((p) => p.kind === kind && p.available).sort((a, b) => this.flatTo(a) - this.flatTo(b))[0];
+      if (!pick) return;
       this.enabled = true;
       this.calm = 0;
-      this.seen = SPOT_TIME;
+      this.quarry = pick;
       this.startHunt();
     } else if (action === 'perch') {
       if (this.state !== 'perch' && this.state !== 'land') this.goTo('return');
@@ -255,9 +286,32 @@ export class Hawk {
       case 'land':
         this.stepLand();
         break;
+      case 'feed':
+        this.stepFeed(dt);
+        break;
     }
     this.orient(dt);
-    this.wounds.hunted = this.hunting;
+    this.castShadow();
+    for (const p of this.prey) p.hunted(this.hunting && p === this.quarry);
+  }
+
+  /**
+   * Its shadow sweeping the ground: anything it passes close to bolts. Only when it's low enough for
+   * the shadow to be sharp, and never while it's on the ground itself.
+   */
+  private castShadow() {
+    if (this.state === 'perch' || this.state === 'feed') return;
+    const ground = Math.max(terrainHeight(this.pos.x, this.pos.z), WATER_Y);
+    const up = this.pos.y - ground;
+    if (up > SHADOW_BELOW) return;
+    const t = up / SUN_OFFSET.y;
+    const x = this.pos.x - SUN_OFFSET.x * t;
+    const z = this.pos.z - SUN_OFFSET.z * t;
+    for (const p of this.prey) {
+      if (!p.available) continue;
+      const f = p.feet(this.v);
+      if (Math.hypot(f.x - x, f.z - z) < SHADOW_SCARE && p.scare(x, z)) this.scared++;
+    }
   }
 
   /** Draw it between the last two steps. */
@@ -270,38 +324,73 @@ export class Hawk {
 
   // ------------------------------------------------------------------ looking
 
-  /** Every SIGHT_EVERY, check whether the lizard is in sight; build up to a hunt, or lose it. */
+  /** Every SIGHT_EVERY, look the island over: keep its quarry in sight, or pick something out. */
   private look(dt: number) {
     this.sightTimer -= dt;
-    if (this.sightTimer <= 0) {
-      this.sightTimer = SIGHT_EVERY;
-      this.seesPrey = this.canSee();
-    }
-    if (this.hunting) {
+    const now = this.sightTimer <= 0;
+    if (now) this.sightTimer = SIGHT_EVERY;
+    if (this.hunting || this.state === 'feed') {
+      const q = this.quarry;
+      if (now) this.seesPrey = !!q && this.canSee(q);
+      if (this.state === 'feed') return;
+      if (!q || !q.available) return this.giveUp(CALM_AFTER_LOSING);
       this.unseen = this.seesPrey ? 0 : this.unseen + dt;
       if (this.unseen >= LOSE_INTEREST && this.state !== 'strike') this.giveUp(CALM_AFTER_LOSING);
       return;
     }
-    const watching = this.state === 'perch' || this.state === 'soar' || this.state === 'return';
+    // Coming down onto a kill, it has what it wants and looks at nothing else.
+    const watching = this.state === 'perch' || this.state === 'soar' || (this.state === 'return' && this.landFor === 'perch');
     if (!watching || this.calm > 0 || !this.enabled) {
-      this.seen = 0;
+      for (const w of this.watch) w.seen = 0;
+      this.seesPrey = false;
       return;
     }
-    this.seen = this.seesPrey ? this.seen + dt : Math.max(0, this.seen - dt / 2);
-    if (this.seen >= SPOT_TIME) this.startHunt();
+    if (!now) return;
+    this.seesPrey = false;
+    for (const [i, p] of this.prey.entries()) {
+      const w = this.watch[i];
+      w.ignore = Math.max(0, w.ignore - SIGHT_EVERY);
+      const visible = p.available && !p.down && this.canSee(p);
+      this.seesPrey = this.seesPrey || visible;
+      // The smaller the animal, the longer the hawk takes to be sure of what it's looking at.
+      w.seen = visible ? w.seen + SIGHT_EVERY * p.acuity : Math.max(0, w.seen - SIGHT_EVERY / 2);
+      if (w.seen < SPOT_TIME || w.ignore > 0) continue;
+      w.seen = 0;
+      // Worth the dive? Always for the lizard, often for an iguana, now and then for a crab.
+      if (this.rand() < p.appeal) {
+        this.quarry = p;
+        this.startHunt();
+        return;
+      }
+      w.ignore = IGNORE_TIME;
+    }
   }
 
-  private canSee(): boolean {
-    if (!this.enabled || this.wounds.down) return false;
-    const spheres = this.lizard.bodySpheres;
-    const chest = spheres[AIM_SPHERE];
-    if (!this.hunting && Math.hypot(chest.x - this.pos.x, chest.z - this.pos.z) > SPOT_RANGE) return false;
+  private canSee(p: Quarry): boolean {
+    if (!this.enabled || !p.available) return false;
+    if (p.down) return true;
+    const spheres = p.spheres;
+    const mid = spheres[Math.min(AIM_SPHERE, spheres.length - 1)];
+    if (!this.hunting && Math.hypot(mid.x - this.pos.x, mid.z - this.pos.z) > SPOT_RANGE * p.acuity) return false;
     // Its eyes are a little ahead of and above its middle.
     this.eye.set(0, 0.008, 0.026).applyQuaternion(this.quat).add(this.pos);
-    return TARGET_SPHERES.some((i) => this.cover.inSight(this.eye, spheres[i], this.player.body));
+    return this.aimSpheres(p).some((s) => this.cover.inSight(this.eye, s, p.body));
+  }
+
+  /** The spheres of `p` the hawk watches and strikes at. */
+  private aimSpheres(p: Quarry): readonly { x: number; y: number; z: number; r: number }[] {
+    const spheres = p.spheres;
+    return spheres.length > TARGET_SPHERES.length ? TARGET_SPHERES.map((i) => spheres[i]) : spheres;
+  }
+
+  /** Level distance to a quarry. */
+  private flatTo(p: Quarry): number {
+    const f = p.feet(this.v2);
+    return Math.hypot(f.x - this.pos.x, f.z - this.pos.z);
   }
 
   private startHunt() {
+    if (!this.quarry) return;
     this.unseen = 0;
     this.stalkFor = STALK_FIRST;
     if (this.state === 'perch' || this.state === 'land') this.takeOff(true);
@@ -312,7 +401,8 @@ export class Hawk {
   /** Stop hunting; won't look again for `calm` seconds. Back to its round, or to a perch after a kill. */
   private giveUp(calm: number) {
     this.calm = calm;
-    this.seen = 0;
+    this.quarry = null;
+    for (const w of this.watch) w.seen = 0;
     this.huntNext = false;
     if (this.state === 'take_off') return;
     this.goTo(calm >= CALM_AFTER_KILL ? 'return' : 'soar');
@@ -325,7 +415,10 @@ export class Hawk {
     this.stateTime = 0;
     this.path = null;
     if (state === 'soar') this.spell = this.span(SOAR_SPELL);
-    if (state === 'return') this.perch = this.choosePerch();
+    if (state === 'return') {
+      this.landFor = 'perch';
+      this.perch = this.choosePerch();
+    }
     if (state === 'stoop') this.strikes++;
   }
 
@@ -373,20 +466,26 @@ export class Hawk {
     if (this.stateTime >= this.spell) this.goTo('return');
   }
 
-  /** Circle over the lizard; stoop once it has circled long enough and can see it. */
+  /** Circle over its quarry, then swing in over it and stoop. */
   private stepStalk(dt: number) {
     const c = this.preyFeet(this.aim);
-    const a = Math.atan2(this.pos.z - c.z, this.pos.x - c.x) + LOOK_AHEAD;
-    this.v.set(c.x + Math.cos(a) * STALK.r, c.y + STALK.up, c.z + Math.sin(a) * STALK.r);
-    this.steer(this.v, STALK_SPEED, ACCEL, dt);
-    if (this.wounds.down) {
-      this.giveUp(CALM_AFTER_KILL);
+    if (this.quarry!.down) {
+      this.goDown();
       return;
     }
+    // Once it has circled long enough it stops circling and comes in over the top, lining up the dive.
+    const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled;
+    if (ready) {
+      this.v.set(c.x, c.y + STALK.up, c.z);
+    } else {
+      const a = Math.atan2(this.pos.z - c.z, this.pos.x - c.x) + LOOK_AHEAD;
+      this.v.set(c.x + Math.cos(a) * STALK.r, c.y + STALK.up, c.z + Math.sin(a) * STALK.r);
+    }
+    this.steer(this.v, STALK_SPEED, ACCEL, dt);
     const close = Math.abs(this.pos.y - (c.y + STALK.up)) < 0.25 && Math.hypot(this.pos.x - c.x, this.pos.z - c.z) < STALK.r * 1.6;
     const off = Math.atan2(c.x - this.pos.x, c.z - this.pos.z) - Math.atan2(this.vel.x, this.vel.z);
     const ahead = Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) < STOOP_CONE;
-    if (this.stateTime >= this.stalkFor && this.seesPrey && close && ahead && this.enabled) this.goTo('stoop');
+    if (ready && close && ahead) this.goTo('stoop');
   }
 
   /** Dive at the lizard; when the strike's timing is reached, commit to it. */
@@ -408,8 +507,9 @@ export class Hawk {
    * level direction it'll be facing comes back in `dir`.
    */
   private strikeOrigin(origin: THREE.Vector3, dir: THREE.Vector3): THREE.Vector3 {
-    const chest = this.lizard.bodySpheres[AIM_SPHERE];
-    const pv = this.player.velocity;
+    const spheres = this.aimSpheres(this.quarry!);
+    const chest = spheres[Math.min(2, spheres.length - 1)];
+    const pv = this.quarry!.velocity;
     origin.set(chest.x + pv.x * LEAD, chest.y, chest.z + pv.z * LEAD);
     dir.set(origin.x - this.pos.x, 0, origin.z - this.pos.z);
     if (dir.lengthSq() < 1e-8) this.forward(dir);
@@ -448,19 +548,18 @@ export class Hawk {
       this.keepUp(0.04);
     }
     if (this.actions.strike.time >= this.actions.strike.getClip().duration - 1e-3) {
-      this.goTo('climb');
+      // That one finished it: turn straight round and come down on it rather than climbing away.
+      if (this.quarry!.down) this.goDown();
+      else this.goTo('climb');
     }
   }
 
-  /** The talons meet whatever is there: did they catch the lizard's body? */
+  /** The talons meet whatever is there: did they catch it? */
   private contact() {
     this.struck = true;
     const t = this.v.copy(this.talons).applyQuaternion(this.quat).add(this.pos);
-    const hit = TARGET_SPHERES.some((i) => {
-      const s = this.lizard.bodySpheres[i];
-      return Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH;
-    });
-    if (hit && this.wounds.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
+    const hit = this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
+    if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
   }
 
   private stepClimb(dt: number) {
@@ -471,13 +570,46 @@ export class Hawk {
     this.v.normalize().multiplyScalar(1).add(this.pos).setY(c.y + STALK.up + 0.15);
     this.steer(this.v, CLIMB_SPEED, ACCEL, dt);
     if (this.stateTime >= CLIMB_TIME) {
-      if (this.wounds.down) {
-        this.giveUp(CALM_AFTER_KILL);
+      if (this.quarry!.down) {
+        this.goDown();
         return;
       }
       this.goTo('stalk');
       this.stalkFor = STALK_AGAIN;
     }
+  }
+
+  /** Its quarry is down: come round and land on it to eat. */
+  private goDown() {
+    const f = this.preyFeet(this.v2);
+    // A little back from it, facing it, so the feeding clip reaches down onto the body.
+    const yaw = Math.atan2(f.x - this.pos.x, f.z - this.pos.z);
+    this.goTo('return');
+    this.landFor = 'feed';
+    this.perch = { x: f.x - Math.sin(yaw) * FEED_BACK, y: f.y, z: f.z - Math.cos(yaw) * FEED_BACK, yaw };
+  }
+
+  /** Standing over the kill, eating: until it's gone, or until the lizard comes back at the spawn. */
+  private stepFeed(dt: number) {
+    this.sitOn(this.perch);
+    this.vel.set(0, 0, 0);
+    const q = this.quarry;
+    if (!q) return this.doneFeeding();
+    if (q.kind === 'player') {
+      // It stands over the lizard until the lizard is back on its feet, then leaves.
+      if (!q.down) return this.doneFeeding();
+    } else if (this.stateTime >= FEED_TIME) {
+      q.eaten();
+      return this.doneFeeding();
+    }
+    void dt;
+  }
+
+  private doneFeeding() {
+    this.quarry = null;
+    for (const w of this.watch) w.seen = 0;
+    this.calm = CALM_AFTER_KILL;
+    this.takeOff(false);
   }
 
   private stepReturn(dt: number) {
@@ -510,6 +642,12 @@ export class Hawk {
     this.sitOn(this.perch);
     this.vel.set(0, 0, 0);
     if (this.actions.land.time >= this.actions.land.getClip().duration - 1e-3) {
+      if (this.landFor === 'feed') {
+        const spot = this.perch;
+        this.goTo('feed');
+        this.perch = spot;
+        return;
+      }
       this.goTo('perch');
       this.spell = this.span(PERCH_SPELL);
     }
@@ -581,7 +719,8 @@ export class Hawk {
   /** Face along the flight: yaw with the level velocity, pitch with the climb or dive, bank into turns. */
   private orient(dt: number) {
     const s = this.state;
-    const sitting = s === 'perch' || (s === 'land' && this.stateTime > this.path!.time) || (s === 'take_off' && this.stateTime < this.extras.take_off_time);
+    const sitting =
+      s === 'perch' || s === 'feed' || (s === 'land' && this.stateTime > this.path!.time) || (s === 'take_off' && this.stateTime < this.extras.take_off_time);
     let yaw = this.yaw;
     let pitch = 0;
     const level = Math.hypot(this.vel.x, this.vel.z);
@@ -616,7 +755,8 @@ export class Hawk {
       const flap = this.vel.y > 0.12 || this.vel.length() < 0.55 || s === 'climb';
       if (flap) this.play('flap');
       else if (this.current !== 'flap' || this.actions.flap.time < 0.05) this.play('glide', 0.4);
-    } else if (s === 'land' && this.actions.land.time >= this.actions.land.getClip().duration - 1e-3) this.play('perch');
+    } else if (s === 'feed') this.play('feed', 0.3);
+    else if (s === 'land' && this.actions.land.time >= this.actions.land.getClip().duration - 1e-3) this.play('perch');
   }
 
   private play(name: string, fade = CROSSFADE) {
@@ -636,9 +776,9 @@ export class Hawk {
 
   // ------------------------------------------------------------------ helpers
 
-  /** The lizard's feet, out. */
+  /** Its quarry's feet, out. */
   private preyFeet(out: THREE.Vector3): THREE.Vector3 {
-    return this.player.feetAt(1, out);
+    return this.quarry!.feet(out);
   }
 
   private sitOn(p: Perch) {

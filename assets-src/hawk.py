@@ -989,6 +989,33 @@ def perch_pose(f):
     return p.d
 
 
+# Feeding on a kill it stands over: mantling (the wings half open, hiding the food), the head
+# reaching down, closing on a piece, tugging it up and back, and swallowing with the head high.
+FEED_FRAMES = 70
+FEED_REACH = [(0, 0.0), (10, 0.0), (18, 1.0), (24, 1.0), (33, 0.15), (40, 0.0), (58, 0.0), (70, 0.0)]
+# Pulling back with a piece in the beak, then the swallow.
+FEED_PULL = [(0, 0.0), (24, 0.0), (30, 1.0), (36, 0.55), (44, 0.0), (70, 0.0)]
+FEED_GULP = [(0, 0.0), (34, 0.0), (40, 1.0), (46, 0.3), (50, 0.9), (56, 0.0), (70, 0.0)]
+
+
+def feed_pose(f):
+    reach = track(f, FEED_REACH)
+    pull = track(f, FEED_PULL)
+    gulp = track(f, FEED_GULP)
+    w = 2 * math.pi * f / FEED_FRAMES
+    p = P()
+    # Lower and further forward than the perch, leaning over the food, rocking as it pulls.
+    p.root(pitch=PERCH_PITCH - 0.45 * reach - 0.12 * pull, roll=0.05 * math.sin(2 * w), dz=PERCH_DZ * 0.75, dy=PERCH_DY * 0.6 - 0.004 * reach)
+    # Mantling: the wings held half out and drooped over the kill.
+    p.wing(dihedral=-0.25 - 0.1 * pull, sweep=0.55, twist=-0.2, elbow=0.95, wrist=1.15, hand_up=-0.15, span=0.55)
+    p.fold(0.45)
+    p.tail(lift=-0.3 + 0.25 * reach, fan=1.0)
+    # The head goes right down to the ground, takes hold, then rips back and up to swallow.
+    p.head(pitch_down=PERCH_HEAD + 1.15 * reach - 0.35 * pull - 0.5 * gulp, turn=0.25 * math.sin(w) * (1 - reach), neck_up=0.15 + 0.5 * gulp)
+    p.legs(swing=PERCH_PITCH - 0.5, knee=0.7, grip=0.9, spread=0.16)
+    return p.d
+
+
 # Land: from a glide, flare with the body raised and wings braking, legs forward, touch down at
 # LAND_FRAME, then fold the wings and settle into the perch.
 LAND_FRAMES = 32
@@ -1086,6 +1113,7 @@ def build_animations(rig):
     clip(rig, 'perch', PERCH_FRAMES, perch_pose)
     clip(rig, 'land', LAND_FRAMES, land_pose, loop=False)
     clip(rig, 'take_off', TAKE_OFF_FRAMES, take_off_pose, loop=False)
+    clip(rig, 'feed', FEED_FRAMES, feed_pose)
     for act in bpy.data.actions:
         tr = rig.animation_data.nla_tracks.new()
         tr.name = act.name

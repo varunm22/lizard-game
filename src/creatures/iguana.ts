@@ -27,7 +27,7 @@ import { SaltSpray } from './saltSpray';
  * the same fitting to the ground, tinted a little differently. Bodies are solid (to the lizard and to
  * each other), in IGUANA_GROUP so the crabs' surface rays look past them.
  */
-export type IguanaActivity = 'bask' | 'shuffle' | 'to_food' | 'graze' | 'to_land';
+export type IguanaActivity = 'bask' | 'shuffle' | 'to_food' | 'graze' | 'to_land' | 'bolt' | 'freeze' | 'dead';
 
 /** Where each lives (z of its stretch of lava shore) and its skin tint (multiplies the texture). */
 const HOMES = [
@@ -165,6 +165,17 @@ const BODY_TOP = 0.032;
 /** Where the sun is (as in render/scene.ts): basking, the body lies across its rays. */
 const SUN_YAW = Math.atan2(2.5, 1.7);
 
+/** Strikes from the hawk it takes before it goes down. */
+export const IGUANA_LIVES = 2;
+/** Scared by a shadow going over, it bolts this far (m) and then holds still this long (s). */
+const BOLT = 0.35;
+const BOLT_TIME = 2.5;
+const FREEZE = [3, 6] as const;
+/** Scared again while bolting or frozen, it only bolts afresh after this long (s). */
+const BOLT_AGAIN = 1.2;
+/** Eaten, another comes up its shore after this long (s, from-to). */
+const COME_BACK = [45, 80] as const;
+
 /** Closest distance between two bodies' centre lines in the ground plane, each a segment ±BODY_HALF along its facing. */
 function segmentGap(ax: number, az: number, afx: number, afz: number, bx: number, bz: number, bfx: number, bfz: number): number {
   let best = Infinity;
@@ -233,6 +244,10 @@ class Iguana {
   readonly states = new MovementStateMachine();
   readonly visual: LizardVisual;
   activity: IguanaActivity = 'bask';
+  /** Strikes the hawk has landed on it; at IGUANA_LIVES it goes down. */
+  hits = 0;
+  /** Eaten: it isn't in the world, and comes back on its shore after a while. */
+  gone = false;
   /** Counts, for tests. */
   sneezes = 0;
   bites = 0;
@@ -272,6 +287,10 @@ class Iguana {
   private input: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   private v = new THREE.Vector3();
   private dir = new THREE.Vector3();
+  /** Where it's bolting to, while it bolts. */
+  private bolting: { x: number; z: number } | null = null;
+  private sinceScare = Infinity;
+  private backIn = 0;
 
   constructor(
     readonly model: LizardModel,
@@ -313,6 +332,68 @@ class Iguana {
     return this.sneezeT >= 0;
   }
 
+  /** Knocked down by the hawk: lying on its side, to be eaten. */
+  get down(): boolean {
+    return this.activity === 'dead';
+  }
+
+  /** Struck by the hawk, the blow travelling (dx, dz); false if it was already down or gone. */
+  strike(dx: number, dz: number): boolean {
+    if (this.down || this.gone) return false;
+    // Flinch toward the side the blow points along, as the player does.
+    const lx = Math.cos(this.body.yaw);
+    const lz = -Math.sin(this.body.yaw);
+    const side = dx * lx + dz * lz >= 0 ? 1 : -1;
+    this.model.flinch(side > 0 ? 'right' : 'left');
+    if (++this.hits >= IGUANA_LIVES) {
+      this.activity = 'dead';
+      this.goal = null;
+      this.bolting = null;
+    } else {
+      this.scare(this.feet.x - dx, this.feet.z - dz, true);
+    }
+    return true;
+  }
+
+  /**
+   * Something passed over: bolt away from (x, z), then hold still. `now` bolts even if it just did.
+   * False when it takes no notice (already down, in the sea, or still getting over the last fright).
+   */
+  scare(x: number, z: number, now = false): boolean {
+    if (this.down || this.gone || this.body.swimming) return false;
+    if (!now && this.sinceScare < BOLT_AGAIN) return false;
+    this.sinceScare = 0;
+    const a = Math.atan2(this.feet.x - x, this.feet.z - z);
+    this.activity = 'bolt';
+    this.goal = null;
+    this.beside = null;
+    this.settle = 0;
+    this.timer = BOLT_TIME;
+    this.bolting = { x: this.feet.x + Math.sin(a) * BOLT, z: this.feet.z + Math.cos(a) * BOLT };
+    return true;
+  }
+
+  /** Eaten: out of the world until it comes back on its shore. */
+  eaten() {
+    if (this.gone) return;
+    this.gone = true;
+    this.hits = 0;
+    this.activity = 'bask';
+    this.goal = null;
+    this.model.root.visible = false;
+    // Out of everything's way while it's away.
+    this.body.setFeet(new THREE.Vector3(this.home.x, -20, this.home.z), this.body.yaw);
+    this.backIn = this.between(COME_BACK);
+  }
+
+  /** Back on its home shore, whole again. */
+  private comeBack() {
+    this.gone = false;
+    this.hits = 0;
+    this.model.root.visible = true;
+    this.place(this.home.x, this.home.z, SUN_YAW + Math.PI / 2, this.between(BASK_TIME));
+  }
+
   /** Go and feed now. */
   feed() {
     this.hunger = 0;
@@ -344,8 +425,13 @@ class Iguana {
   }
 
   step(dt: number, plants: Plants) {
+    if (this.gone) {
+      if ((this.backIn -= dt) <= 0) this.comeBack();
+      return;
+    }
     const b = this.body;
     b.feetAt(1, this.feet);
+    this.sinceScare += dt;
     this.input.move.x = this.input.move.y = 0;
     this.input.jump = false;
     this.think(dt);
@@ -369,6 +455,25 @@ class Iguana {
   }
 
   private think(dt: number) {
+    if (this.activity === 'dead') return;
+    if (this.activity === 'bolt') {
+      // Straight away from what startled it, until it's far enough or out of time.
+      const b = this.bolting!;
+      this.timer -= dt;
+      const left = Math.hypot(b.x - this.feet.x, b.z - this.feet.z);
+      if (this.timer <= 0 || left < 0.03 || this.body.swimming) {
+        this.activity = 'freeze';
+        this.timer = this.between(FREEZE);
+        return;
+      }
+      this.steer(b, 1);
+      return;
+    }
+    if (this.activity === 'freeze') {
+      // Pressed flat and still, the way they wait a hawk out.
+      if ((this.timer -= dt) <= 0) this.startBasking();
+      return;
+    }
     if (this.activity !== 'to_food' && this.activity !== 'graze') this.hunger -= dt;
     this.sinceMeal += dt;
     switch (this.activity) {
@@ -774,6 +879,8 @@ class Iguana {
   }
 
   update(alpha: number, dt: number, spray: SaltSpray) {
+    if (this.gone) return;
+    this.visual.downed = this.down;
     this.model.nod += (this.nod() - this.model.nod) * (1 - Math.exp(-40 * dt));
     this.visual.update(this.states.state, alpha, dt);
     this.model.updateBodySpheres();
@@ -837,7 +944,7 @@ export class Iguanas {
 
   /** Every other body an iguana must go round: the lizard's and the other iguanas'. */
   others(ig: Iguana): PlayerController[] {
-    return [this.player, ...this.list.filter((o) => o !== ig).map((o) => o.body)];
+    return [this.player, ...this.list.filter((o) => o !== ig && !o.gone).map((o) => o.body)];
   }
 
   /**
@@ -885,7 +992,7 @@ export class Iguanas {
       b.grounded && !b.swimming && !b.climbing && b.horizontalSpeed < 0.02 && lavaCover(b.position.x, b.position.z) >= BLACK_LAVA;
     const mates = [
       ...(lying(this.player) ? [this.player] : []),
-      ...this.list.filter((o) => o !== ig && o.activity === 'bask' && lying(o.body)).map((o) => o.body),
+      ...this.list.filter((o) => o !== ig && !o.gone && o.activity === 'bask' && lying(o.body)).map((o) => o.body),
     ]
       .filter((m) => Math.hypot(m.position.x - at.x, m.position.z - at.z) < JOIN_RANGE)
       .sort((a, b) => Math.hypot(a.position.x - at.x, a.position.z - at.z) - Math.hypot(b.position.x - at.x, b.position.z - at.z));
@@ -952,7 +1059,7 @@ export class Iguanas {
   pushedBy(lizard: PlayerController, dt: number) {
     if (lizard.swimming || lizard.climbing) return;
     for (const ig of this.list) {
-      if (ig.body.swimming || !lizard.blockers.includes(ig.body.collider)) continue;
+      if (ig.gone || ig.body.swimming || !lizard.blockers.includes(ig.body.collider)) continue;
       ig.body.shove(Math.sin(lizard.yaw) * PUSH_SPEED * dt, Math.cos(lizard.yaw) * PUSH_SPEED * dt, lizard.collider);
     }
   }
@@ -968,6 +1075,14 @@ export class Iguanas {
 
   /** Every iguana's body as spheres (refreshed by `update`), for parting plants. */
   get bodySpheres() {
-    return this.list.flatMap((ig) => ig.model.bodySpheres);
+    return this.list.filter((ig) => !ig.gone).flatMap((ig) => ig.model.bodySpheres);
   }
+
+  /** Scare every iguana within `r` of (x, z): a shadow going over. */
+  scare(x: number, z: number, r: number) {
+    for (const ig of this.list) {
+      if (Math.hypot(ig.body.position.x - x, ig.body.position.z - z) < r) ig.scare(x, z);
+    }
+  }
+
 }

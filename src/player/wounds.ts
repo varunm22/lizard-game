@@ -6,9 +6,12 @@ export const MAX_HITS = 3;
 /** A strike throws the lizard this far sideways (m), over this long (s), fast at first and easing off. */
 const JERK = 0.08;
 const JERK_TIME = 0.14;
-/** Knocked down, it collapses for this long, then lies still while a countdown runs (s). */
+/**
+ * Knocked down, it collapses for this long, then lies still while a countdown runs (s). Long enough
+ * that the hawk comes down and stands over it, feeding, before it's back on its feet at the spawn.
+ */
 const COLLAPSE_TIME = 1.0;
-export const COUNTDOWN = 3;
+export const COUNTDOWN = 5;
 /** With nothing hunting it, one hit heals every this many seconds. */
 const HEAL_EVERY = 1;
 

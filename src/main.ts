@@ -16,8 +16,10 @@ import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
 import { Iguanas } from './creatures/iguana';
 import { Hawk, findPerches } from './creatures/hawk';
+import { quarries } from './creatures/quarry';
 import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
+import { pileShelters } from './world/rockPiles';
 import { MAX_HITS, Wounds } from './player/wounds';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
@@ -73,7 +75,7 @@ async function main() {
     followCam.yaw = SPAWN.yaw;
   });
   const cover = new Cover(world, obstacles, plants);
-  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, player, lizard, wounds);
+  const hawk = await Hawk.load(hawkUrl, scene, findPerches(obstacles, forestCover), cover, quarries(player, lizard, wounds, iguanas, crabs));
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -193,6 +195,8 @@ async function main() {
         onPile: c.home.pile,
         hops: c.hops,
         grooming: crabs.groomingWhom(c),
+        dead: c.dead,
+        gone: c.gone,
       })),
     crabClips: () => [...crabs.clips],
     iguanas: () =>
@@ -218,6 +222,9 @@ async function main() {
           meal: meal && { id: meal.id, x: meal.x, y: meal.y, z: meal.z },
           touch: meal && ig.touch(meal),
           lava: lavaCover(f.x, f.z),
+          hits: ig.hits,
+          down: ig.down,
+          gone: ig.gone,
           mate: ig.mate === player ? ('player' as const) : ig.mate ? iguanas.list.findIndex((o) => o.body === ig.mate) : null,
         };
       }),
@@ -234,6 +241,7 @@ async function main() {
     crabPlace: (i, x, z, y = 1) => crabs.list[i].place(x, y, z),
     ocean: () => ({ waterY: WATER_Y, depth: SEA_DEPTH }),
     shoreX,
+    shelters: () => pileShelters().map((s) => ({ name: s.name, x: s.x, y: s.y, z: s.z, roofY: s.roofY, reach: s.reach })),
     rockPiles: () => ROCK_PILES.map((p) => ({ name: p.name, z: p.z, x0: shoreX(p.z) + p.from, x1: shoreX(p.z) + p.to, peak: p.peak })),
     algae: (near) =>
       (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
@@ -250,6 +258,9 @@ async function main() {
       state: hawk.state,
       clip: hawk.clip,
       hunting: hawk.hunting,
+      feeding: hawk.feeding,
+      quarry: hawk.quarry && { kind: hawk.quarry.kind, index: hawk.quarry.index },
+      scared: hawk.scared,
       seesPrey: hawk.seesPrey,
       strikes: hawk.strikes,
       hitsLanded: hawk.hitsLanded,
