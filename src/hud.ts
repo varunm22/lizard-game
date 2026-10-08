@@ -31,20 +31,20 @@ export function createHud(): {
 
   const panel = document.createElement('div');
   panel.style.cssText =
-    'position:fixed;right:16px;bottom:16px;padding:8px 10px;border-radius:8px;background:#fffc;' +
-    'font:12px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto 120px 10px;' +
-    'gap:5px 8px;align-items:center;pointer-events:none';
+    'position:fixed;right:16px;bottom:16px;padding:10px 12px;border-radius:10px;background:#fffc;' +
+    'font:14.4px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto 144px 12px;' +
+    'gap:6px 10px;align-items:center;pointer-events:none';
   document.body.appendChild(panel);
   const bar = (label: string, color: string) => {
     const name = document.createElement('div');
     name.textContent = label;
     const track = document.createElement('div');
-    track.style.cssText = 'height:9px;border-radius:5px;background:#0002;overflow:hidden';
+    track.style.cssText = 'height:11px;border-radius:6px;background:#0002;overflow:hidden';
     const fill = document.createElement('div');
-    fill.style.cssText = `height:100%;width:100%;border-radius:5px;background:${color}`;
+    fill.style.cssText = `height:100%;width:100%;border-radius:6px;background:${color}`;
     track.appendChild(fill);
     const trend = document.createElement('div');
-    trend.style.cssText = 'font-size:9px;line-height:1;text-align:center';
+    trend.style.cssText = 'font-size:11px;line-height:1;text-align:center';
     panel.append(name, track, trend);
     return { fill, trend, rows: [name, track, trend] };
   };
