@@ -7,21 +7,25 @@ import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
 import { rng, smoothstep } from './noise';
 import { forestCover, lavaCover, sandCover } from './layout';
-import { waterDepth } from './shore';
+import { WATER_Y, waterDepth } from './shore';
 
 /**
  * How each kind (a mesh in assets-src/plants.py) sways: spring frequency (Hz) and damping ratio,
  * how far from its stem a body is pushed clear (m, before scaling), how far over it can lean, and
  * how much it holds the lizard back at its centre (`drag`). Damping above 1 means no bounce: a
- * pushed plant creeps back upright over a couple of seconds. They only give a little; a body
- * pushing through brushes past and through the stems rather than flattening them.
+ * pushed plant creeps back upright over a couple of seconds. Big plants (`solid`) have a solid stem
+ * the lizard has to go around, and only give a little. Small ones have none: the lizard walks
+ * straight through them, pressing them flat under its body, and they only slow it down.
  */
 const KINDS = {
-  grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 0.35, drag: 1.2 },
-  fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5 },
-  lecocarpus: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4 },
-  cotton: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4 },
-  sesuvium: { hz: 0.5, zeta: 1.3, radius: 0.02, maxTilt: 0.2, drag: 1.0 },
+  grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 1.1, drag: 1.2, solid: false },
+  fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5, solid: true },
+  lecocarpus: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4, solid: true },
+  cotton: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4, solid: true },
+  sesuvium: { hz: 0.5, zeta: 1.3, radius: 0.02, maxTilt: 0.9, drag: 1.0, solid: false },
+  tomato: { hz: 0.4, zeta: 1.2, radius: 0.02, maxTilt: 0.3, drag: 1.0, solid: true },
+  ipomoea: { hz: 0.5, zeta: 1.3, radius: 0.025, maxTilt: 1.0, drag: 0.6, solid: false },
+  tiquilia: { hz: 0.5, zeta: 1.4, radius: 0.015, maxTilt: 0.8, drag: 0.5, solid: false },
 } as const;
 /**
  * A plant slows the lizard while its body line is within this much of the plant's own radius (m):
@@ -39,13 +43,21 @@ const DRAG_SAMPLES = [-0.03, 0, 0.04];
 const STEM_RADIUS = 0.002;
 const STEM_TOP = 0.05;
 /**
- * Plant centres are never closer than this (m), so the lizard (2.4 cm wide, plus the controller's
- * 8 mm skin each side) can always squeeze between two of them.
+ * Solid stems are never closer than this (m), so the lizard (2.4 cm wide, plus the controller's
+ * 8 mm skin each side) can always squeeze between two of them. Any other two plants keep
+ * SOFT_SPACING apart, only so they don't grow into each other.
  */
 const MIN_SPACING = 0.05;
+const SOFT_SPACING = 0.028;
 /** However thick the vegetation, the lizard keeps at least this fraction of its speed. */
 const MIN_SPEED_SCALE = 0.35;
 export type PlantKind = keyof typeof KINDS;
+
+/** Whether two plants, one of `kind` at (x, z), would stand too close (see MIN_SPACING). */
+function crowds(kind: PlantKind, x: number, z: number, p: { kind: PlantKind; x: number; z: number }) {
+  const gap = KINDS[kind].solid && KINDS[p.kind].solid ? MIN_SPACING : SOFT_SPACING;
+  return Math.abs(p.x - x) < gap && Math.abs(p.z - z) < gap && Math.hypot(p.x - x, p.z - z) < gap;
+}
 
 /** Springs advance in steps no longer than this, so a slow frame can't blow them up (s). */
 const MAX_SUBSTEP = 1 / 90;
@@ -70,6 +82,8 @@ const SPROUT_CAP = 96;
 
 export interface Plant extends PlantBody {
   kind: PlantKind;
+  /** A big plant, with a solid stem the lizard goes around; a small one it walks through. */
+  solid: boolean;
   drag: number;
   yaw: number;
   scale: number;
@@ -84,7 +98,7 @@ export interface Plant extends PlantBody {
   crushX: number;
   crushZ: number;
   eaten: boolean;
-  /** Its solid stem (null until it's grown enough to have one). */
+  /** Its solid stem (null for a small plant, or until a big one has grown enough to have one). */
   stem: RAPIER.Collider | null;
   patch: Patch;
   slot: number;
@@ -189,6 +203,7 @@ export class Plants {
       growth,
       maxTilt: k.maxTilt,
       drag: k.drag,
+      solid: k.solid,
       omega: 2 * Math.PI * k.hz,
       zeta: k.zeta,
       tx: 0,
@@ -209,8 +224,9 @@ export class Plants {
     };
   }
 
-  /** Give the plant its thin solid stem (full-grown height). */
+  /** Give a big plant its thin solid stem (full-grown height); small ones have none. */
   private growStem(p: Plant) {
+    if (!KINDS[p.kind].solid) return;
     const half = Math.min(p.fullHeight, STEM_TOP) / 2;
     p.stem = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(Math.max(half - STEM_RADIUS, 0.001), STEM_RADIUS)
@@ -276,7 +292,7 @@ export class Plants {
    * to another plant or this kind has no room left. Returns it, or null.
    */
   sprout(kind: PlantKind, x: number, z: number, grown = false): Plant | null {
-    if (this.all.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING)) return null;
+    if (this.all.some((p) => crowds(kind, x, z, p))) return null;
     const draw = this.kinds.get(kind)!;
     const patch = draw.sprouts;
     const slot = patch.free.pop() ?? (patch.plants.length < SPROUT_CAP ? patch.plants.length : -1);
@@ -430,27 +446,30 @@ interface Placement {
 
 /**
  * Lay the island's plants out, Galapagos lowland style: in the dry clearing, bunchgrass in patches
- * with odd tufts between, mats of carpetweed (Sesuvium), and Lecocarpus and Darwin's cotton in
- * little groups; under the trees, ferns thick on the ground among grass; at the back of the beach,
- * carpetweed holding the sand. Nothing grows in the sea, on the bare lava or the open
- * sand, on a rock, log or tree, past the edge, or right where the lizard spawns. A few flowers and
- * grass stand between the spawn and the log so they're the first thing to walk through.
+ * with odd tufts between, mats of carpetweed (Sesuvium), and Lecocarpus, Darwin's cotton and
+ * Galapagos tomato in little groups; under the trees, ferns thick on the ground among grass; at the
+ * back of the beach carpetweed, and morning glory running out over the open sand; grey Tiquilia
+ * mounds on the bare lava. Nothing grows in the sea, on a rock, log or tree, past the edge, or right
+ * where the lizard spawns; only morning glory grows on open sand and only Tiquilia on the lava. A few
+ * flowers and grass stand between the spawn and the log so they're the first thing to walk through.
  */
 function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z: number }): Placement[] {
   const rand = rng(SEED);
   const out: Placement[] = [];
   const edge = TERRAIN_SIZE / 2 - 0.1;
   const range = (a: number, b: number) => a + (b - a) * rand();
-  const ok = (x: number, z: number) => {
+  const ok = (kind: PlantKind, x: number, z: number) => {
     if (Math.abs(x) > edge || Math.abs(z) > edge) return false;
     if (Math.hypot(x - clear.x, z - clear.z) < 0.1) return false;
     if (waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) > 0) return false;
-    if (lavaCover(x, z) > 0.4 || sandCover(x, z) > 0.75) return false;
+    // Open sand and lava run down to the sea: keep off the wet strip at its edge.
+    if ((kind === 'ipomoea' || kind === 'tiquilia') && terrainHeight(x, z) < WATER_Y + 0.01) return false;
+    if (lavaCover(x, z) > 0.4 && kind !== 'tiquilia') return false;
+    if (sandCover(x, z) > 0.75 && kind !== 'ipomoea') return false;
     return open(x, z);
   };
-  const tooClose = (x: number, z: number) => out.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING);
   const add = (kind: PlantKind, x: number, z: number, scale: number) => {
-    if (ok(x, z) && !tooClose(x, z)) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
+    if (ok(kind, x, z) && !out.some((p) => crowds(kind, x, z, p))) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
   };
   /** A point within `r` of (x, z), denser towards the middle. */
   const around = (x: number, z: number, r: number) => {
@@ -471,6 +490,8 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     const s = sandCover(x, z);
     return s > 0.15 && s < 0.7 ? 1 : 0;
   };
+  const openSand = (x: number, z: number) => (sandCover(x, z) > 0.6 && lavaCover(x, z) < 0.3 && waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) <= 0 ? 1 : 0);
+  const bareLava = (x: number, z: number) => (lavaCover(x, z) > 0.5 && waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) <= 0 ? 1 : 0);
 
   // The first patch you meet: between the spawn and the log, a little off the straight line.
   for (const [kind, x, z, s] of [
@@ -480,36 +501,56 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     ['grass', 0.05, -0.2, 1],
     ['grass', 0.13, -0.17, 0.9],
     ['grass', 0.22, -0.25, 1.1],
-    ['grass', 0.185, -0.158, 0.9],
+    ['tomato', 0.185, -0.158, 0.9],
     ['sesuvium', 0.3, -0.12, 1],
   ] as const) add(kind, x, z, s);
 
   // The clearing.
-  for (let i = 0; i < 45; i++) {
+  for (let i = 0; i < 70; i++) {
     const [cx, cz] = somewhere(clearing);
     const r = range(0.06, 0.16);
     const n = Math.round(range(5, 13));
     for (let j = 0; j < n; j++) add('grass', ...around(cx, cz, r), range(0.75, 1.2));
   }
-  for (let i = 0; i < 100; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
-  for (let i = 0; i < 12; i++) add('sesuvium', ...somewhere(clearing), range(0.8, 1.3));
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 160; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
+  for (let i = 0; i < 18; i++) {
+    const [cx, cz] = somewhere(clearing);
+    const n = Math.round(range(3, 7));
+    for (let j = 0; j < n; j++) add('sesuvium', ...around(cx, cz, 0.1), range(0.8, 1.3));
+  }
+  for (let i = 0; i < 24; i++) {
     const kind = i % 2 ? 'lecocarpus' : 'cotton';
     const [cx, cz] = somewhere(clearing);
     const n = Math.round(range(2, 5));
     for (let j = 0; j < n; j++) add(kind, ...around(cx, cz, 0.08), range(0.8, 1.15));
   }
+  for (let i = 0; i < 14; i++) {
+    const [cx, cz] = somewhere(clearing);
+    const n = Math.round(range(1, 4));
+    for (let j = 0; j < n; j++) add('tomato', ...around(cx, cz, 0.1), range(0.8, 1.2));
+  }
   // The forest floor: ferns everywhere, grass in the lighter gaps.
-  for (let i = 0; i < 55; i++) {
+  for (let i = 0; i < 70; i++) {
     const [cx, cz] = somewhere(forestCover);
     const n = Math.round(range(2, 5));
     for (let j = 0; j < n; j++) add('fern', ...around(cx, cz, 0.25), range(0.8, 1.25));
   }
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 55; i++) {
     const [cx, cz] = somewhere(forestCover);
     for (let j = 0; j < 6; j++) add('grass', ...around(cx, cz, 0.12), range(0.8, 1.2));
   }
-  // The back of the beach: scattered mats of carpetweed.
-  for (let i = 0; i < 40; i++) add('sesuvium', ...somewhere(sandEdge), range(0.6, 1));
+  // The back of the beach: mats of carpetweed, and morning glory running out over the sand.
+  for (let i = 0; i < 70; i++) add('sesuvium', ...somewhere(sandEdge), range(0.6, 1.1));
+  for (let i = 0; i < 25; i++) {
+    const [cx, cz] = somewhere(openSand);
+    const n = Math.round(range(3, 8));
+    for (let j = 0; j < n; j++) add('ipomoea', ...around(cx, cz, 0.15), range(0.8, 1.2));
+  }
+  // The lava: Tiquilia in scattered mounds.
+  for (let i = 0; i < 30; i++) {
+    const [cx, cz] = somewhere(bareLava);
+    const n = Math.round(range(2, 6));
+    for (let j = 0; j < n; j++) add('tiquilia', ...around(cx, cz, 0.12), range(0.7, 1.3));
+  }
   return out;
 }

@@ -3,7 +3,10 @@
 The kinds are Galapagos plants: native bunchgrass of the dry lowlands, ferns of the Scalesia forest
 floor, Lecocarpus (an endemic shrubby daisy with yellow heads and deeply cut leaves), Darwin's
 cotton (an endemic shrub with big cupped yellow flowers and lobed leaves) and Galapagos carpetweed
-(Sesuvium edmonstonei, low fleshy mats on the coast that go orange and red in the dry season).
+(Sesuvium edmonstonei, low fleshy mats on the coast that go orange and red in the dry season), the
+Galapagos tomato (a small bushy plant with little yellow flowers and orange fruit), beach morning
+glory (Ipomoea pes-caprae, runners across the sand with round notched leaves and pink trumpets) and
+Tiquilia (low grey-white cushions on bare lava and ash).
 
 Run headless with the `bpy` pip package (Blender as a Python module):
 
@@ -46,6 +49,15 @@ C = {
     'sesuvium_stem': srgb('#a8452e'),
     'sesuvium_green': srgb('#7fae4a'),
     'sesuvium_red': srgb('#d8582f'),
+    'tomato_leaf': srgb('#4e7f3a'),
+    'tomato_flower': srgb('#f4d23a'),
+    'tomato_fruit': srgb('#ec7a24'),
+    'ipomoea_leaf': srgb('#4f9443'),
+    'ipomoea_vine': srgb('#7a6a3a'),
+    'ipomoea_flower': srgb('#d45aa6'),
+    'ipomoea_throat': srgb('#7a2460'),
+    'tiquilia': srgb('#c9c7b8'),
+    'tiquilia_dark': srgb('#8c8a7a'),
 }
 
 
@@ -286,6 +298,98 @@ def sesuvium(rng):
     return mb
 
 
+def ball(mb, centre, r, col, sides=4, squash=1.0):
+    """A tiny low-poly ball (a fruit or a bud): an octahedron-ish diamond, `squash` flattening it."""
+    top = mb.vert((centre[0], centre[1], centre[2] + r * squash), col)
+    bot = mb.vert((centre[0], centre[1], centre[2] - r * squash), col)
+    ring = [mb.vert((centre[0] + r * math.cos(2 * math.pi * k / sides), centre[1] + r * math.sin(2 * math.pi * k / sides), centre[2]), col)
+            for k in range(sides)]
+    for k in range(sides):
+        a, b = ring[k], ring[(k + 1) % sides]
+        mb.face(a, b, top)
+        mb.face(b, a, bot)
+
+
+def star(mb, centre, r, col, petals=5):
+    """A small flat five-pointed flower facing up."""
+    c = mb.vert(centre, col)
+    for k in range(petals):
+        a = 2 * math.pi * k / petals
+        tip = mb.vert((centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), centre[2] + r * 0.2), col)
+        l = mb.vert((centre[0] + r * 0.4 * math.cos(a - 0.6), centre[1] + r * 0.4 * math.sin(a - 0.6), centre[2]), col)
+        rr = mb.vert((centre[0] + r * 0.4 * math.cos(a + 0.6), centre[1] + r * 0.4 * math.sin(a + 0.6), centre[2]), col)
+        mb.face(c, l, tip, rr)
+
+
+def tomato(rng):
+    """Galapagos tomato: a small bush of a few branching stems, cut leaves, little yellow stars and orange fruit; ~11 cm."""
+    mb = MeshBuilder()
+    for i in range(4):
+        a = 2 * math.pi * (i + rng.uniform(-0.2, 0.2)) / 4
+        d = (math.cos(a), math.sin(a))
+        h = rng.uniform(0.08, 0.11)
+        pts = curve((0, 0, 0), d, h, rng.uniform(0.02, 0.035), 4)
+        tube(mb, pts, 0.0013, 0.0008, C['stem'], C['stem'], sides=4)
+        for j, t in ((1, 0.3), (2, 0.55), (3, 0.78)):
+            side = 1 if j % 2 else -1
+            la = a + side * 1.3
+            leaf_d = (math.cos(la), math.sin(la))
+            cut_leaf(mb, pts[j], leaf_d, 0.02 * (1.1 - 0.3 * t), 0.007, 2, C['tomato_leaf'])
+        top = pts[-1]
+        star(mb, (top[0], top[1], top[2] + 0.001), 0.005, C['tomato_flower'])
+        mid = pts[2]
+        ball(mb, (mid[0] + d[0] * 0.005, mid[1] + d[1] * 0.005, mid[2] - 0.004), 0.0026, C['tomato_fruit'])
+    return mb
+
+
+def ipomoea(rng):
+    """Beach morning glory: a runner along the sand with round notched leaves on short stalks and pink trumpets; ~4 cm."""
+    mb = MeshBuilder()
+    for sign in (-1, 1):
+        d = (sign * 1.0, 0.0)
+        side = (0.0, 1.0)
+        runner = [(d[0] * 0.012 * k, 0.012 * math.sin(k * 1.3 + sign) * 0.6, 0.0015) for k in range(6)]
+        blade(mb, runner, 0.002, C['ipomoea_vine'], C['ipomoea_vine'], side, tip_width=0.0015)
+        for k in range(1, 6):
+            p = runner[k]
+            up = rng.uniform(0.006, 0.013)
+            lean = (rng.uniform(-0.3, 0.3), sign * rng.uniform(-0.6, 0.6))
+            top = (p[0] + lean[0] * 0.01, p[1] + lean[1] * 0.01, up)
+            blade(mb, [p, top], 0.0012, C['ipomoea_vine'], C['ipomoea_leaf'], side, tip_width=0.0012)
+            # A round leaf, notched at the tip (two lobes), held up and facing the sky.
+            c = mb.vert(top, C['ipomoea_leaf'])
+            r = 0.009
+            ring = []
+            for q in range(7):
+                a = 2 * math.pi * q / 7
+                rad = r * (0.55 if q == 0 else 1.0)
+                ring.append(mb.vert((top[0] + rad * math.cos(a) * d[0], top[1] + rad * math.sin(a), top[2] + 0.003 * math.cos(a)), C['ipomoea_leaf']))
+            for q in range(7):
+                mb.face(c, ring[q], ring[(q + 1) % 7])
+        # One funnel flower per runner, near the middle: a narrow tube flaring to a wide open mouth.
+        p = runner[3]
+        base = (p[0], p[1] + 0.006, 0.002)
+        neck = (p[0], p[1] + 0.008, 0.012)
+        mouth = (p[0], p[1] + 0.009, 0.017)
+        tube(mb, [base, neck], 0.0012, 0.0025, C['ipomoea_vine'], C['ipomoea_throat'], sides=6)
+        tube(mb, [neck, mouth], 0.0025, 0.0095, C['ipomoea_throat'], C['ipomoea_flower'], sides=6)
+        dome(mb, (mouth[0], mouth[1], mouth[2] - 0.001), 0.009, 0.004, C['ipomoea_throat'], sides=6, up=False)
+    return mb
+
+
+def tiquilia(rng):
+    """Tiquilia: a low, dense grey-white cushion of tiny hairy leaves hugging the ground; ~2 cm."""
+    mb = MeshBuilder()
+    for i in range(9):
+        a = 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / 9
+        d = (math.cos(a), math.sin(a))
+        out = 0.0 if i == 0 else rng.uniform(0.006, 0.016)
+        r = rng.uniform(0.006, 0.009) * (1.2 - out / 0.03)
+        h = 0.004 + 0.012 * (1 - out / 0.02)
+        ball(mb, (d[0] * out, d[1] * out, h), r, mix(C['tiquilia'], C['tiquilia_dark'], rng.uniform(0.0, 0.45)), sides=5, squash=0.7)
+    return mb
+
+
 def make_object(name, mb, mat):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(mb.verts, [], mb.faces)
@@ -312,6 +416,9 @@ def main():
         'lecocarpus': lecocarpus(rng),
         'cotton': cotton(rng),
         'sesuvium': sesuvium(rng),
+        'tomato': tomato(rng),
+        'ipomoea': ipomoea(rng),
+        'tiquilia': tiquilia(rng),
     }
     for i, (name, mb) in enumerate(kinds.items()):
         obj = make_object(name, mb, mat)

@@ -2,12 +2,13 @@ import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
 import { screenshot } from './helpers/screenshot';
 
-test('plant stems block the lizard and lean a little, thick plants slow it, and they creep back upright', async ({ page }) => {
+test('big plants\' stems block the lizard and lean a little, small plants are walked through, thick plants slow it, and they creep back upright', async ({ page }) => {
   const errors = await bootGame(page);
 
   const plants = await page.evaluate(() => window.__game!.plants());
   const kinds = new Set(plants.map((p) => p.kind));
-  expect([...kinds].sort()).toEqual(['cotton', 'fern', 'grass', 'lecocarpus', 'sesuvium']);
+  expect([...kinds].sort()).toEqual(['cotton', 'fern', 'grass', 'ipomoea', 'lecocarpus', 'sesuvium', 'tiquilia', 'tomato']);
+  for (const p of plants) expect(p.solid).toBe(['cotton', 'fern', 'lecocarpus', 'tomato'].includes(p.kind));
   // Plants stand on the ground and never grow out of the sea.
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
   for (const p of plants) expect(p.y).toBeGreaterThan(waterY);
@@ -63,24 +64,23 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
   expect(Math.min(...walk.after)).toBeGreaterThan(-0.01);
   expect(Math.abs(walk.after.at(-1)!)).toBeLessThan(0.01);
 
-  // A straight lane through the thickest grass in the clearing that clears every stem
-  // (the body needs 2 cm each side of its line), so the walk only brushes the tufts beside it.
+  // Small plants have no solid stem: a straight lane through the thickest grass in the clearing,
+  // right over the middle of the tufts on it, clear only of the big plants' stems (the body needs
+  // 2 cm each side of its line).
   const lane = await page.evaluate(() => {
     const ps = window.__game!.plants();
     const grass = ps.filter((p) => p.kind === 'grass' && Math.hypot(p.x, p.z) < 2);
-    const count = (x: number, z: number) => grass.filter((q) => Math.hypot(q.x - x, q.z - z) < 0.1).length;
-    let best = { x: 0, z: 0, n: -1 };
+    let best = { x: 0, z: 0, n: -1, onLine: [] as { x: number; z: number }[] };
     for (const p of grass) {
-      for (let dz = -0.05; dz <= 0.05; dz += 0.005) {
-        const z = p.z + dz;
-        const blocked = ps.some((q) => q.x > p.x - 0.35 && q.x < p.x + 0.2 && Math.abs(q.z - z) < 0.024);
-        const n = count(p.x, z);
-        if (!blocked && n > best.n) best = { x: p.x, z, n };
-      }
+      const z = p.z;
+      const blocked = ps.some((q) => q.solid && q.x > p.x - 0.35 && q.x < p.x + 0.2 && Math.abs(q.z - z) < 0.024);
+      const onLine = grass.filter((q) => q.x > p.x - 0.1 && q.x < p.x + 0.1 && Math.abs(q.z - z) < 0.006);
+      const n = grass.filter((q) => Math.hypot(q.x - p.x, q.z - z) < 0.1).length + 3 * onLine.length;
+      if (!blocked && n > best.n) best = { x: p.x, z, n, onLine };
     }
     return best;
   });
-  expect(lane.n).toBeGreaterThan(4);
+  expect(lane.onLine.length).toBeGreaterThan(1);
   // Walk along it toward +X (yaw pi/2), starting in the open.
   await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI / 2), [lane.x - 0.3, lane.z]);
   const speeds = await page.evaluate((lane) => {
@@ -90,17 +90,25 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
     g.advance(15, false);
     const open = g.player().speed;
     let inPatch = Infinity;
+    let pressed = 0;
     for (let k = 0; k < 600 && g.player().x < lane.x + 0.15; k++) {
       g.advance(1, false);
       if (Math.abs(g.player().x - lane.x) < 0.03) inPatch = Math.min(inPatch, g.player().speed);
+      for (const t of lane.onLine) {
+        const p = g.plants({ x: t.x, z: t.z, r: 1e-6 })[0];
+        pressed = Math.max(pressed, Math.hypot(p.tiltX, p.tiltZ));
+      }
     }
     const through = g.player().x >= lane.x + 0.15;
+    const offLine = Math.abs(g.player().z - lane.z);
     g.setInput(null);
-    return { open, inPatch, through };
+    return { open, inPatch, through, offLine, pressed };
   }, lane);
   expect(speeds.open).toBeGreaterThan(0.24); // full walking speed in the open
   expect(speeds.inPatch).toBeLessThan(speeds.open * 0.85);
   expect(speeds.through).toBe(true); // slowed, but not stopped
+  expect(speeds.offLine).toBeLessThan(0.01); // straight over the tufts, not round them
+  expect(speeds.pressed).toBeGreaterThan(0.6); // pressed down under the body
 
   // From the side, walking back at the cotton from the other side: stopped at its stem.
   await page.evaluate(([x, z]) => window.__game!.teleport(x, z, 0), [cotton.x, cotton.z - 0.1]);

@@ -126,6 +126,8 @@ test('cold, the lizard walks slower and loses health; fed and warm it mends, hun
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
+    // Open ground ahead, so only the cold slows it.
+    g.clearPlants(0.1, 0.1, 0.1, -0.6, 0.06);
     const walk = (warmth: number) => {
       g.teleport(0.1, 0.05, Math.PI);
       g.advance(10, false);
