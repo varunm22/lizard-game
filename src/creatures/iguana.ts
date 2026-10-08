@@ -120,6 +120,8 @@ class Iguana {
   hits = 0;
   /** Eaten: it isn't in the world, and comes back on its shore after a while. */
   gone = false;
+  /** Tests that aren't about it stop it where it is (still solid) to save time. */
+  paused = false;
   /** Counts, for tests. */
   sneezes = 0;
   bites = 0;
@@ -530,8 +532,6 @@ class Iguana {
 export class Iguanas {
   readonly list: Iguana[] = [];
   readonly spray: SaltSpray;
-  /** Tests that aren't about them stop the iguanas where they are (still solid) to save time. */
-  paused = false;
 
   private constructor(
     scene: THREE.Scene,
@@ -691,21 +691,19 @@ export class Iguanas {
    * lizard faces, at PUSH_SPEED, as far as there's room.
    */
   pushedBy(lizard: PlayerController, dt: number) {
-    if (this.paused || lizard.swimming || lizard.climbing) return;
+    if (lizard.swimming || lizard.climbing) return;
     for (const ig of this.list) {
-      if (ig.gone || ig.body.swimming || !lizard.blockers.includes(ig.body.collider)) continue;
+      if (ig.paused || ig.gone || ig.body.swimming || !lizard.blockers.includes(ig.body.collider)) continue;
       ig.body.shove(Math.sin(lizard.yaw) * PUSH_SPEED * dt, Math.cos(lizard.yaw) * PUSH_SPEED * dt, lizard.collider);
     }
   }
 
   step(dt: number) {
-    if (this.paused) return;
-    for (const ig of this.list) ig.step(dt, this.plants);
+    for (const ig of this.list) if (!ig.paused) ig.step(dt, this.plants);
   }
 
   update(alpha: number, dt: number) {
-    if (this.paused) return;
-    for (const ig of this.list) ig.update(alpha, dt, this.spray);
+    for (const ig of this.list) if (!ig.paused) ig.update(alpha, dt, this.spray);
     this.spray.update(dt);
   }
 
@@ -716,9 +714,8 @@ export class Iguanas {
 
   /** Scare every iguana within `r` of (x, z): a shadow going over. */
   scare(x: number, z: number, r: number) {
-    if (this.paused) return;
     for (const ig of this.list) {
-      if (Math.hypot(ig.body.position.x - x, ig.body.position.z - z) < r) ig.scare(x, z);
+      if (!ig.paused && Math.hypot(ig.body.position.x - x, ig.body.position.z - z) < r) ig.scare(x, z);
     }
   }
 

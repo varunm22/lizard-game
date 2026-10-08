@@ -59,7 +59,7 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
 });
 
 test('a crab runs from another iguana coming close too, not just the lizard', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true, crabs: true });
+  const errors = await bootGame(page, { iguanas: [0], crabs: true });
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);

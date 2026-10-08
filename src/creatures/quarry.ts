@@ -122,7 +122,7 @@ class IguanaQuarry implements Quarry {
   }
   get available() {
     // In the sea it's out of reach, and already hidden by the water.
-    return !this.herd.paused && !this.ig.gone && !this.ig.body.swimming;
+    return !this.ig.paused && !this.ig.gone && !this.ig.body.swimming;
   }
   get spheres() {
     return this.ig.model.bodySpheres;

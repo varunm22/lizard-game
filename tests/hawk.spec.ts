@@ -292,7 +292,7 @@ test('it catches a crab, comes down on it to eat, and another crab is out on the
 });
 
 test('it takes two strikes to put another iguana down, then the hawk eats it and it comes back', async ({ page }) => {
-  const errors = await bootGame(page, { hawk: true, iguanas: true });
+  const errors = await bootGame(page, { hawk: true, iguanas: [0] });
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);

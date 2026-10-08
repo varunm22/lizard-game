@@ -84,7 +84,7 @@ test('other marine iguanas bask on the lava shore, lying across the sun, and sne
 });
 
 test('a hungry iguana goes down to the sea, puts its snout to the algae and eats them, and comes back out to bask', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [1] });
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
   await page.evaluate(() => (window.__game!.advance(2, false), window.__game!.iguanaDo(1, 'feed')));
   let swam = false;
@@ -183,7 +183,7 @@ test('algae sprout now and then on the rocks, growing in from nothing', async ({
 });
 
 test('an iguana on its way goes round the lizard lying across its path instead of walking into it', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [0] });
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -247,7 +247,7 @@ test('an iguana on its way goes round the lizard lying across its path instead o
 });
 
 test('an iguana looking for somewhere to bask comes and lies down beside the lizard basking nearby', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [0] });
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
@@ -385,7 +385,7 @@ async function openGround(page: Page) {
 }
 
 test('the lizard walks over or past a basking iguana from any side without getting stuck on it', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [0] });
   const spot = await openGround(page);
   const runs = await page.evaluate((spot) => {
     const g = window.__game!;
@@ -420,7 +420,7 @@ test('the lizard walks over or past a basking iguana from any side without getti
 });
 
 test('walking into an iguana end-on pushes it slowly out of the way', async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [0] });
   const spot = await openGround(page);
   const run = await page.evaluate((spot) => {
     const g = window.__game!;
@@ -445,7 +445,7 @@ test('walking into an iguana end-on pushes it slowly out of the way', async ({ p
 });
 
 test("an iguana passing close behind the lizard doesn't pull the camera in", async ({ page }) => {
-  const errors = await bootGame(page, { iguanas: true });
+  const errors = await bootGame(page, { iguanas: [0] });
   const spot = await openGround(page);
   const run = await page.evaluate((spot) => {
     const g = window.__game!;
