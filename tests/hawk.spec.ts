@@ -127,7 +127,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
       }
     }
     g.advance(2, false);
-    return { spawn, hits, downAt, down, back, after: g.player(), wounds: g.wounds(), vitals: g.vitals() };
+    return { spawn, hits, downAt, down, back, after: g.player(), wounds: g.wounds(), vitals: g.vitals(), hawk: g.hawk(), goals: g.goals() };
   });
   expect(r.hits).toHaveLength(3);
   for (const h of r.hits) {
@@ -151,6 +151,9 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
   expect(r.wounds.hits).toBe(0);
   expect(r.vitals.health).toBe(1);
   expect(Math.hypot(r.after.x - r.spawn.x, r.after.z - r.spawn.z)).toBeLessThan(0.02);
+  // Every dive either landed or was one the lizard dodged, and only a dodge ticks off the hawk goal.
+  expect(r.hawk.dodged + r.hawk.hitsLanded).toBe(r.hawk.strikes);
+  expect(r.goals.find((o) => o.id === 'hawk')!.done).toBe(r.hawk.dodged > 0);
   expect(errors).toEqual([]);
 });
 
