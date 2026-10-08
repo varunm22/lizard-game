@@ -98,7 +98,7 @@ async function main() {
   let basking = false;
   let canEat = false;
   const goals = new Goals([
-    { id: 'hawk', label: 'Dodge a hawk attack', met: () => hawk.dodged > 0 },
+    { id: 'hawk', label: 'Survive a hawk attack', met: () => hawk.survived > 0 },
     { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },

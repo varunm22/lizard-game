@@ -252,6 +252,8 @@ export interface GameTestHooks {
     hitsLanded: number;
     /** Attacks on the lizard that came to nothing: a strike that missed, or a stoop it pulled out of. */
     dodged: number;
+    /** Hunts of the lizard it gave up on, the lizard still alive, after diving at it at least once. */
+    survived: number;
     /** How many times the lizard has flushed it off a perch. */
     flushed: number;
     perch: number;

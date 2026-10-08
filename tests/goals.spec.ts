@@ -54,7 +54,7 @@ test('riding the tortoise for a moment ticks off its goal', async ({ page }) => 
   expect(errors).toEqual([]);
 });
 
-test('diving out of sight as the hawk stoops dodges its attack and ticks off the hawk goal', async ({ page }) => {
+test('diving out of sight as the hawk stoops dodges it, and once it gives up the hunt the hawk goal is ticked', async ({ page }) => {
   const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
@@ -69,11 +69,19 @@ test('diving out of sight as the hawk stoops dodges its attack and ticks off the
     g.teleport(g.shoreX(z) + 1.3, z, Math.PI / 2, waterY - 0.08);
     for (let j = 0; j < 60 && g.hawk().state === 'stoop'; j++) g.advance(1, false);
     g.advance(1, false);
-    return { stooped, hawk: g.hawk(), hits: g.wounds().hits, done: g.goals().find((o) => o.id === 'hawk')!.done };
+    const goal = () => g.goals().find((o) => o.id === 'hawk')!.done;
+    // Dodging one dive isn't surviving: the hawk is still after it.
+    const dodged = { hawk: g.hawk(), done: goal() };
+    // Out of sight it loses interest within a few seconds.
+    for (let j = 0; j < 6 * 60 && !goal(); j++) g.advance(1, false);
+    return { stooped, dodged, hawk: g.hawk(), hits: g.wounds().hits, done: goal() };
   });
   expect(r.stooped).toBe(true);
   expect(r.hits).toBe(0);
-  expect(r.hawk.dodged).toBe(1);
+  expect(r.dodged.hawk.dodged).toBe(1);
+  expect(r.dodged.hawk.survived).toBe(0);
+  expect(r.dodged.done).toBe(false);
+  expect(r.hawk.survived).toBe(1);
   expect(r.done).toBe(true);
   expect(errors).toEqual([]);
 });

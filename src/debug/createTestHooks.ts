@@ -219,6 +219,7 @@ export function createTestHooks({
       strikes: hawk.strikes,
       hitsLanded: hawk.hitsLanded,
       dodged: hawk.dodged,
+      survived: hawk.survived,
       perch: hawk.perchIndex,
       flushed: hawk.flushed,
       enabled: hawk.enabled,
