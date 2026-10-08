@@ -36,7 +36,6 @@ test('F bites: the head lifts with the mouth open, lunges and snaps shut, and no
 });
 
 test('biting algae at the snout trims it down, and enough bites eat it', async ({ page }) => {
-  test.setTimeout(120_000);
   const errors = await bootGame(page);
   const r = await page.evaluate(() => {
     const g = window.__game!;
@@ -80,7 +79,6 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
 });
 
 test('a wild iguana grazing plays the bite, and each bite takes some of the patch', async ({ page }) => {
-  test.setTimeout(180_000);
   const errors = await bootGame(page, { iguanas: true });
   await page.evaluate(() => (window.__game!.advance(2, false), window.__game!.iguanaDo(0, 'feed')));
   let sawBiting = false;

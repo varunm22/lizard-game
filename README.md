@@ -7,4 +7,4 @@ npm install
 npm run dev
 ```
 
-`npm test` builds the game, runs it in headless Chromium and saves screenshots to `test-results/screenshots/`.
+`npm test` builds the game and runs it in headless Chromium; `npm run screenshots` does the same and saves screenshots to `test-results/screenshots/`.
