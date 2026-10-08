@@ -129,7 +129,7 @@ export function createTestHooks({
     setInput,
     viewFrom,
     plants: (near) =>
-      plants.all
+      (near ? plants.near(near.x, near.z, near.r) : plants.all)
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
         .map((p) => ({ kind: p.kind, solid: p.solid, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
     clearPlants: (x0, z0, x1, z1, r) => {

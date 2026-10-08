@@ -85,6 +85,8 @@ test('walking with W follows the ground and comes to rest; Shift runs', async ({
 
 test('steering: A/D look around when still, turn the body when moving; S backs up', async ({ page }) => {
   await boot(page);
+  // Open ground all round, so grass doesn't slow it.
+  await page.evaluate(() => window.__game!.clearPlants(0.6, 0.3, 0.6, 0.3, 0.3));
   const start = await player(page);
   const restHead = (await page.evaluate(() => window.__game!.lizard())).head;
 

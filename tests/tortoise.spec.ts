@@ -150,6 +150,8 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
   const ride = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
+    // Nothing to stop and eat on the way, so how far it walks doesn't hang on where plants grew.
+    g.clearPlants(t0.x, t0.z, t0.x, t0.z, 0.6);
     // Dropped onto the crown of the shell, facing the way the tortoise walks.
     g.teleport(t0.x, t0.z, t0.yaw, t0.y + 0.16);
     g.advance(60, false);
@@ -189,6 +191,7 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
   expect(ride.states).toEqual(['idle']);
   expect(ride.maxSpeed).toBeLessThan(0.02);
   // When the tortoise lies down, the lizard goes down with the shell, still in its spot.
+  console.log('DBG', JSON.stringify({ end: ride.end, resting: ride.resting, start: ride.start }));
   expect(ride.resting.t.state).toBe('rest');
   expect(ride.end.at.up - ride.resting.at.up).toBeGreaterThan(0.015);
   expect(Math.abs(ride.resting.at.along - ride.end.at.along)).toBeLessThan(0.01);

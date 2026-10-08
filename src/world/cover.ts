@@ -12,6 +12,8 @@ const PLANT_HIDES = 0.6;
 /** A plant's crown hides points up to this share of its height, and this far out from its stem (m, plus its radius). */
 const CROWN_HEIGHT = 0.85;
 const CROWN_REACH = 0.006;
+/** No plant reaches further than this from its root (m), so only plants this near need checking. */
+const CROWN_SEARCH = 0.06;
 
 /**
  * Whether something can be seen from a point up in the air: a predator's sight line. A point is out
@@ -53,7 +55,7 @@ export class Cover {
 
   /** Inside a standing plant: under most of its height and within its reach of the stem. */
   private inCrown(p: { x: number; y: number; z: number }): boolean {
-    for (const plant of this.plants.all) {
+    for (const plant of this.plants.near(p.x, p.z, CROWN_SEARCH)) {
       const r = plant.radius + CROWN_REACH;
       const dx = p.x - plant.x;
       const dz = p.z - plant.z;

@@ -199,6 +199,8 @@ test('an iguana on its way goes round the lizard lying across its path instead o
     const dx = Math.sin(ig.yaw);
     const dz = Math.cos(ig.yaw);
     const start = { x: ig.x, z: ig.z };
+    // Nothing growing round the meeting, so only the lizard shapes its way.
+    g.clearPlants(ig.x, ig.z, ig.x + dx * 0.5, ig.z + dz * 0.5, 0.25);
     const px = ig.x + dx * 0.2;
     const pz = ig.z + dz * 0.2;
     g.teleport(px, pz, ig.yaw + Math.PI / 2);
@@ -357,7 +359,7 @@ test('crabs groom the other iguanas too, hopping onto a still one and off again 
   expect(errors).toEqual([]);
 });
 
-/** Open ground by the shore (the beach), flat and dry 15 cm all round, with no rock, log, tree or plant near. */
+/** Open ground by the shore (the beach), flat and dry 15 cm all round, with no rock, log or tree near, cleared of plants. */
 async function openGround(page: Page) {
   return page.evaluate(() => {
     const g = window.__game!;
@@ -377,12 +379,13 @@ async function openGround(page: Page) {
             return Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) < 0.003 && g.terrainHeight(qx, qz) > waterY + 0.01;
           }),
         );
-        if (!flat || g.plants({ x, z, r: 0.3 }).length > 0 || others.some((o) => Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
+        if (!flat || g.plants({ x, z, r: 0.3 }).some((p) => p.solid) || others.some((o) => Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
         const room = Math.min(...obstacles.map((o) => Math.hypot(o.x - x, o.z - z) - o.radius));
         if (!best || room > best.room) best = { x, z, yaw, room };
       }
     }
     if (!best || best.room < 0.18) throw new Error('no open ground by the shore');
+    g.clearPlants(best.x, best.z, best.x, best.z, 0.3);
     return best;
   });
 }

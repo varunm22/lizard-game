@@ -8,10 +8,11 @@ test('big plants\' stems block the lizard and lean a little, small plants are wa
   const plants = await page.evaluate(() => window.__game!.plants());
   const kinds = new Set(plants.map((p) => p.kind));
   expect([...kinds].sort()).toEqual(['cotton', 'fern', 'grass', 'ipomoea', 'lecocarpus', 'sesuvium', 'tiquilia', 'tomato']);
-  for (const p of plants) expect(p.solid).toBe(['cotton', 'fern', 'lecocarpus', 'tomato'].includes(p.kind));
+  // (Checked in bulk: an expect per plant costs seconds over thousands of plants.)
+  expect(plants.filter((p) => p.solid !== ['cotton', 'fern', 'lecocarpus', 'tomato'].includes(p.kind))).toEqual([]);
   // Plants stand on the ground and never grow out of the sea.
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
-  for (const p of plants) expect(p.y).toBeGreaterThan(waterY);
+  expect(plants.filter((p) => p.y <= waterY)).toEqual([]);
 
   // The cotton in the first patch, between the spawn and the log. Walk straight at it from two body
   // lengths away (the lizard travels -Z facing yaw pi): its stem stops the lizard, leaning a little.
@@ -69,11 +70,12 @@ test('big plants\' stems block the lizard and lean a little, small plants are wa
   // 2 cm each side of its line).
   const lane = await page.evaluate(() => {
     const ps = window.__game!.plants();
-    const grass = ps.filter((p) => p.kind === 'grass' && Math.hypot(p.x, p.z) < 2);
+    const grass = ps.filter((p) => p.kind === 'grass' && Math.hypot(p.x, p.z) < 1.5);
+    const solid = ps.filter((p) => p.solid);
     let best = { x: 0, z: 0, n: -1, onLine: [] as { x: number; z: number }[] };
     for (const p of grass) {
       const z = p.z;
-      const blocked = ps.some((q) => q.solid && q.x > p.x - 0.35 && q.x < p.x + 0.2 && Math.abs(q.z - z) < 0.024);
+      const blocked = solid.some((q) => q.x > p.x - 0.35 && q.x < p.x + 0.2 && Math.abs(q.z - z) < 0.024);
       const onLine = grass.filter((q) => q.x > p.x - 0.1 && q.x < p.x + 0.1 && Math.abs(q.z - z) < 0.006);
       const n = grass.filter((q) => Math.hypot(q.x - p.x, q.z - z) < 0.1).length + 3 * onLine.length;
       if (!blocked && n > best.n) best = { x: p.x, z, n, onLine };
@@ -81,7 +83,8 @@ test('big plants\' stems block the lizard and lean a little, small plants are wa
     return best;
   });
   expect(lane.onLine.length).toBeGreaterThan(1);
-  // Walk along it toward +X (yaw pi/2), starting in the open.
+  // Walk along it toward +X (yaw pi/2), starting in the open (cleared up to the patch).
+  await page.evaluate(([x, z]) => window.__game!.clearPlants(x - 0.4, z, x - 0.17, z, 0.06), [lane.x, lane.z]);
   await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI / 2), [lane.x - 0.3, lane.z]);
   const speeds = await page.evaluate((lane) => {
     const g = window.__game!;
