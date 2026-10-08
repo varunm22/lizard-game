@@ -181,6 +181,8 @@ export interface GameTestHooks {
    * it sneeze when next on land and still.
    */
   iguanaDo: (i: number, action: 'feed' | 'move' | 'sneeze') => void;
+  /** Startle iguana i as if from (x, z): it bolts straight away from there. */
+  iguanaScare: (i: number, x: number, z: number) => void;
   /** Put iguana i down at (x, z) facing `yaw`, basking there for `stay` seconds (default a minute). */
   iguanaPlace: (i: number, x: number, z: number, yaw: number, stay?: number) => void;
   /** How much the ground at (x, z) is bare black lava, 0 to 1. */
@@ -250,6 +252,8 @@ export interface GameTestHooks {
     hitsLanded: number;
     /** Attacks on the lizard that came to nothing: a strike that missed, or a stoop it pulled out of. */
     dodged: number;
+    /** Hunts of the lizard it gave up on, the lizard still alive, after diving at it at least once. */
+    survived: number;
     /** How many times the lizard has flushed it off a perch. */
     flushed: number;
     perch: number;

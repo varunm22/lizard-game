@@ -21,6 +21,7 @@ import { quarries } from './creatures/quarry';
 import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
 import { Wounds } from './player/wounds';
+import { Spines } from './player/spines';
 import { Vitals } from './player/vitals';
 import { ClimateSense } from './player/climate';
 import { waterDepth } from './world/shore';
@@ -97,7 +98,7 @@ async function main() {
   let basking = false;
   let canEat = false;
   const goals = new Goals([
-    { id: 'hawk', label: 'Dodge a hawk attack', met: () => hawk.dodged > 0 },
+    { id: 'hawk', label: 'Survive a hawk attack', met: () => hawk.survived > 0 },
     { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
@@ -121,6 +122,9 @@ async function main() {
     followCam.shake();
     hud.flash();
   };
+  // Up on a cactus: it hops off, with the flash.
+  const spines = new Spines(world, obstacles);
+  wounds.onPrick = () => hud.flash();
   // Tests can override the live input; null hands control back to the keyboard and gamepad.
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -172,6 +176,8 @@ async function main() {
       groomed: crabs.groomingPlayer,
     });
     wounds.step(dt);
+    const hop = wounds.down ? null : spines.shake(player);
+    if (hop) wounds.prick(hop.x, hop.z);
     goals.step(dt);
     player.step(dt, input);
     // Walking into another iguana pushes it slowly out of the way.

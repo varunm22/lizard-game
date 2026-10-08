@@ -15,10 +15,11 @@ const TRAMPLE_TIME = 0.25;
 export const COUNTDOWN = 5;
 
 /**
- * What the hawk and the tortoise do to the lizard, and what happens when its health runs out. A
- * strike that lands jerks it aside, with a flinch toward the side it was hit on, and takes
- * `VITALS.hawkHit` of its health; trampled by the tortoise, it's shoved clear of its path and loses
- * `VITALS.trampleHit`. At no health, whatever took it (the hawk, the cold, hunger, drowning), it rolls onto its
+ * What the hawk, the tortoise and the cactus do to the lizard, and what happens when its health
+ * runs out. A strike that lands jerks it aside, with a flinch toward the side it was hit on, and
+ * takes `VITALS.hawkHit` of its health; trampled by the tortoise, it's shoved clear of its path and
+ * loses `VITALS.trampleHit`; on a cactus's spines (`spines.ts`), it hops off and loses
+ * `VITALS.cactusHit`. At no health, whatever took it (the hawk, the cold, hunger, drowning), it rolls onto its
  * side and lies still while a countdown runs, then comes back at the spawn with its vitals reset.
  */
 export class Wounds {
@@ -35,6 +36,8 @@ export class Wounds {
   onStrike: ((side: 'left' | 'right', dx: number, dz: number) => void) | null = null;
   /** Called when the tortoise tramples it. */
   onTrample: (() => void) | null = null;
+  /** Called when a cactus pricks it. */
+  onPrick: (() => void) | null = null;
 
   constructor(
     private player: PlayerController,
@@ -85,6 +88,21 @@ export class Wounds {
     this.model.flinch(left ? 'right' : 'left');
     this.onTrample?.();
     this.vitals.hurt(VITALS.trampleHit, 'tortoise');
+    this.knockDown();
+    return true;
+  }
+
+  /**
+   * Pricked by a cactus it ended up on top of, hopping off along (dx, dz): loses `VITALS.cactusHit`,
+   * flinching away from the spines. Returns false if it was already down.
+   */
+  prick(dx: number, dz: number): boolean {
+    if (this.down) return false;
+    const yaw = this.player.yaw;
+    const left = dx * Math.cos(yaw) - dz * Math.sin(yaw) >= 0;
+    this.model.flinch(left ? 'right' : 'left');
+    this.onPrick?.();
+    this.vitals.hurt(VITALS.cactusHit, 'cactus');
     this.knockDown();
     return true;
   }

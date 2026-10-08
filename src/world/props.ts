@@ -5,7 +5,7 @@ import { toonGradient } from '../render/toon';
 import { rng } from './noise';
 import { BEACH_PATH, forestCover, lavaCover, sandCover, shoreDistance, SPAWN } from './layout';
 import { rockyShore, WATER_Y } from './shore';
-import { TERRAIN_SIZE, terrainHeight } from './terrain';
+import { CACTUS_GROUP, TERRAIN_SIZE, terrainHeight } from './terrain';
 import { covers, hull, type Obstacle } from './obstacles';
 import { buildRockPiles } from './rockPiles';
 
@@ -102,10 +102,11 @@ export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.
     mesh.quaternion.copy(rot);
     mesh.scale.setScalar(s);
     const half = (h * s + ROOT_DEPTH) / 2;
-    const collider = world.createCollider(
-      RAPIER.ColliderDesc.cylinder(half, r * s).setTranslation(x, y - ROOT_DEPTH + half, z).setFriction(0.9),
-    );
-    add({ name: `${kind}-${obstacles.length}`, kind: kind === 'lava_cactus' ? 'cactus' : 'tree', position: mesh.position, height: h * s, radius: r * s, mesh, collider });
+    const cactus = kind === 'lava_cactus';
+    const desc = RAPIER.ColliderDesc.cylinder(half, r * s).setTranslation(x, y - ROOT_DEPTH + half, z).setFriction(0.9);
+    if (cactus) desc.setCollisionGroups((CACTUS_GROUP << 16) | 0xffff);
+    const collider = world.createCollider(desc);
+    add({ name: `${kind}-${obstacles.length}`, kind: cactus ? 'cactus' : 'tree', position: mesh.position, height: h * s, radius: r * s, mesh, collider });
   };
   const treeSpacing = (x: number, z: number, d: number) => trees.every((t) => Math.hypot(t.x - x, t.z - z) > d);
 

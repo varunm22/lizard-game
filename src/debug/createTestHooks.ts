@@ -186,6 +186,9 @@ export function createTestHooks({
       else ig.sneeze();
     },
     iguanaPlace: (i, x, z, yaw, stay) => iguanas.list[i].place(x, z, yaw, stay),
+    iguanaScare: (i, x, z) => {
+      iguanas.list[i].scare(x, z, true);
+    },
     saltSpray: () => iguanas.spray.live,
     lava: lavaCover,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),
@@ -216,6 +219,7 @@ export function createTestHooks({
       strikes: hawk.strikes,
       hitsLanded: hawk.hitsLanded,
       dodged: hawk.dodged,
+      survived: hawk.survived,
       perch: hawk.perchIndex,
       flushed: hawk.flushed,
       enabled: hawk.enabled,

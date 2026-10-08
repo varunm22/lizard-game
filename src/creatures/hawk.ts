@@ -140,6 +140,10 @@ export class Hawk {
   hitsLanded = 0;
   /** Attacks on the lizard it got away from: a strike that missed, or a stoop it pulled out of. */
   dodged = 0;
+  /** Hunts of the lizard it gave up on, still alive, after diving at it at least once. */
+  survived = 0;
+  /** Dives at the lizard in the hunt under way. */
+  private lunges = 0;
   readonly pos = new THREE.Vector3();
   readonly vel = new THREE.Vector3();
   private prevPos = new THREE.Vector3();
@@ -467,6 +471,7 @@ export class Hawk {
   private startHunt() {
     if (!this.quarry) return;
     this.unseen = 0;
+    this.lunges = 0;
     this.stalkFor = STALK_FIRST;
     if (this.state === 'perch' || this.state === 'land') this.takeOff(true);
     else if (this.state !== 'take_off') this.goTo('stalk');
@@ -475,6 +480,9 @@ export class Hawk {
 
   /** Stop hunting; won't look again for `calm` seconds. Back to its round, or to a perch after a kill. */
   private giveUp(calm: number) {
+    // Having dived at the lizard and not got it, it gives up: the lizard survived the attack.
+    if (this.quarry?.kind === 'player' && !this.quarry.down && this.lunges > 0) this.survived++;
+    this.lunges = 0;
     this.calm = calm;
     this.quarry = null;
     for (const w of this.watch) w.seen = 0;
@@ -494,7 +502,10 @@ export class Hawk {
       this.landFor = 'perch';
       this.perch = this.choosePerch();
     }
-    if (state === 'stoop') this.strikes++;
+    if (state === 'stoop') {
+      this.strikes++;
+      if (this.quarry?.kind === 'player') this.lunges++;
+    }
   }
 
   private stepPerch() {
