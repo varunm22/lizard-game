@@ -12,13 +12,13 @@ export interface HudVitals {
 const STEADY = 0.0005;
 
 /**
- * A small controls hint in the corner that fades once the player starts moving, over the goals
- * (`goalsPanel.ts`, in `corner`); bars in the other
+ * The controls, listed at the bottom in the middle until a few seconds after the player starts
+ * moving; the goals (`goalsPanel.ts`) in the bottom-left `corner`; bars in the other
  * corner for health, warmth, food and air; "[F] to eat" while algae is within a bite; a red flash round the edges as a strike lands; and the
  * countdown while it lies knocked down.
  */
 export function createHud(): {
-  /** The bottom-left column the hint sits at the top of. */
+  /** The bottom-left corner, where the goals go. */
   corner: HTMLElement;
   hideHint(): void;
   vitals(v: HudVitals): void;
@@ -31,12 +31,31 @@ export function createHud(): {
   corner.style.cssText =
     'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
   document.body.appendChild(corner);
+  // The controls, a line each, at the bottom in the middle; they stay 3 s once it moves, then fade.
   const el = document.createElement('div');
+  el.className = 'controls-hint';
   el.style.cssText =
-    'padding:6px 10px;border-radius:6px;background:#fffc;' +
-    'font:14px system-ui,sans-serif;color:#2f3a2a;transition:opacity 1.5s;pointer-events:none';
-  el.textContent = 'W/S move · A/D steer, or look around when still · Shift run · Space jump, or tilt up when swimming · F bite · drag or Q/E orbit · wheel zoom';
-  corner.appendChild(el);
+    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#fffc;' +
+    'font:14px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto auto;gap:3px 12px;' +
+    'transition:opacity 1.5s ease 3s;pointer-events:none';
+  const CONTROLS: [string, string][] = [
+    ['W / S', 'move'],
+    ['A / D', 'steer, or look around when still'],
+    ['Shift', 'run'],
+    ['Space', 'jump, or tilt up when swimming'],
+    ['F', 'bite'],
+    ['Drag or Q / E', 'orbit the camera'],
+    ['Wheel', 'zoom'],
+  ];
+  for (const [keys, does] of CONTROLS) {
+    const k = document.createElement('span');
+    k.style.cssText = 'font-weight:600;text-align:right;white-space:nowrap';
+    k.textContent = keys;
+    const d = document.createElement('span');
+    d.textContent = does;
+    el.append(k, d);
+  }
+  document.body.appendChild(el);
 
   const panel = document.createElement('div');
   panel.style.cssText =
