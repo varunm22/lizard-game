@@ -95,6 +95,7 @@ async function main() {
   const hud = createHud();
   // One goal per creature, and the algae. They start over each time the page loads.
   let basking = false;
+  let canEat = false;
   const goals = new Goals([
     { id: 'hawk', label: 'Dodge a hawk attack', met: () => hawk.dodged > 0 },
     { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
@@ -136,7 +137,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals,
+    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -219,6 +220,9 @@ async function main() {
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();
+    // Algae at the mouth: say F eats it.
+    canEat = !wounds.down && !!feeding.inReach();
+    hud.canEat(canEat);
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     crabs.update(alpha, frameDt);
     plants.update(pushers, frameDt);

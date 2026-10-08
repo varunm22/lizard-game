@@ -29,11 +29,16 @@ export class Feeding {
     return this.model.bite(() => this.snap());
   }
 
+  /** The algae patch a bite would get, judged by the body spheres as last drawn, or undefined. */
+  inReach() {
+    const [snout, head] = this.model.bodySpheres;
+    return [snout, head].map((s) => this.algae.touching(s.x, s.y, s.z, s.r + MOUTH_SLACK)[0]).find((p) => p);
+  }
+
   private snap() {
     this.bites++;
     this.model.updateBodySpheres();
-    const [snout, head] = this.model.bodySpheres;
-    const patch = [snout, head].map((s) => this.algae.touching(s.x, s.y, s.z, s.r + MOUTH_SLACK)[0]).find((p) => p);
+    const patch = this.inReach();
     if (!patch) {
       this.lastBite = null;
       return;

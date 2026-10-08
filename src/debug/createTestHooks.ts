@@ -53,6 +53,7 @@ interface HookContext {
   climate: ClimateSense;
   puff: StrikePuff;
   goals: Goals;
+  canEat: () => boolean;
   setInput: GameTestHooks['setInput'];
   viewFrom: GameTestHooks['viewFrom'];
 }
@@ -60,7 +61,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals,
+  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
@@ -197,7 +198,7 @@ export function createTestHooks({
       (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     removeAlgae: (id) => algae.remove(id),
     bite: () => feeding.bite(),
-    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, lastBite: feeding.lastBite }),
+    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, lastBite: feeding.lastBite, canEat: canEat() }),
     sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
     hawk: () => ({

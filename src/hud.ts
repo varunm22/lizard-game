@@ -14,7 +14,7 @@ const STEADY = 0.0005;
 /**
  * A small controls hint in the corner that fades once the player starts moving, over the goals
  * (`goalsPanel.ts`, in `corner`); bars in the other
- * corner for health, warmth, food and air; a red flash round the edges as a strike lands; and the
+ * corner for health, warmth, food and air; "[F] to eat" while algae is within a bite; a red flash round the edges as a strike lands; and the
  * countdown while it lies knocked down.
  */
 export function createHud(): {
@@ -24,6 +24,8 @@ export function createHud(): {
   vitals(v: HudVitals): void;
   down(countdown: number | null): void;
   flash(): void;
+  /** Show the "[F] to eat" prompt, while algae is within a bite. */
+  canEat(show: boolean): void;
 } {
   const corner = document.createElement('div');
   corner.style.cssText =
@@ -73,6 +75,19 @@ export function createHud(): {
   document.body.appendChild(banner);
   let shown = '';
 
+  // Over the lizard, just above the middle of the view (it's drawn a little below the middle).
+  const eat = document.createElement('div');
+  eat.className = 'eat-prompt';
+  eat.style.cssText =
+    'position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);padding:6px 14px;border-radius:8px;' +
+    'background:#fffd;font:600 17px system-ui,sans-serif;color:#2f3a2a;pointer-events:none;' +
+    'opacity:0;transition:opacity .15s';
+  eat.innerHTML =
+    '<span style="display:inline-block;min-width:1.2em;padding:1px 6px;margin-right:6px;border:2px solid #2f3a2a;' +
+    'border-radius:5px;text-align:center;font-size:15px">F</span>to eat';
+  document.body.appendChild(eat);
+  let eatShown = false;
+
   const flash = document.createElement('div');
   flash.style.cssText =
     'position:fixed;inset:0;pointer-events:none;opacity:0;' +
@@ -105,6 +120,12 @@ export function createHud(): {
       for (const el of bars.air.rows) el.style.opacity = v.air < 1 ? '1' : '0.35';
       arrow(bars.health.trend, v.healthRate);
       arrow(bars.warmth.trend, v.warmthRate);
+    },
+    canEat(show) {
+      if (show === eatShown) return;
+      eatShown = show;
+      eat.style.opacity = show ? '1' : '0';
+      eat.dataset.shown = show ? '1' : '';
     },
     down(countdown) {
       const text = countdown === null ? '' : `Respawn in ${countdown}`;

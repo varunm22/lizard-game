@@ -31,7 +31,7 @@ test('F bites: the head lifts with the mouth open, lunges and snaps shut, and no
   expect(r.after).toBeLessThan(0.01);
   expect(r.steps).toBeGreaterThan(30);
   expect(r.steps).toBeLessThan(45);
-  expect(r.feeding).toEqual({ bites: 1, mouthfuls: 0, lastBite: null });
+  expect(r.feeding).toEqual({ bites: 1, mouthfuls: 0, lastBite: null, canEat: false });
   expect(errors).toEqual([]);
 });
 
@@ -43,6 +43,8 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
     const { waterY } = g.ocean();
     // Algae just above the water on the lava, on fairly level ground, where the lizard can stand with its snout over it.
     const pick = g.algae().filter((a) => a.grown > 0.99 && a.y > waterY + 0.003);
+    // At the spawn there's no algae near.
+    const before = g.feeding();
     for (const a of pick) {
       for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
         const fx = Math.sin(yaw);
@@ -57,6 +59,7 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
         const p = g.player();
         const s = g.lizard().snout;
         if (!p.grounded || p.swimming || Math.hypot(s.x - a.x, s.z - a.z) > 0.012 || s.y > a.y + 0.03) continue;
+        const prompt = { before: before.canEat, at: g.feeding().canEat, shown: document.querySelector<HTMLElement>('.eat-prompt')!.dataset.shown === '1' };
         g.setVitals({ fullness: 0.3 });
         const got: ({ id: number; ate: boolean } | null)[] = [];
         for (let b = 0; b < 8 && g.algae().some((o) => o.id === a.id); b++) {
@@ -64,7 +67,7 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
           for (let k = 0; k < 40; k++) g.advance(1, false);
           got.push(g.feeding().lastBite);
         }
-        return { found: true, id: a.id, got, gone: !g.algae().some((o) => o.id === a.id), feeding: g.feeding(), fullness: g.vitals().fullness, goals: g.goals() };
+        return { found: true, id: a.id, got, gone: !g.algae().some((o) => o.id === a.id), feeding: g.feeding(), fullness: g.vitals().fullness, goals: g.goals(), prompt };
       }
     }
     return { found: false };
@@ -76,6 +79,9 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
   expect(r.got!.map((b) => b!.ate)).toEqual([false, false, false, false, false, true]);
   expect(r.gone).toBe(true);
   expect(r.feeding).toMatchObject({ bites: 6, mouthfuls: 6 });
+  // "[F] to eat" shows with the algae at its snout, and goes once it's all eaten.
+  expect(r.prompt).toEqual({ before: false, at: true, shown: true });
+  expect(r.feeding!.canEat).toBe(false);
   // Each mouthful fills the food bar a little (held otherwise for this spec).
   expect(r.fullness).toBeCloseTo(0.3 + 6 * 0.06, 5);
   // Eating ticks off the algae goal, and only that one.
