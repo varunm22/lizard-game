@@ -107,6 +107,8 @@ export interface GameTestHooks {
     clip: string | undefined;
     /** The lizard is riding on its shell. */
     ridden: boolean;
+    /** Times it has walked onto the lizard and trampled it. */
+    tramples: number;
     along: number;
     ahead: { x: number; z: number };
     route: { x: number; z: number; rx: number; rz: number };

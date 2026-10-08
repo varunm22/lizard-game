@@ -101,6 +101,12 @@ async function main() {
     followCam.shake();
     hud.flash();
   };
+  // Trampled by the tortoise: shoved out of its path, with the same jolt and flash.
+  tortoise.onTrample = (dx, dz, shell) => wounds.trample(dx, dz, shell);
+  wounds.onTrample = () => {
+    followCam.shake();
+    hud.flash();
+  };
   // Tests can override the live input; null hands control back to the keyboard and gamepad.
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -182,7 +188,7 @@ async function main() {
       healthRate: vitals.rate.health,
       warmthRate: vitals.rate.warmth,
     });
-    hud.down(wounds.downBy, wounds.countdown);
+    hud.down(wounds.countdown);
     iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;

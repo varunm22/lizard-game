@@ -1,7 +1,7 @@
 import type { Climate } from './climate';
 
 /** What brought the lizard down. */
-export type DownCause = 'hawk' | 'cold' | 'hunger' | 'air';
+export type DownCause = 'hawk' | 'tortoise' | 'cold' | 'hunger' | 'air';
 
 /**
  * Every vitals tuning number in one place. All four bars run 0 to 1, rates are per second.
@@ -9,6 +9,8 @@ export type DownCause = 'hawk' | 'cold' | 'hunger' | 'air';
 export const VITALS = {
   /** A hawk strike takes this much health: two leave it at a fifth, the third puts it down. */
   hawkHit: 0.4,
+  /** Trampled by the tortoise, it loses half its health (and is shoved out of the way). */
+  trampleHit: 0.5,
   /** On its feet again at the spawn, it starts with these. */
   start: { health: 1, warmth: 0.7, fullness: 0.7, air: 1 },
 

@@ -1,5 +1,3 @@
-import type { DownCause } from './player/vitals';
-
 /** What the bars show, each 0 to 1, with the way health and warmth are heading (per second). */
 export interface HudVitals {
   health: number;
@@ -9,13 +7,6 @@ export interface HudVitals {
   healthRate: number;
   warmthRate: number;
 }
-
-const DOWN_TEXT: Record<DownCause, string> = {
-  hawk: 'Caught by the hawk.',
-  cold: 'Too cold to move.',
-  hunger: 'Starved.',
-  air: 'Out of air.',
-};
 
 /** A rate this small (per second) shows no arrow. */
 const STEADY = 0.0005;
@@ -28,7 +19,7 @@ const STEADY = 0.0005;
 export function createHud(): {
   hideHint(): void;
   vitals(v: HudVitals): void;
-  down(cause: DownCause | null, countdown: number | null): void;
+  down(countdown: number | null): void;
   flash(): void;
 } {
   const el = document.createElement('div');
@@ -107,8 +98,8 @@ export function createHud(): {
       arrow(bars.health.trend, v.healthRate);
       arrow(bars.warmth.trend, v.warmthRate);
     },
-    down(cause, countdown) {
-      const text = countdown === null || cause === null ? '' : `${DOWN_TEXT[cause]} Back in ${countdown}…`;
+    down(countdown) {
+      const text = countdown === null ? '' : `Respawn in ${countdown}`;
       if (text !== shown) {
         shown = text;
         banner.textContent = text;

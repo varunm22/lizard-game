@@ -178,8 +178,9 @@ test('the bars show in the bottom corner', async ({ page }) => {
   await page.evaluate(() => {
     const g = window.__game!;
     g.setVitals({ health: 0.6, warmth: 0.35, fullness: 0.5, air: 0.8, frozen: true });
-    g.advance(10);
+    g.advance(10, false);
   });
+  await expect(page.getByText(/^Respawn in/)).toHaveCount(0);
   for (const label of ['Health', 'Warmth', 'Food', 'Air']) {
     const box = await page.getByText(label, { exact: true }).boundingBox();
     expect(box).not.toBeNull();
@@ -187,5 +188,25 @@ test('the bars show in the bottom corner', async ({ page }) => {
     expect(box!.y).toBeGreaterThan(600);
   }
   await screenshot(page, 'vitals-hud.png');
+  // At no health it goes down, and a 5 s countdown to the respawn shows at once.
+  const down = await page.evaluate(() => {
+    const g = window.__game!;
+    g.setVitals({ health: 0 });
+    g.advance(1, false);
+    return g.wounds().countdown;
+  });
+  await expect(page.getByText('Respawn in 5', { exact: true })).toBeVisible();
+  const steps = await page.evaluate(() => {
+    const g = window.__game!;
+    let steps = 1;
+    while (g.wounds().down && steps < 10 * 60) {
+      g.advance(1, false);
+      steps++;
+    }
+    return steps;
+  });
+  expect(down).toBe(5);
+  expect(steps).toBeGreaterThan(4.9 * 60);
+  expect(steps).toBeLessThan(5.1 * 60);
   expect(errors).toEqual([]);
 });

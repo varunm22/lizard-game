@@ -145,7 +145,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
   expect(r.down.wounds.countdown).not.toBeNull();
   expect(r.down.clip).toBe('collapse');
   expect(r.down.moved).toBeLessThan(0.005);
-  // Back up after the collapse and the 5 s countdown (about 1.85 s were already spent lying there).
+  // Back up 5 s after it went down (about 2 s were already spent lying there).
   expect(r.back).toBeGreaterThan(60);
   expect(r.back).toBeLessThan(5 * 60);
   expect(r.wounds.hits).toBe(0);

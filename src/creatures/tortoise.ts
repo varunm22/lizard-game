@@ -41,6 +41,12 @@ const FEET = { side: 0.07, front: 0.092, back: -0.078 };
 const SHOVE_MARGIN = 0.025;
 /** The shell reaches out past its outline at the front for the head and front legs (m). */
 const FRONT_REACH = 0.04;
+/**
+ * A lizard in its path ahead of the middle, caught as it walks, is trampled: shoved out to the side
+ * this far past the shell's outline (m), and not again for this long (s).
+ */
+const TRAMPLE_CLEAR = 0.06;
+const TRAMPLE_COOLDOWN = 3;
 /** Feet higher than this above the tortoise's are on its back, riding, not in its way (m). */
 const ON_TOP = 0.05;
 /** How far below a rider's feet the shell may curve away and still be carrying it (m). */
@@ -75,6 +81,14 @@ export class Tortoise {
   private untilRest: number;
   private restFor = 0;
   private eatCooldown = 0;
+  private trampleCooldown = 0;
+  /**
+   * Called when it walks onto the lizard, with how far to shove it (m, level) to clear its path.
+   * Returns whether it was trampled (false if already down).
+   */
+  onTrample: ((dx: number, dz: number, shell: RAPIER.Collider) => boolean) | null = null;
+  /** Times it has trampled the lizard. */
+  tramples = 0;
   private meal: Plant | null = null;
   /** Plants it has already passed by without eating, so each gets one chance. */
   private passed = new WeakSet<Plant>();
@@ -171,6 +185,7 @@ export class Tortoise {
     this.prevRot.copy(this.rot);
     this.stateTime += dt;
     this.eatCooldown -= dt;
+    this.trampleCooldown -= dt;
     const t = this.stateTime;
     switch (this.state) {
       case 'walk': {
@@ -351,6 +366,15 @@ export class Tortoise {
     const az = l + SHOVE_MARGIN + (along > 0 ? FRONT_REACH : 0);
     const e = (across / ax) ** 2 + (along / az) ** 2;
     if (e >= 1) return true;
+    // In its path, ahead of the middle: under its front feet. Trampled, and thrown out to the side.
+    if (along > 0 && Math.abs(across) < w && this.trampleCooldown <= 0 && this.onTrample) {
+      const side = across >= 0 ? 1 : -1;
+      const out = side * (ax + TRAMPLE_CLEAR) - across;
+      if (this.onTrample(out * dz, -out * dx, this.collider)) {
+        this.tramples++;
+        this.trampleCooldown = TRAMPLE_COOLDOWN;
+      }
+    }
     // Straight out from the middle to the outline (sideways if it's dead centre).
     const k = e > 1e-6 ? 1 / Math.sqrt(e) : 0;
     const [na, nc] = e > 1e-6 ? [along * k, across * k] : [0, ax];
