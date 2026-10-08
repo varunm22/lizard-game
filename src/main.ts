@@ -34,6 +34,8 @@ import { Feeding } from './player/feeding';
 import { FollowCamera } from './camera/followCamera';
 import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
+import { Goals } from './goals';
+import { createGoalsPanel } from './goalsPanel';
 import { createTestHooks } from './debug/createTestHooks';
 import lizardUrl from './assets/lizard.glb?url';
 import plantsUrl from './assets/plants.glb?url';
@@ -92,6 +94,18 @@ async function main() {
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
+  // One goal per creature, and the algae. They start over each time the page loads.
+  let basking = false;
+  let canEat = false;
+  const goals = new Goals([
+    { id: 'hawk', label: 'Dodge a hawk attack', met: () => hawk.dodged > 0 },
+    { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
+    { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
+    { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
+    { id: 'algae', label: 'Eat some algae', met: () => feeding.mouthfuls > 0 },
+  ]);
+  const goalsPanel = createGoalsPanel(hud.corner, goals.list);
+  goals.onDone = (goal) => goalsPanel.done(goal);
   // A strike that lands: dust and feathers fly off the lizard's back, the view jolts and reddens.
   const puff = new StrikePuff(scene);
   const struckAt = new THREE.Vector3();
@@ -127,7 +141,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff,
+    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -154,6 +168,7 @@ async function main() {
     const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
     climate.step(dt);
     const moving = input.move.x !== 0 || input.move.y !== 0;
+    basking = player.grounded && !moving && player.horizontalSpeed < 0.02 && !wounds.down;
     vitals.step(dt, climate.now, {
       still: player.grounded && !moving && player.horizontalSpeed < 0.02,
       running: input.run && moving && player.horizontalSpeed > 0.3,
@@ -163,6 +178,7 @@ async function main() {
     wounds.step(dt);
     const hop = wounds.down ? null : spines.shake(player);
     if (hop) wounds.prick(hop.x, hop.z);
+    goals.step(dt);
     player.step(dt, input);
     // Walking into another iguana pushes it slowly out of the way.
     if (input.move.y > 0) iguanas.pushedBy(player, dt);
@@ -210,6 +226,9 @@ async function main() {
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();
+    // Algae at the mouth: say F eats it.
+    canEat = !wounds.down && !!feeding.inReach();
+    hud.canEat(canEat);
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     crabs.update(alpha, frameDt);
     plants.update(pushers, frameDt);

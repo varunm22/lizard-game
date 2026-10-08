@@ -138,6 +138,8 @@ export class Hawk {
   /** Strikes made, and strikes that landed. */
   strikes = 0;
   hitsLanded = 0;
+  /** Attacks on the lizard it got away from: a strike that missed, or a stoop it pulled out of. */
+  dodged = 0;
   readonly pos = new THREE.Vector3();
   readonly vel = new THREE.Vector3();
   private prevPos = new THREE.Vector3();
@@ -391,7 +393,10 @@ export class Hawk {
       if (now) this.seesPrey = !!q && this.canSee(q);
       if (this.state === 'feed') return;
       // Out of reach (the lizard got onto the tortoise): it pulls out at once, even mid-dive.
-      if (!q || !q.available || q.safe) return this.giveUp(CALM_AFTER_LOSING);
+      if (!q || !q.available || q.safe) {
+        if (this.state === 'stoop' || (this.state === 'strike' && !this.struck)) this.lizardGotAway();
+        return this.giveUp(CALM_AFTER_LOSING);
+      }
       this.unseen = this.seesPrey ? 0 : this.unseen + dt;
       if (this.unseen >= LOSE_INTEREST && this.state !== 'strike') this.giveUp(CALM_AFTER_LOSING);
       return;
@@ -580,7 +585,15 @@ export class Hawk {
       return;
     }
     this.dive(target, STOOP_SPEED, STOOP_ACCEL, dt);
-    if (this.stateTime > 4 || this.unseen > STOOP_BLIND) this.goTo('climb');
+    if (this.stateTime > 4 || this.unseen > STOOP_BLIND) {
+      this.lizardGotAway();
+      this.goTo('climb');
+    }
+  }
+
+  /** The attack under way came to nothing: if it was on the lizard, that's one it dodged. */
+  private lizardGotAway() {
+    if (this.quarry?.kind === 'player' && !this.quarry.down) this.dodged++;
   }
 
   /**
@@ -644,6 +657,7 @@ export class Hawk {
     const open = this.quarry!.down || this.canSee(this.quarry!);
     const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
     if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
+    else if (!hit) this.lizardGotAway();
   }
 
   private stepClimb(dt: number) {
