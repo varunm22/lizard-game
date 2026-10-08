@@ -46,17 +46,10 @@ async function driveUntilZBelow(page: Page, input: Drive, z: number, max = 300) 
 }
 
 test('walking with W follows the ground and comes to rest; Shift runs', async ({ page }) => {
-  // Open ground with no plants near the way (they slow the lizard), camera behind looking +Z: forward is +Z.
-  await bootGame(page);
-  const laneX = await page.evaluate(() => {
-    const ps = window.__game!.plants();
-    const near = (x: number) => ps.filter((p) => Math.abs(p.x - x) < 0.06 && p.z > 0.15 && p.z < 1.3).length;
-    let best = 0.6;
-    for (let x = -0.6; x <= 1.0; x += 0.01) if (near(x) < near(best)) best = x;
-    return near(best) === 0 ? best : null;
-  });
-  expect(laneX).not.toBeNull();
-  const errors = await boot(page, laneX!);
+  // Open ground, cleared of plants (they slow the lizard), camera behind looking +Z: forward is +Z.
+  const errors = await bootGame(page);
+  await page.evaluate(() => window.__game!.clearPlants(0.6, 0.15, 0.6, 1.4, 0.06));
+  await teleport(page, 0.6, 0.3, 0);
   const start = await player(page);
   expect(start.grounded).toBe(true);
 
@@ -92,6 +85,8 @@ test('walking with W follows the ground and comes to rest; Shift runs', async ({
 
 test('steering: A/D look around when still, turn the body when moving; S backs up', async ({ page }) => {
   await boot(page);
+  // Open ground all round, so grass doesn't slow it.
+  await page.evaluate(() => window.__game!.clearPlants(0.6, 0.3, 0.6, 0.3, 0.3));
   const start = await player(page);
   const restHead = (await page.evaluate(() => window.__game!.lizard())).head;
 
@@ -181,6 +176,8 @@ test('jump: ~10 cm unhurried arc, lands flush, camera holds still; a tap hops lo
 test('walking into the log climbs it, rearing up the face, drapes over the top and tips off the far side', async ({ page }) => {
   await boot(page);
   const log = await obstacle(page, 'log');
+  // Nothing growing in the way, so only the log shapes the walk.
+  await page.evaluate((log) => window.__game!.clearPlants(log.x, log.z + 0.25, log.x, log.z - 0.35, 0.06), log);
   // South of the log's middle, facing -Z toward it, camera pinned to the side for the screenshots.
   await teleport(page, log.x, log.z + 0.2, Math.PI);
   await page.evaluate(() => window.__game!.viewFrom({ x: 0.22, y: 0.03, z: -0.02 }));

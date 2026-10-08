@@ -80,6 +80,8 @@ export interface GameTestHooks {
    */
   plants: (near?: { x: number; z: number; r: number }) => {
     kind: string;
+    /** A big plant with a solid stem the lizard goes around; small ones it walks through. */
+    solid: boolean;
     x: number;
     y: number;
     z: number;
@@ -91,6 +93,11 @@ export interface GameTestHooks {
     /** 0 seedling to 1 full grown. */
     growth: number;
   }[];
+  /**
+   * Clear the ground of plants along the segment from (x0, z0) to (x1, z1), out to `r` either side
+   * (each is eaten), for a test that needs to walk on open ground. Returns how many went.
+   */
+  clearPlants: (x0: number, z0: number, x1: number, z1: number, r: number) => number;
   /** Make a plant come up at (x, z), a seedling or `grown`; false if there's no room for it there. */
   sprout: (kind: string, x: number, z: number, grown?: boolean) => boolean;
   /**

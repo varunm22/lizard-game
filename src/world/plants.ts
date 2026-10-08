@@ -7,20 +7,25 @@ import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
 import { rng, smoothstep } from './noise';
 import { forestCover, lavaCover, sandCover } from './layout';
-import { waterDepth } from './shore';
+import { WATER_Y, waterDepth } from './shore';
 
 /**
  * How each kind (a mesh in assets-src/plants.py) sways: spring frequency (Hz) and damping ratio,
  * how far from its stem a body is pushed clear (m, before scaling), how far over it can lean, and
  * how much it holds the lizard back at its centre (`drag`). Damping above 1 means no bounce: a
- * pushed plant creeps back upright over a couple of seconds. They only give a little; a body
- * pushing through brushes past and through the stems rather than flattening them.
+ * pushed plant creeps back upright over a couple of seconds. Big plants (`solid`) have a solid stem
+ * the lizard has to go around, and only give a little. Small ones have none: the lizard walks
+ * straight through them, pressing them flat under its body, and they only slow it down.
  */
 const KINDS = {
-  grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 0.35, drag: 1.2 },
-  fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5 },
-  daisy: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4 },
-  poppy: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4 },
+  grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 1.1, drag: 1.2, solid: false },
+  fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5, solid: true },
+  lecocarpus: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4, solid: true },
+  cotton: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4, solid: true },
+  sesuvium: { hz: 0.5, zeta: 1.3, radius: 0.02, maxTilt: 0.9, drag: 1.0, solid: false },
+  tomato: { hz: 0.4, zeta: 1.2, radius: 0.02, maxTilt: 0.3, drag: 1.0, solid: true },
+  ipomoea: { hz: 0.5, zeta: 1.3, radius: 0.025, maxTilt: 1.0, drag: 0.6, solid: false },
+  tiquilia: { hz: 0.5, zeta: 1.4, radius: 0.015, maxTilt: 0.8, drag: 0.5, solid: false },
 } as const;
 /**
  * A plant slows the lizard while its body line is within this much of the plant's own radius (m):
@@ -38,19 +43,36 @@ const DRAG_SAMPLES = [-0.03, 0, 0.04];
 const STEM_RADIUS = 0.002;
 const STEM_TOP = 0.05;
 /**
- * Plant centres are never closer than this (m), so the lizard (2.4 cm wide, plus the controller's
- * 8 mm skin each side) can always squeeze between two of them.
+ * Solid stems are never closer than this (m), so the lizard (2.4 cm wide, plus the controller's
+ * 8 mm skin each side) can always squeeze between two of them. Any other two plants keep
+ * SOFT_SPACING apart, only so they don't grow into each other.
  */
 const MIN_SPACING = 0.05;
+const SOFT_SPACING = 0.02;
+/** How many times over the small (walk-through) plants are scattered, against the big ones. */
+const SMALL = 4;
 /** However thick the vegetation, the lizard keeps at least this fraction of its speed. */
 const MIN_SPEED_SCALE = 0.35;
 export type PlantKind = keyof typeof KINDS;
+
+/** Whether two plants, one of `kind` at (x, z), would stand too close (see MIN_SPACING). */
+function crowds(kind: PlantKind, x: number, z: number, p: { kind: PlantKind; x: number; z: number }) {
+  const gap = KINDS[kind].solid && KINDS[p.kind].solid ? MIN_SPACING : SOFT_SPACING;
+  return Math.abs(p.x - x) < gap && Math.abs(p.z - z) < gap && Math.hypot(p.x - x, p.z - z) < gap;
+}
 
 /** Springs advance in steps no longer than this, so a slow frame can't blow them up (s). */
 const MAX_SUBSTEP = 1 / 90;
 const SEED = 23;
 /** No pusher is bigger than this (m). */
 const MAX_PUSHER = 0.05;
+/**
+ * Plants are also filed in square cells this wide (m) so the lookups made every step (what's near
+ * the lizard, what its body pushes) only visit the plants nearby. REACH bounds how far any plant
+ * reaches from its root: its tallest stem lying over, plus its push radius.
+ */
+const CELL = 0.25;
+const REACH = 0.3;
 
 /**
  * Trampled by something heavy (the tortoise), a plant lies this far over (radians), stays down most
@@ -68,7 +90,11 @@ const SEEDLING = 0.05;
 const SPROUT_CAP = 96;
 
 export interface Plant extends PlantBody {
+  /** Order of creation: lookups through the cells visit plants in this order. */
+  id: number;
   kind: PlantKind;
+  /** A big plant, with a solid stem the lizard goes around; a small one it walks through. */
+  solid: boolean;
   drag: number;
   yaw: number;
   scale: number;
@@ -83,7 +109,7 @@ export interface Plant extends PlantBody {
   crushX: number;
   crushZ: number;
   eaten: boolean;
-  /** Its solid stem (null until it's grown enough to have one). */
+  /** Its solid stem (null for a small plant, or until a big one has grown enough to have one). */
   stem: RAPIER.Collider | null;
   patch: Patch;
   slot: number;
@@ -130,6 +156,12 @@ export class Plants {
   private changing = new Set<Plant>();
   private rand = rng(SEED + 1);
   private matrix = new THREE.Matrix4();
+  private nextId = 0;
+  /** Every plant still growing, by cell (`cellKey`). */
+  private cells = new Map<number, Plant[]>();
+  /** Plants still swaying (or just touched), stepped every update. */
+  private swaying = new Set<Plant>();
+  private found: Plant[] = [];
 
   private constructor(private world: RAPIER.World) {}
 
@@ -154,7 +186,7 @@ export class Plants {
       geometry.computeBoundingBox();
       const height = geometry.boundingBox!.max.y;
       const list = placed.filter((p) => p.kind === name).map((p) => plants.makePlant(p, height, 1));
-      plants.all.push(...list);
+      for (const p of list) plants.add(p);
       const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
       bendPlants(material, height);
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
@@ -180,6 +212,7 @@ export class Plants {
     const k = KINDS[p.kind];
     return {
       ...p,
+      id: this.nextId++,
       y: terrainHeight(p.x, p.z),
       fullHeight: height * p.scale,
       fullRadius: k.radius * p.scale,
@@ -188,6 +221,7 @@ export class Plants {
       growth,
       maxTilt: k.maxTilt,
       drag: k.drag,
+      solid: k.solid,
       omega: 2 * Math.PI * k.hz,
       zeta: k.zeta,
       tx: 0,
@@ -208,8 +242,9 @@ export class Plants {
     };
   }
 
-  /** Give the plant its thin solid stem (full-grown height). */
+  /** Give a big plant its thin solid stem (full-grown height); small ones have none. */
   private growStem(p: Plant) {
+    if (!KINDS[p.kind].solid) return;
     const half = Math.min(p.fullHeight, STEM_TOP) / 2;
     p.stem = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(Math.max(half - STEM_RADIUS, 0.001), STEM_RADIUS)
@@ -219,11 +254,41 @@ export class Plants {
     p.stem.setEnabled(p.crush < STEM_BACK);
   }
 
+  private add(p: Plant) {
+    this.all.push(p);
+    const key = cellKey(p.x, p.z);
+    const cell = this.cells.get(key);
+    if (cell) cell.push(p);
+    else this.cells.set(key, [p]);
+  }
+
+  /**
+   * Every plant whose root is within the square of half-side r round (x, z), in the order they were
+   * made (callers check the exact distance). The list is reused: use it before the next call.
+   */
+  near(x: number, z: number, r: number): readonly Plant[] {
+    const out = this.found;
+    out.length = 0;
+    const i0 = Math.floor((x - r) / CELL);
+    const i1 = Math.floor((x + r) / CELL);
+    const j0 = Math.floor((z - r) / CELL);
+    const j1 = Math.floor((z + r) / CELL);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const cell = this.cells.get(cellIndex(i, j));
+        if (!cell) continue;
+        for (const p of cell) if (Math.abs(p.x - x) <= r && Math.abs(p.z - z) <= r) out.push(p);
+      }
+    }
+    if (i0 !== i1 || j0 !== j1) out.sort((a, b) => a.id - b.id);
+    return out;
+  }
+
   /** The nearest plant to (x, z) within r that is at least `minGrowth` grown, or null. */
   nearest(x: number, z: number, r: number, minGrowth = 0): Plant | null {
     let best: Plant | null = null;
     let bestD = r;
-    for (const p of this.all) {
+    for (const p of this.near(x, z, r)) {
       if (p.growth < minGrowth || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
       const d = Math.hypot(p.x - x, p.z - z);
       if (d < bestD) [best, bestD] = [p, d];
@@ -237,7 +302,7 @@ export class Plants {
    * being solid. It stays down for about a minute (a little more or less each), then lifts back.
    */
   trample(x: number, z: number, r: number, dx: number, dz: number) {
-    for (const p of this.all) {
+    for (const p of this.near(x, z, r)) {
       if (p.growth < 0.3 || Math.abs(p.x - x) > r || Math.abs(p.z - z) > r) continue;
       const ox = p.x - x;
       const oz = p.z - z;
@@ -263,7 +328,10 @@ export class Plants {
     if (p.eaten) return;
     p.eaten = true;
     this.all.splice(this.all.indexOf(p), 1);
+    const cell = this.cells.get(cellKey(p.x, p.z))!;
+    cell.splice(cell.indexOf(p), 1);
     this.changing.delete(p);
+    this.swaying.delete(p);
     if (p.stem) this.world.removeCollider(p.stem, false);
     p.stem = null;
     this.place(p);
@@ -275,7 +343,7 @@ export class Plants {
    * to another plant or this kind has no room left. Returns it, or null.
    */
   sprout(kind: PlantKind, x: number, z: number, grown = false): Plant | null {
-    if (this.all.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING)) return null;
+    if (this.near(x, z, MIN_SPACING).some((p) => crowds(kind, x, z, p))) return null;
     const draw = this.kinds.get(kind)!;
     const patch = draw.sprouts;
     const slot = patch.free.pop() ?? (patch.plants.length < SPROUT_CAP ? patch.plants.length : -1);
@@ -288,7 +356,7 @@ export class Plants {
     patch.bend.setXY(slot, 0, 0);
     patch.bend.needsUpdate = true;
     this.place(p);
-    this.all.push(p);
+    this.add(p);
     if (grown) this.growStem(p);
     else this.changing.add(p);
     return p;
@@ -335,7 +403,7 @@ export class Plants {
     for (const s of DRAG_SAMPLES) {
       const sx = x + fx * s;
       const sz = z + fz * s;
-      for (const p of this.all) {
+      for (const p of this.near(sx, sz, REACH)) {
         const reach = p.radius + DRAG_REACH;
         // A flattened plant is a trail, and a seedling is underfoot: neither holds the lizard back much.
         const drag = p.drag * (1 - p.crush) * p.growth;
@@ -356,24 +424,36 @@ export class Plants {
     this.recover(dt);
     const n = Math.ceil(Math.min(dt, 0.1) / MAX_SUBSTEP);
     const h = Math.min(dt, 0.1) / n;
-    for (const k of this.patches) {
-      let changed = false;
-      k.plants.forEach((p, i) => {
-        if (p.eaten) return;
-        // A plant at rest only needs stepping once something comes within reach of it.
+    // A plant at rest only needs stepping once something comes within reach of it.
+    for (const q of pushers) {
+      for (const p of this.near(q.x, q.z, REACH + MAX_PUSHER)) {
         const reach = p.height + p.radius + MAX_PUSHER;
-        if (!p.awake && !pushers.some((q) => Math.abs(q.x - p.x) < reach && Math.abs(q.z - p.z) < reach)) return;
-        const wasAwake = p.awake;
-        for (let s = 0; s < n; s++) stepPlant(p, pushers, h);
-        if (!p.awake && !wasAwake) return;
-        // The shader bends in the plant's own frame: turn the world-space tilt by -yaw.
-        this.dir.set(p.tx, 0, p.tz).applyAxisAngle(Y, -p.yaw);
-        k.bend.setXY(i, this.dir.x, this.dir.z);
-        changed = true;
-      });
-      if (changed) k.bend.needsUpdate = true;
+        if (Math.abs(q.x - p.x) < reach && Math.abs(q.z - p.z) < reach) this.swaying.add(p);
+      }
     }
+    for (const p of this.changing) if (p.awake) this.swaying.add(p);
+    const changed = new Set<Patch>();
+    for (const p of this.swaying) {
+      const wasAwake = p.awake;
+      for (let s = 0; s < n; s++) stepPlant(p, pushers, h);
+      if (!p.awake) this.swaying.delete(p);
+      if (!p.awake && !wasAwake) continue;
+      // The shader bends in the plant's own frame: turn the world-space tilt by -yaw.
+      this.dir.set(p.tx, 0, p.tz).applyAxisAngle(Y, -p.yaw);
+      p.patch.bend.setXY(p.slot, this.dir.x, this.dir.z);
+      changed.add(p.patch);
+    }
+    for (const k of changed) k.bend.needsUpdate = true;
   }
+}
+
+/** The cell (x, z) falls in, as one number. */
+function cellKey(x: number, z: number) {
+  return cellIndex(Math.floor(x / CELL), Math.floor(z / CELL));
+}
+
+function cellIndex(i: number, j: number) {
+  return (i + 1024) * 4096 + (j + 1024);
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -428,27 +508,31 @@ interface Placement {
 }
 
 /**
- * Lay the island's plants out: in the clearing, grass in patches with odd tufts between, ferns, and
- * flowers in little groups; under the trees, ferns thick on the ground among grass; at the back of
- * the beach, a few tufts holding the sand. Nothing grows in the sea, on the bare lava or the open
- * sand, on a rock, log or tree, past the edge, or right where the lizard spawns. A few flowers and
- * grass stand between the spawn and the log so they're the first thing to walk through.
+ * Lay the island's plants out, Galapagos lowland style: in the dry clearing, bunchgrass in patches
+ * with odd tufts between, mats of carpetweed (Sesuvium), and Lecocarpus, Darwin's cotton and
+ * Galapagos tomato in little groups; under the trees, ferns thick on the ground among grass; at the
+ * back of the beach carpetweed, and morning glory running out over the open sand; grey Tiquilia
+ * mounds on the bare lava. Nothing grows in the sea, on a rock, log or tree, past the edge, or right
+ * where the lizard spawns; only morning glory grows on open sand and only Tiquilia on the lava. A few
+ * flowers and grass stand between the spawn and the log so they're the first thing to walk through.
  */
 function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z: number }): Placement[] {
   const rand = rng(SEED);
   const out: Placement[] = [];
   const edge = TERRAIN_SIZE / 2 - 0.1;
   const range = (a: number, b: number) => a + (b - a) * rand();
-  const ok = (x: number, z: number) => {
+  const ok = (kind: PlantKind, x: number, z: number) => {
     if (Math.abs(x) > edge || Math.abs(z) > edge) return false;
     if (Math.hypot(x - clear.x, z - clear.z) < 0.1) return false;
     if (waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) > 0) return false;
-    if (lavaCover(x, z) > 0.4 || sandCover(x, z) > 0.75) return false;
+    // Open sand and lava run down to the sea: keep off the wet strip at its edge.
+    if (terrainHeight(x, z) < WATER_Y + 0.01) return false;
+    if (lavaCover(x, z) > 0.4 && kind !== 'tiquilia') return false;
+    if (sandCover(x, z) > 0.75 && kind !== 'ipomoea') return false;
     return open(x, z);
   };
-  const tooClose = (x: number, z: number) => out.some((p) => Math.hypot(p.x - x, p.z - z) < MIN_SPACING);
   const add = (kind: PlantKind, x: number, z: number, scale: number) => {
-    if (ok(x, z) && !tooClose(x, z)) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
+    if (ok(kind, x, z) && !out.some((p) => crowds(kind, x, z, p))) out.push({ kind, x, z, yaw: range(0, 2 * Math.PI), scale });
   };
   /** A point within `r` of (x, z), denser towards the middle. */
   const around = (x: number, z: number, r: number) => {
@@ -469,45 +553,69 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     const s = sandCover(x, z);
     return s > 0.15 && s < 0.7 ? 1 : 0;
   };
+  const openSand = (x: number, z: number) => (sandCover(x, z) > 0.6 && lavaCover(x, z) < 0.3 && waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) <= 0 ? 1 : 0);
+  const bareLava = (x: number, z: number) => (lavaCover(x, z) > 0.5 && waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) <= 0 ? 1 : 0);
 
   // The first patch you meet: between the spawn and the log, a little off the straight line.
   for (const [kind, x, z, s] of [
-    ['poppy', 0.16, -0.22, 1],
-    ['daisy', 0.1, -0.28, 1],
-    ['daisy', 0.2, -0.3, 0.9],
+    ['cotton', 0.16, -0.22, 1],
+    ['lecocarpus', 0.1, -0.28, 1],
+    ['lecocarpus', 0.2, -0.3, 0.9],
     ['grass', 0.05, -0.2, 1],
     ['grass', 0.13, -0.17, 0.9],
     ['grass', 0.22, -0.25, 1.1],
-    ['grass', 0.185, -0.158, 0.9],
-    ['fern', 0.3, -0.12, 1],
+    ['tomato', 0.185, -0.158, 0.9],
+    ['sesuvium', 0.3, -0.12, 1],
   ] as const) add(kind, x, z, s);
 
-  // The clearing.
-  for (let i = 0; i < 45; i++) {
+  // Big plants first, so the small ones fill in round them. In the clearing: Lecocarpus and cotton
+  // in little groups, tomato bushes; on the forest floor, ferns everywhere.
+  for (let i = 0; i < 24; i++) {
+    const kind = i % 2 ? 'lecocarpus' : 'cotton';
+    const [cx, cz] = somewhere(clearing);
+    const n = Math.round(range(2, 5));
+    for (let j = 0; j < n; j++) add(kind, ...around(cx, cz, 0.08), range(0.8, 1.15));
+  }
+  for (let i = 0; i < 14; i++) {
+    const [cx, cz] = somewhere(clearing);
+    const n = Math.round(range(1, 4));
+    for (let j = 0; j < n; j++) add('tomato', ...around(cx, cz, 0.1), range(0.8, 1.2));
+  }
+  for (let i = 0; i < 70; i++) {
+    const [cx, cz] = somewhere(forestCover);
+    const n = Math.round(range(2, 5));
+    for (let j = 0; j < n; j++) add('fern', ...around(cx, cz, 0.25), range(0.8, 1.25));
+  }
+  // The clearing's grass, in patches with odd tufts between, and carpetweed mats.
+  for (let i = 0; i < 70 * SMALL; i++) {
     const [cx, cz] = somewhere(clearing);
     const r = range(0.06, 0.16);
     const n = Math.round(range(5, 13));
     for (let j = 0; j < n; j++) add('grass', ...around(cx, cz, r), range(0.75, 1.2));
   }
-  for (let i = 0; i < 100; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
-  for (let i = 0; i < 12; i++) add('fern', ...somewhere(clearing), range(0.8, 1.3));
-  for (let i = 0; i < 16; i++) {
-    const kind = i % 2 ? 'daisy' : 'poppy';
+  for (let i = 0; i < 160 * SMALL; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
+  for (let i = 0; i < 18 * SMALL; i++) {
     const [cx, cz] = somewhere(clearing);
-    const n = Math.round(range(2, 5));
-    for (let j = 0; j < n; j++) add(kind, ...around(cx, cz, 0.08), range(0.8, 1.15));
+    const n = Math.round(range(3, 7));
+    for (let j = 0; j < n; j++) add('sesuvium', ...around(cx, cz, 0.1), range(0.8, 1.3));
   }
-  // The forest floor: ferns everywhere, grass in the lighter gaps.
-  for (let i = 0; i < 55; i++) {
-    const [cx, cz] = somewhere(forestCover);
-    const n = Math.round(range(2, 5));
-    for (let j = 0; j < n; j++) add('fern', ...around(cx, cz, 0.25), range(0.8, 1.25));
-  }
-  for (let i = 0; i < 40; i++) {
+  // Grass in the lighter gaps of the forest floor.
+  for (let i = 0; i < 55 * SMALL; i++) {
     const [cx, cz] = somewhere(forestCover);
     for (let j = 0; j < 6; j++) add('grass', ...around(cx, cz, 0.12), range(0.8, 1.2));
   }
-  // The back of the beach: scattered tufts.
-  for (let i = 0; i < 40; i++) add('grass', ...somewhere(sandEdge), range(0.6, 1));
+  // The back of the beach: mats of carpetweed, and morning glory running out over the sand.
+  for (let i = 0; i < 70 * SMALL; i++) add('sesuvium', ...somewhere(sandEdge), range(0.6, 1.1));
+  for (let i = 0; i < 25 * SMALL; i++) {
+    const [cx, cz] = somewhere(openSand);
+    const n = Math.round(range(3, 8));
+    for (let j = 0; j < n; j++) add('ipomoea', ...around(cx, cz, 0.15), range(0.8, 1.2));
+  }
+  // The lava: Tiquilia in scattered mounds.
+  for (let i = 0; i < 30 * SMALL; i++) {
+    const [cx, cz] = somewhere(bareLava);
+    const n = Math.round(range(2, 6));
+    for (let j = 0; j < n; j++) add('tiquilia', ...around(cx, cz, 0.12), range(0.7, 1.3));
+  }
   return out;
 }

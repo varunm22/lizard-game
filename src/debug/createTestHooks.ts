@@ -129,9 +129,20 @@ export function createTestHooks({
     setInput,
     viewFrom,
     plants: (near) =>
-      plants.all
+      (near ? plants.near(near.x, near.z, near.r) : plants.all)
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
-        .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
+        .map((p) => ({ kind: p.kind, solid: p.solid, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
+    clearPlants: (x0, z0, x1, z1, r) => {
+      const dx = x1 - x0;
+      const dz = z1 - z0;
+      const len2 = dx * dx + dz * dz || 1;
+      const gone = plants.all.filter((p) => {
+        const t = Math.max(0, Math.min(1, ((p.x - x0) * dx + (p.z - z0) * dz) / len2));
+        return Math.hypot(p.x - x0 - dx * t, p.z - z0 - dz * t) < r;
+      });
+      for (const p of gone) plants.eat(p);
+      return gone.length;
+    },
     sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
     tortoise: () => ({ ...tortoise.position, state: tortoise.state, ridden: tortoise.ridden, tramples: tortoise.tramples, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),

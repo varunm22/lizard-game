@@ -31,29 +31,28 @@ export function createHud(): {
   corner.style.cssText =
     'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
   document.body.appendChild(corner);
-  // The controls, a line each, at the bottom in the middle; they stay 3 s once it moves, then fade.
+  // The controls, in one short row at the bottom in the middle; they stay 3 s once it moves, then fade.
   const el = document.createElement('div');
   el.className = 'controls-hint';
   el.style.cssText =
-    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#fffc;' +
-    'font:14px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto auto;gap:3px 12px;' +
-    'transition:opacity 1.5s ease 3s;pointer-events:none';
+    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:#fffc;' +
+    'font:14px system-ui,sans-serif;color:#2f3a2a;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;' +
+    'max-width:calc(100vw - 32px);box-sizing:border-box;transition:opacity 1.5s ease 3s;pointer-events:none';
   const CONTROLS: [string, string][] = [
-    ['W / S', 'move'],
-    ['A / D', 'steer, or look around when still'],
+    ['WASD', 'move'],
     ['Shift', 'run'],
-    ['Space', 'jump, or tilt up when swimming'],
+    ['Space', 'jump'],
     ['F', 'bite'],
-    ['Drag or Q / E', 'orbit the camera'],
-    ['Wheel', 'zoom'],
+    ['Q / E', 'camera'],
   ];
   for (const [keys, does] of CONTROLS) {
-    const k = document.createElement('span');
-    k.style.cssText = 'font-weight:600;text-align:right;white-space:nowrap';
+    const item = document.createElement('span');
+    item.style.whiteSpace = 'nowrap';
+    const k = document.createElement('b');
+    k.style.fontWeight = '600';
     k.textContent = keys;
-    const d = document.createElement('span');
-    d.textContent = does;
-    el.append(k, d);
+    item.append(k, ` ${does}`);
+    el.append(item);
   }
   document.body.appendChild(el);
 
