@@ -60,7 +60,7 @@ export class Route {
 const SPROUT_EVERY = [6, 14] as const;
 /** How far either side of the route it may come up (m): within the band the tortoise walks and grazes. */
 const SPROUT_SPREAD = 0.07;
-const SPROUT_KINDS: readonly PlantKind[] = ['grass', 'grass', 'grass', 'daisy', 'poppy'];
+const SPROUT_KINDS: readonly PlantKind[] = ['grass', 'grass', 'grass', 'sesuvium', 'lecocarpus'];
 
 /** The route starts out as a strip of meadow this wide either side (m), this many tries at a plant. */
 const MEADOW_SPREAD = 0.11;

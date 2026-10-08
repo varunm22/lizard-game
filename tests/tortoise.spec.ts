@@ -62,7 +62,7 @@ test('the tortoise stops to eat a plant at its mouth, and lies down to rest', as
     const g = window.__game!;
     const t = g.tortoise();
     // Something to eat just ahead on its route.
-    g.sprout('daisy', t.ahead.x, t.ahead.z, true);
+    g.sprout('lecocarpus', t.ahead.x, t.ahead.z, true);
     g.tortoiseDo('eat');
     for (let s = 0; s < 30 * 60 && g.tortoise().state !== 'eat'; s++) g.advance(1, false);
     const at = g.tortoise();

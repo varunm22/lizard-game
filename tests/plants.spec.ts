@@ -7,21 +7,21 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
 
   const plants = await page.evaluate(() => window.__game!.plants());
   const kinds = new Set(plants.map((p) => p.kind));
-  expect([...kinds].sort()).toEqual(['daisy', 'fern', 'grass', 'poppy']);
+  expect([...kinds].sort()).toEqual(['cotton', 'fern', 'grass', 'lecocarpus', 'sesuvium']);
   // Plants stand on the ground and never grow out of the sea.
   const { waterY } = await page.evaluate(() => window.__game!.ocean());
   for (const p of plants) expect(p.y).toBeGreaterThan(waterY);
 
-  // The poppy in the first patch, between the spawn and the log. Walk straight at it from two body
+  // The cotton in the first patch, between the spawn and the log. Walk straight at it from two body
   // lengths away (the lizard travels -Z facing yaw pi): its stem stops the lizard, leaning a little.
-  const poppy = plants.find((p) => p.kind === 'poppy' && Math.hypot(p.x - 0.16, p.z + 0.22) < 0.01)!;
-  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI), [poppy.x, poppy.z + 0.3]);
+  const cotton = plants.find((p) => p.kind === 'cotton' && Math.hypot(p.x - 0.16, p.z + 0.22) < 0.01)!;
+  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, Math.PI), [cotton.x, cotton.z + 0.3]);
   await page.evaluate(() => window.__game!.advance(20, false));
 
-  const walk = await page.evaluate((poppy) => {
+  const walk = await page.evaluate((cotton) => {
     const g = window.__game!;
     const lean = () => {
-      const p = g.plants({ x: poppy.x, z: poppy.z, r: 1e-6 })[0];
+      const p = g.plants({ x: cotton.x, z: cotton.z, r: 1e-6 })[0];
       return { x: p.tiltX, z: p.tiltZ, size: Math.hypot(p.tiltX, p.tiltZ) };
     };
     g.setInput({ move: { x: 0, y: 1 } }, 150);
@@ -47,12 +47,12 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
       after.push((l.x * left.x + l.z * left.z) / left.size);
     }
     return { stoppedZ: stopped.z, stoppedSpeed: creep, maxLean, released: left.size, after };
-  }, poppy);
+  }, cotton);
 
   // Held up by the stem: the capsule's nose (6 cm ahead of the feet, plus the controller's skin)
   // stops just short of it.
-  expect(walk.stoppedZ - poppy.z).toBeGreaterThan(0.06);
-  expect(walk.stoppedZ - poppy.z).toBeLessThan(0.08);
+  expect(walk.stoppedZ - cotton.z).toBeGreaterThan(0.06);
+  expect(walk.stoppedZ - cotton.z).toBeLessThan(0.08);
   expect(walk.stoppedSpeed).toBeLessThan(0.02);
   // The snout pushing on it leans it a little, not flat.
   expect(walk.maxLean).toBeGreaterThan(0.1);
@@ -102,8 +102,8 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
   expect(speeds.inPatch).toBeLessThan(speeds.open * 0.85);
   expect(speeds.through).toBe(true); // slowed, but not stopped
 
-  // From the side, walking back at the poppy from the other side: stopped at its stem.
-  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, 0), [poppy.x, poppy.z - 0.1]);
+  // From the side, walking back at the cotton from the other side: stopped at its stem.
+  await page.evaluate(([x, z]) => window.__game!.teleport(x, z, 0), [cotton.x, cotton.z - 0.1]);
   await page.evaluate(() => {
     const g = window.__game!;
     g.setInput({ move: { x: 0, y: 1 } }, 30);

@@ -19,8 +19,9 @@ import { waterDepth } from './shore';
 const KINDS = {
   grass: { hz: 0.4, zeta: 1.2, radius: 0.012, maxTilt: 0.35, drag: 1.2 },
   fern: { hz: 0.35, zeta: 1.3, radius: 0.03, maxTilt: 0.25, drag: 1.5 },
-  daisy: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4 },
-  poppy: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4 },
+  lecocarpus: { hz: 0.45, zeta: 1.1, radius: 0.005, maxTilt: 0.4, drag: 0.4 },
+  cotton: { hz: 0.4, zeta: 1.1, radius: 0.006, maxTilt: 0.4, drag: 0.4 },
+  sesuvium: { hz: 0.5, zeta: 1.3, radius: 0.02, maxTilt: 0.2, drag: 1.0 },
 } as const;
 /**
  * A plant slows the lizard while its body line is within this much of the plant's own radius (m):
@@ -428,9 +429,10 @@ interface Placement {
 }
 
 /**
- * Lay the island's plants out: in the clearing, grass in patches with odd tufts between, ferns, and
- * flowers in little groups; under the trees, ferns thick on the ground among grass; at the back of
- * the beach, a few tufts holding the sand. Nothing grows in the sea, on the bare lava or the open
+ * Lay the island's plants out, Galapagos lowland style: in the dry clearing, bunchgrass in patches
+ * with odd tufts between, mats of carpetweed (Sesuvium), and Lecocarpus and Darwin's cotton in
+ * little groups; under the trees, ferns thick on the ground among grass; at the back of the beach,
+ * carpetweed holding the sand. Nothing grows in the sea, on the bare lava or the open
  * sand, on a rock, log or tree, past the edge, or right where the lizard spawns. A few flowers and
  * grass stand between the spawn and the log so they're the first thing to walk through.
  */
@@ -472,14 +474,14 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
 
   // The first patch you meet: between the spawn and the log, a little off the straight line.
   for (const [kind, x, z, s] of [
-    ['poppy', 0.16, -0.22, 1],
-    ['daisy', 0.1, -0.28, 1],
-    ['daisy', 0.2, -0.3, 0.9],
+    ['cotton', 0.16, -0.22, 1],
+    ['lecocarpus', 0.1, -0.28, 1],
+    ['lecocarpus', 0.2, -0.3, 0.9],
     ['grass', 0.05, -0.2, 1],
     ['grass', 0.13, -0.17, 0.9],
     ['grass', 0.22, -0.25, 1.1],
     ['grass', 0.185, -0.158, 0.9],
-    ['fern', 0.3, -0.12, 1],
+    ['sesuvium', 0.3, -0.12, 1],
   ] as const) add(kind, x, z, s);
 
   // The clearing.
@@ -490,9 +492,9 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     for (let j = 0; j < n; j++) add('grass', ...around(cx, cz, r), range(0.75, 1.2));
   }
   for (let i = 0; i < 100; i++) add('grass', ...somewhere(clearing), range(0.7, 1.1));
-  for (let i = 0; i < 12; i++) add('fern', ...somewhere(clearing), range(0.8, 1.3));
+  for (let i = 0; i < 12; i++) add('sesuvium', ...somewhere(clearing), range(0.8, 1.3));
   for (let i = 0; i < 16; i++) {
-    const kind = i % 2 ? 'daisy' : 'poppy';
+    const kind = i % 2 ? 'lecocarpus' : 'cotton';
     const [cx, cz] = somewhere(clearing);
     const n = Math.round(range(2, 5));
     for (let j = 0; j < n; j++) add(kind, ...around(cx, cz, 0.08), range(0.8, 1.15));
@@ -507,7 +509,7 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
     const [cx, cz] = somewhere(forestCover);
     for (let j = 0; j < 6; j++) add('grass', ...around(cx, cz, 0.12), range(0.8, 1.2));
   }
-  // The back of the beach: scattered tufts.
-  for (let i = 0; i < 40; i++) add('grass', ...somewhere(sandEdge), range(0.6, 1));
+  // The back of the beach: scattered mats of carpetweed.
+  for (let i = 0; i < 40; i++) add('sesuvium', ...somewhere(sandEdge), range(0.6, 1));
   return out;
 }
