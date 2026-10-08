@@ -245,6 +245,8 @@ export interface GameTestHooks {
     seesPrey: boolean;
     strikes: number;
     hitsLanded: number;
+    /** Attacks on the lizard that came to nothing: a strike that missed, or a stoop it pulled out of. */
+    dodged: number;
     /** How many times the lizard has flushed it off a perch. */
     flushed: number;
     perch: number;
@@ -294,6 +296,10 @@ export interface GameTestHooks {
   };
   /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */
   setVitals: (v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>) => void;
+  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'algae') and which are done. */
+  goals: () => { id: string; label: string; done: boolean }[];
+  /** Tick goal `id` off now, with its animation; false if it's unknown or already done. */
+  completeGoal: (id: string) => boolean;
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 

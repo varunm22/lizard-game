@@ -301,7 +301,8 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
     const p = g.player();
     g.viewFrom({ x: -0.18, y: 0.14, z: 0.12 }, { x: (ig.x + p.x) / 2, y: p.y + 0.02, z: (ig.z + p.z) / 2 });
     g.advance(2);
-    return { mate, took, pushing, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z) };
+    const goal = g.goals().find((o) => o.id === 'iguana')!.done;
+    return { mate, took, pushing, ig, p, apart: Math.hypot(ig.x - p.x, ig.z - p.z), goal };
   });
   await screenshot(page, 'iguana-bask-together.png');
   // It went to the lizard, and lies alongside it, the same way round, on the lava.
@@ -314,6 +315,8 @@ test('an iguana looking for somewhere to bask comes and lies down beside the liz
   expect(run.pushing).toBeLessThan(40);
   expect(Math.abs(Math.cos(run.ig.yaw - run.p.yaw))).toBeGreaterThan(0.9);
   expect(run.ig.lava).toBeGreaterThan(0.8);
+  // Basking beside it ticks off the iguana goal.
+  expect(run.goal).toBe(true);
   expect(errors).toEqual([]);
 });
 

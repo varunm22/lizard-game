@@ -12,22 +12,29 @@ export interface HudVitals {
 const STEADY = 0.0005;
 
 /**
- * A small controls hint in the corner that fades once the player starts moving; bars in the other
+ * A small controls hint in the corner that fades once the player starts moving, over the goals
+ * (`goalsPanel.ts`, in `corner`); bars in the other
  * corner for health, warmth, food and air; a red flash round the edges as a strike lands; and the
  * countdown while it lies knocked down.
  */
 export function createHud(): {
+  /** The bottom-left column the hint sits at the top of. */
+  corner: HTMLElement;
   hideHint(): void;
   vitals(v: HudVitals): void;
   down(countdown: number | null): void;
   flash(): void;
 } {
+  const corner = document.createElement('div');
+  corner.style.cssText =
+    'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
+  document.body.appendChild(corner);
   const el = document.createElement('div');
   el.style.cssText =
-    'position:fixed;left:16px;bottom:16px;padding:6px 10px;border-radius:6px;background:#fffc;' +
+    'padding:6px 10px;border-radius:6px;background:#fffc;' +
     'font:14px system-ui,sans-serif;color:#2f3a2a;transition:opacity 1.5s;pointer-events:none';
   el.textContent = 'W/S move · A/D steer, or look around when still · Shift run · Space jump, or tilt up when swimming · F bite · drag or Q/E orbit · wheel zoom';
-  document.body.appendChild(el);
+  corner.appendChild(el);
 
   const panel = document.createElement('div');
   panel.style.cssText =
@@ -73,6 +80,7 @@ export function createHud(): {
   document.body.appendChild(flash);
 
   return {
+    corner,
     hideHint() {
       el.style.opacity = '0';
     },

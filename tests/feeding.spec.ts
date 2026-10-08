@@ -64,7 +64,7 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
           for (let k = 0; k < 40; k++) g.advance(1, false);
           got.push(g.feeding().lastBite);
         }
-        return { found: true, id: a.id, got, gone: !g.algae().some((o) => o.id === a.id), feeding: g.feeding(), fullness: g.vitals().fullness };
+        return { found: true, id: a.id, got, gone: !g.algae().some((o) => o.id === a.id), feeding: g.feeding(), fullness: g.vitals().fullness, goals: g.goals() };
       }
     }
     return { found: false };
@@ -78,6 +78,8 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
   expect(r.feeding).toMatchObject({ bites: 6, mouthfuls: 6 });
   // Each mouthful fills the food bar a little (held otherwise for this spec).
   expect(r.fullness).toBeCloseTo(0.3 + 6 * 0.06, 5);
+  // Eating ticks off the algae goal, and only that one.
+  expect(r.goals!.filter((o) => o.done).map((o) => o.id)).toEqual(['algae']);
   expect(errors).toEqual([]);
 });
 

@@ -23,6 +23,7 @@ import type { Feeding } from '../player/feeding';
 import type { Wounds } from '../player/wounds';
 import type { Vitals } from '../player/vitals';
 import type { ClimateSense } from '../player/climate';
+import type { Goals } from '../goals';
 import type { FollowCamera } from '../camera/followCamera';
 import type { OccluderFade } from '../camera/occluderFade';
 import type { GameTestHooks } from './testHooks';
@@ -51,6 +52,7 @@ interface HookContext {
   vitals: Vitals;
   climate: ClimateSense;
   puff: StrikePuff;
+  goals: Goals;
   setInput: GameTestHooks['setInput'];
   viewFrom: GameTestHooks['viewFrom'];
 }
@@ -58,7 +60,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff,
+  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
@@ -212,6 +214,7 @@ export function createTestHooks({
       seesPrey: hawk.seesPrey,
       strikes: hawk.strikes,
       hitsLanded: hawk.hitsLanded,
+      dodged: hawk.dodged,
       perch: hawk.perchIndex,
       flushed: hawk.flushed,
       enabled: hawk.enabled,
@@ -239,6 +242,13 @@ export function createTestHooks({
       climate: { ...climate.now },
     }),
     setVitals: (v) => Object.assign(vitals, v),
+    goals: () => goals.list.map((g) => ({ ...g })),
+    completeGoal: (id) => {
+      const goal = goals.list.find((g) => g.id === id);
+      if (!goal || goal.done) return false;
+      goals.complete(goal);
+      return true;
+    },
     wounds: () => ({ hits: wounds.hits, down: wounds.down, downBy: wounds.downBy, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
