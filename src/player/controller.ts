@@ -69,6 +69,13 @@ const JAM_SHARE = 0.5;
 const JAM_TOI = 1e-3;
 const JAM_LIFT = 5e-4;
 
+/**
+ * Hopping off a cactus top (`hopOff`): up this high (m) and carried along at this speed (m/s) until
+ * it lands, about 12 cm out at the height of the top: past the rim with the whole body, whichever way it lay.
+ */
+const HOP_HEIGHT = 0.03;
+const HOP_SPEED = 0.5;
+
 const smooth = (t: number) => {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
@@ -113,6 +120,9 @@ export class PlayerController {
   private sinceJumpPressed = Infinity;
   private jumpHeld = false;
   private jumping = false;
+  /** Hopping off a cactus: the level velocity it's carried at until it lands (m/s), and whether the hop starts next step. */
+  private fling: { x: number; z: number } | null = null;
+  private hopNext = false;
   /** Seconds left of the upward tilt Space started while swimming. */
   private tiltTimer = 0;
   /**
@@ -170,6 +180,10 @@ export class PlayerController {
     this.prevSwimPitch = this.swimPitch;
     this.landed = this.jumped = false;
     this.blockers.length = 0;
+    if (this.hopNext) {
+      this.jumped = true;
+      this.hopNext = false;
+    }
     this.applyCarry();
     if (this.climb) {
       this.stepClimb(dt);
@@ -180,6 +194,7 @@ export class PlayerController {
       if (!this.swimming) {
         this.swimming = true;
         this.jumping = false;
+        this.fling = null;
         this.tiltTimer = 0;
         this.swim.copy(this.velocity);
         // Snapping down onto the bed would drop a sinking swimmer the last centimetre at once.
@@ -233,6 +248,11 @@ export class PlayerController {
       vx += add * fx;
       vz += add * fz;
     }
+    // Hopping off a cactus, it's carried clear whatever the controls say.
+    if (this.fling) {
+      vx = this.fling.x;
+      vz = this.fling.z;
+    }
 
     // Vertical: buffered, coyote-timed jumps and asymmetric gravity.
     const jumpPressed = input.jump && !this.jumpHeld;
@@ -251,7 +271,7 @@ export class PlayerController {
     }
     let g = M.gravity;
     if (this.vy < 0) g *= M.fallGravityScale;
-    else if (this.jumping && !input.jump) g *= M.jumpCutGravityScale;
+    else if (this.jumping && !input.jump && !this.fling) g *= M.jumpCutGravityScale;
     // Integrate gravity at mid-step so the jump apex lands on jumpHeight regardless of dt.
     const vy0 = this.vy;
     this.vy = Math.max(this.vy - g * dt, -M.maxFallSpeed);
@@ -278,6 +298,7 @@ export class PlayerController {
     // (the whole drop was allowed) means not landed yet.
     const fellFreely = this.desired.y < -FREE_FALL_DROP && moved.y <= this.desired.y + 1e-5;
     this.grounded = this.kcc.computedGrounded() && !(this.jumping && this.vy > 0) && !fellFreely;
+    if (this.grounded) this.fling = null;
 
     // Standing still on a rounded or faceted edge (the rim of a log, the shoulder of a rock), the
     // little push of gravity each step slides the lizard off a fraction of a millimetre at a time.
@@ -475,6 +496,18 @@ export class PlayerController {
     this.kcc.enableSnapToGround(M.snapToGround);
   }
 
+  /**
+   * Hop up off what it's standing on and away along (dx, dz) (level, unit length), carried that way
+   * until it lands: what a lizard does on finding itself on a cactus's spines.
+   */
+  hopOff(dx: number, dz: number) {
+    this.climb = null;
+    this.vy = Math.sqrt(2 * M.gravity * HOP_HEIGHT);
+    this.jumping = this.hopNext = true;
+    this.grounded = false;
+    this.fling = { x: dx * HOP_SPEED, z: dz * HOP_SPEED };
+  }
+
   /** Climbing in progress: the visual bends the body up over the rim. */
   get climbing(): boolean {
     return this.climb !== null;
@@ -615,6 +648,8 @@ export class PlayerController {
     this.velocity.set(0, 0, 0);
     this.vy = 0;
     this.climb = null;
+    this.fling = null;
+    this.hopNext = false;
     this.blockedAhead = false;
     this.stopSwimming();
     this.prevSwimPitch = 0;

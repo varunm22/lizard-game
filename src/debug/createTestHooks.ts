@@ -183,6 +183,9 @@ export function createTestHooks({
       else ig.sneeze();
     },
     iguanaPlace: (i, x, z, yaw, stay) => iguanas.list[i].place(x, z, yaw, stay),
+    iguanaScare: (i, x, z) => {
+      iguanas.list[i].scare(x, z, true);
+    },
     saltSpray: () => iguanas.spray.live,
     lava: lavaCover,
     crabGo: (i, x, z) => crabs.list[i].go(x, z),

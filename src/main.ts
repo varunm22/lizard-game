@@ -21,6 +21,7 @@ import { quarries } from './creatures/quarry';
 import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
 import { Wounds } from './player/wounds';
+import { Spines } from './player/spines';
 import { Vitals } from './player/vitals';
 import { ClimateSense } from './player/climate';
 import { waterDepth } from './world/shore';
@@ -107,6 +108,9 @@ async function main() {
     followCam.shake();
     hud.flash();
   };
+  // Up on a cactus: it hops off, with the flash.
+  const spines = new Spines(world, obstacles);
+  wounds.onPrick = () => hud.flash();
   // Tests can override the live input; null hands control back to the keyboard and gamepad.
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -157,6 +161,8 @@ async function main() {
       groomed: crabs.groomingPlayer,
     });
     wounds.step(dt);
+    const hop = wounds.down ? null : spines.shake(player);
+    if (hop) wounds.prick(hop.x, hop.z);
     player.step(dt, input);
     // Walking into another iguana pushes it slowly out of the way.
     if (input.move.y > 0) iguanas.pushedBy(player, dt);

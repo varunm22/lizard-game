@@ -7,11 +7,12 @@ import { PlayerController } from '../player/controller';
 import { MovementStateMachine, movementFacts } from '../player/state';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
+import { Spines } from '../player/spines';
 import { covers, type Obstacle } from '../world/obstacles';
 import { lavaCover, ROCK_PILES } from '../world/layout';
 import { rng } from '../world/noise';
 import { shoreX, WATER_Y } from '../world/shore';
-import { IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { CACTUS_GROUP, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import type { Algae, AlgaePatch } from '../world/algae';
 import type { Plants } from '../world/plants';
 import { Splashes } from '../world/splashes';
@@ -166,8 +167,8 @@ class Iguana {
     this.body = new PlayerController(world, new THREE.Vector3(home.x, terrainHeight(home.x, home.z), home.z), (IGUANA_GROUP << 16) | 0xffff);
     this.body.setFeet(this.body.feetAt(1, this.feet), yaw);
     this.body.stillGroups = IGNORE_BODIES;
-    // Brushing past another lizard it slides along it; it never clambers over one.
-    this.body.climbGroups = IGNORE_BODIES & ~PLANT_STEM_GROUP;
+    // Brushing past another lizard or a cactus it slides along it; it never clambers onto one.
+    this.body.climbGroups = IGNORE_BODIES & ~PLANT_STEM_GROUP & ~CACTUS_GROUP;
     this.navigation = new IguanaNavigation(this.body, this.feet, this.input, {
       others: () => this.herd.others(this),
       open: (x, z) => this.herd.open(x, z),
@@ -305,6 +306,8 @@ class Iguana {
     this.think(dt);
     this.navigation.giveWay();
     b.speedScale = plants.speedScale(this.feet.x, this.feet.z, Math.sin(b.yaw), Math.cos(b.yaw));
+    // Come down on a cactus from a hop, it hops straight off.
+    if (this.activity !== 'dead') this.herd.spines.shake(b);
     b.step(dt, this.input);
     this.states.update(movementFacts(b), dt);
     this.splashes.update(b, dt);
@@ -532,15 +535,18 @@ class Iguana {
 export class Iguanas {
   readonly list: Iguana[] = [];
   readonly spray: SaltSpray;
+  readonly spines: Spines;
 
   private constructor(
     scene: THREE.Scene,
+    world: RAPIER.World,
     private player: PlayerController,
     private obstacles: readonly Obstacle[],
     private algae: Algae,
     private plants: Plants,
   ) {
     this.spray = new SaltSpray(scene);
+    this.spines = new Spines(world, obstacles);
   }
 
   static async load(
@@ -553,7 +559,7 @@ export class Iguanas {
     plants: Plants,
     water: Water,
   ) {
-    const herd = new Iguanas(scene, player, obstacles, algae, plants);
+    const herd = new Iguanas(scene, world, player, obstacles, algae, plants);
     for (const [i, h] of HOMES.entries()) {
       const model = await LizardModel.load(url);
       const tint = new THREE.Color(...h.tint);

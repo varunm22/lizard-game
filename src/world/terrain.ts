@@ -25,6 +25,8 @@ export const IGNORE_STEMS = (0xffff << 16) | (0xffff & ~PLANT_STEM_GROUP);
 export const IGUANA_GROUP = 0x0008;
 /** The player's body. */
 export const PLAYER_GROUP = 0x0010;
+/** Lava cactus trunks: solid, but no iguana climbs onto one, and the lizard can't stay on top (src/player/spines.ts). */
+export const CACTUS_GROUP = 0x0020;
 /** Queries that see everything but the other iguanas. */
 export const IGNORE_IGUANAS = (0xffff << 16) | (0xffff & ~IGUANA_GROUP);
 /** Queries that see everything but the iguanas' bodies, the player's included. */

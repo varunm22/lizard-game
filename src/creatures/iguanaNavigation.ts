@@ -5,6 +5,7 @@ import { MOVEMENT } from '../player/movement';
 import { wrapAngle } from '../math/angles';
 import type { AlgaePatch } from '../world/algae';
 import { WATER_Y } from '../world/shore';
+import { CACTUS_GROUP } from '../world/terrain';
 
 /** The snout is this far ahead of the feet (m). */
 const SNOUT = 0.08;
@@ -364,8 +365,8 @@ export class IguanaNavigation {
       this.best = dist;
       this.noHeadway = 0;
       this.detour = DETOUR_TIME;
-      // On land a hop sometimes gets it up a ledge it can't climb.
-      if (!b.swimming && this.stuck % 3 === 0) this.input.jump = true;
+      // On land a hop sometimes gets it up a ledge it can't climb, but never up a cactus.
+      if (!b.swimming && this.stuck % 3 === 0 && !b.blockers.some((c) => (c.collisionGroups() >>> 16) & CACTUS_GROUP)) this.input.jump = true;
     }
     let side = 0;
     if (this.detour > 0) {
