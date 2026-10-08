@@ -207,8 +207,11 @@ export interface GameTestHooks {
   removeAlgae: (id: number) => boolean;
   /** Bite, as pressing F does; false while a bite is already under way. */
   bite: () => boolean;
-  /** The player's bites so far, those that got algae, and what the last one got (null if nothing). */
-  feeding: () => { bites: number; mouthfuls: number; lastBite: { id: number; ate: boolean } | null };
+  /**
+   * The player's bites so far, those that got algae, what the last one got (null if nothing), and
+   * whether algae is within a bite now (the "[F] to eat" prompt shows).
+   */
+  feeding: () => { bites: number; mouthfuls: number; lastBite: { id: number; ate: boolean } | null; canEat: boolean };
   /** Sprout a new algae patch on a bare site on the rocks now; its id, or null if there's no room. */
   sproutAlgae: () => number | null;
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
@@ -245,6 +248,8 @@ export interface GameTestHooks {
     seesPrey: boolean;
     strikes: number;
     hitsLanded: number;
+    /** Attacks on the lizard that came to nothing: a strike that missed, or a stoop it pulled out of. */
+    dodged: number;
     /** How many times the lizard has flushed it off a perch. */
     flushed: number;
     perch: number;
@@ -294,6 +299,10 @@ export interface GameTestHooks {
   };
   /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */
   setVitals: (v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>) => void;
+  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'algae') and which are done. */
+  goals: () => { id: string; label: string; done: boolean }[];
+  /** Tick goal `id` off now, with its animation; false if it's unknown or already done. */
+  completeGoal: (id: string) => boolean;
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 

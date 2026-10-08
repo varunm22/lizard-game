@@ -12,21 +12,49 @@ export interface HudVitals {
 const STEADY = 0.0005;
 
 /**
- * A small controls hint in the corner that fades once the player starts moving; bars in the other
- * corner for health, warmth, food and air; a red flash round the edges as a strike lands; and the
+ * The controls, listed at the bottom in the middle until a few seconds after the player starts
+ * moving; the goals (`goalsPanel.ts`) in the bottom-left `corner`; bars in the other
+ * corner for health, warmth, food and air; "[F] to eat" while algae is within a bite; a red flash round the edges as a strike lands; and the
  * countdown while it lies knocked down.
  */
 export function createHud(): {
+  /** The bottom-left corner, where the goals go. */
+  corner: HTMLElement;
   hideHint(): void;
   vitals(v: HudVitals): void;
   down(countdown: number | null): void;
   flash(): void;
+  /** Show the "[F] to eat" prompt, while algae is within a bite. */
+  canEat(show: boolean): void;
 } {
+  const corner = document.createElement('div');
+  corner.style.cssText =
+    'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
+  document.body.appendChild(corner);
+  // The controls, a line each, at the bottom in the middle; they stay 3 s once it moves, then fade.
   const el = document.createElement('div');
+  el.className = 'controls-hint';
   el.style.cssText =
-    'position:fixed;left:16px;bottom:16px;padding:6px 10px;border-radius:6px;background:#fffc;' +
-    'font:14px system-ui,sans-serif;color:#2f3a2a;transition:opacity 1.5s;pointer-events:none';
-  el.textContent = 'W/S move · A/D steer, or look around when still · Shift run · Space jump, or tilt up when swimming · F bite · drag or Q/E orbit · wheel zoom';
+    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#fffc;' +
+    'font:14px system-ui,sans-serif;color:#2f3a2a;display:grid;grid-template-columns:auto auto;gap:3px 12px;' +
+    'transition:opacity 1.5s ease 3s;pointer-events:none';
+  const CONTROLS: [string, string][] = [
+    ['W / S', 'move'],
+    ['A / D', 'steer, or look around when still'],
+    ['Shift', 'run'],
+    ['Space', 'jump, or tilt up when swimming'],
+    ['F', 'bite'],
+    ['Drag or Q / E', 'orbit the camera'],
+    ['Wheel', 'zoom'],
+  ];
+  for (const [keys, does] of CONTROLS) {
+    const k = document.createElement('span');
+    k.style.cssText = 'font-weight:600;text-align:right;white-space:nowrap';
+    k.textContent = keys;
+    const d = document.createElement('span');
+    d.textContent = does;
+    el.append(k, d);
+  }
   document.body.appendChild(el);
 
   const panel = document.createElement('div');
@@ -66,6 +94,19 @@ export function createHud(): {
   document.body.appendChild(banner);
   let shown = '';
 
+  // Over the lizard, just above the middle of the view (it's drawn a little below the middle).
+  const eat = document.createElement('div');
+  eat.className = 'eat-prompt';
+  eat.style.cssText =
+    'position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);padding:6px 14px;border-radius:8px;' +
+    'background:#fffd;font:600 17px system-ui,sans-serif;color:#2f3a2a;pointer-events:none;' +
+    'opacity:0;transition:opacity .15s';
+  eat.innerHTML =
+    '<span style="display:inline-block;min-width:1.2em;padding:1px 6px;margin-right:6px;border:2px solid #2f3a2a;' +
+    'border-radius:5px;text-align:center;font-size:15px">F</span>to eat';
+  document.body.appendChild(eat);
+  let eatShown = false;
+
   const flash = document.createElement('div');
   flash.style.cssText =
     'position:fixed;inset:0;pointer-events:none;opacity:0;' +
@@ -73,6 +114,7 @@ export function createHud(): {
   document.body.appendChild(flash);
 
   return {
+    corner,
     hideHint() {
       el.style.opacity = '0';
     },
@@ -97,6 +139,12 @@ export function createHud(): {
       for (const el of bars.air.rows) el.style.opacity = v.air < 1 ? '1' : '0.35';
       arrow(bars.health.trend, v.healthRate);
       arrow(bars.warmth.trend, v.warmthRate);
+    },
+    canEat(show) {
+      if (show === eatShown) return;
+      eatShown = show;
+      eat.style.opacity = show ? '1' : '0';
+      eat.dataset.shown = show ? '1' : '';
     },
     down(countdown) {
       const text = countdown === null ? '' : `Respawn in ${countdown}`;
