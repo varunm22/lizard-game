@@ -657,6 +657,11 @@ export class Crabs {
     return new Crabs(await loadGltf(url), scene, world, algae, player, lizard, others);
   }
 
+  /** A crab is up on the player's back grooming it. */
+  get groomingPlayer(): boolean {
+    return this.hosts[0]?.groomer?.state === 'groom';
+  }
+
   /** Which iguana each crab is grooming or on its way to: 'player', the other iguana's index, or null. */
   groomingWhom(c: Crab): 'player' | number | null {
     const i = this.hosts.findIndex((h) => h.groomer === c && c.grooming);

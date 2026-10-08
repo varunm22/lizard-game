@@ -183,7 +183,11 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
       i = g.crabs().findIndex((c) => c.state === 'groom' && c.grooming === 'player');
     }
     if (i < 0) return { waited, groomed: false };
+    // Warm and fed, it mends twice as fast while the crab grooms it.
+    g.setVitals({ health: 0.5, warmth: 0.9, fullness: 0.9, frozen: false });
     g.advance(120, false);
+    const mend = { groomed: g.vitals().groomed, rate: g.vitals().rate.health };
+    g.setVitals({ frozen: true });
     const p = g.player();
     const up = g.crabs()[i];
     // A close look at it up there.
@@ -193,6 +197,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
       i,
       waited,
       groomed: true,
+      mend,
       up: { state: up.state, clip: up.clip, height: up.y - p.y, fromFeet: Math.hypot(up.x - p.x, up.z - p.z) },
     };
   });
@@ -204,10 +209,13 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
     g.setInput({ move: { x: 0, y: 1 } }, 60);
     g.advance(120, false);
     const c = g.crabs()[i];
-    return { state: c.state, gap: c.y - g.groundAt(c.x, c.z, c.y + 0.03)! };
+    return { state: c.state, gap: c.y - g.groundAt(c.x, c.z, c.y + 0.03)!, groomed: g.vitals().groomed };
   }, run.i ?? 0);
 
   expect(run.groomed).toBe(true);
+  expect(run.mend!.groomed).toBe(true);
+  expect(run.mend!.rate).toBeCloseTo(0.02, 4);
+  expect(off.groomed).toBe(false);
   // It's up on the lizard's back, picking at its skin, still there two seconds on.
   expect(run.up!.state).toBe('groom');
   expect(run.up!.clip).toBe('graze');

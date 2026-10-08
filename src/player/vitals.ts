@@ -19,6 +19,8 @@ export const VITALS = {
   /** No mending at or below these; full rate at or above the second. */
   regenFed: [0.15, 0.6],
   regenWarm: [0.3, 0.7],
+  /** A crab grooming it (picking off ticks and dead skin) makes it mend this many times as fast. */
+  groomRegen: 2,
   /** Below this warmth it's freezing, and loses health, faster the colder (at most `coldHurt` at 0). */
   freezing: 0.15,
   coldHurt: 0.012,
@@ -58,6 +60,8 @@ export interface Activity {
   still: boolean;
   running: boolean;
   swimming: boolean;
+  /** A crab is up on its back, grooming it. */
+  groomed: boolean;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -139,7 +143,7 @@ export class Vitals {
     take(this.air <= 0 ? V.drownHurt : 0, 'air');
     take(this.warmth < V.freezing ? V.coldHurt * (1 - this.warmth / V.freezing) : 0, 'cold');
     take(this.fullness <= 0 ? V.starveHurt : 0, 'hunger');
-    const health = hurt > 0 ? -hurt : V.regen * ramp(this.fullness, V.regenFed) * ramp(this.warmth, V.regenWarm);
+    const health = hurt > 0 ? -hurt : V.regen * (a.groomed ? V.groomRegen : 1) * ramp(this.fullness, V.regenFed) * ramp(this.warmth, V.regenWarm);
     const before = this.health;
     this.health = clamp01(before + health * dt);
     this.rate.health = (this.health - before) / dt;

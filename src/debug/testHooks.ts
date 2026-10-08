@@ -288,6 +288,8 @@ export interface GameTestHooks {
     rate: { health: number; warmth: number };
     speedScale: number;
     frozen: boolean;
+    /** A crab is up on its back grooming it, so it mends faster. */
+    groomed: boolean;
     climate: { sun: number; surface: number; surfaceKind: string; company: number; companyScale: number; wet: boolean; underwater: boolean };
   };
   /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */

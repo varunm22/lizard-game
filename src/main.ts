@@ -154,6 +154,7 @@ async function main() {
       still: player.grounded && !moving && player.horizontalSpeed < 0.02,
       running: input.run && moving && player.horizontalSpeed > 0.3,
       swimming: player.swimming,
+      groomed: crabs.groomingPlayer,
     });
     wounds.step(dt);
     player.step(dt, input);

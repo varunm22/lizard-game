@@ -235,6 +235,7 @@ export function createTestHooks({
       rate: { ...vitals.rate },
       speedScale: vitals.speedScale,
       frozen: vitals.frozen,
+      groomed: crabs.groomingPlayer,
       climate: { ...climate.now },
     }),
     setVitals: (v) => Object.assign(vitals, v),
