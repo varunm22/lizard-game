@@ -132,7 +132,7 @@ export class PlayerController {
   climbGroups = IGNORE_STEMS;
   /** Colliders the last step's move on land ran into from the side. */
   readonly blockers: RAPIER.Collider[] = [];
-  /** Ground speed multiplier from what the lizard is pushing through (vegetation); 1 in the open. */
+  /** Speed multiplier from what the lizard is pushing through (vegetation) and how cold it is; 1 in the open and warm. */
   speedScale = 1;
   private world: RAPIER.World;
   private rot = new THREE.Quaternion();
@@ -427,7 +427,7 @@ export class PlayerController {
     this.swimPitch += (tiltGoal - this.swimPitch) * (1 - Math.exp(-M.swimTiltRate * dt));
     const up = this.swimPitch / M.swimTilt;
 
-    const speed = forward < 0 ? M.swimBackSpeed : input.run ? M.swimFastSpeed : M.swimSpeed;
+    const speed = (forward < 0 ? M.swimBackSpeed : input.run ? M.swimFastSpeed : M.swimSpeed) * this.speedScale;
     const along = forward * speed;
     const horizontal = along * Math.cos(this.swimPitch);
     const rise = -M.sinkSpeed + (M.swimRiseSpeed + M.sinkSpeed) * up + Math.max(0, along) * Math.sin(this.swimPitch);

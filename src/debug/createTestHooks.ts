@@ -21,6 +21,8 @@ import type { LizardModel } from '../player/lizardModel';
 import type { LizardVisual } from '../player/visual';
 import type { Feeding } from '../player/feeding';
 import type { Wounds } from '../player/wounds';
+import type { Vitals } from '../player/vitals';
+import type { ClimateSense } from '../player/climate';
 import type { FollowCamera } from '../camera/followCamera';
 import type { OccluderFade } from '../camera/occluderFade';
 import type { GameTestHooks } from './testHooks';
@@ -46,6 +48,8 @@ interface HookContext {
   cover: Cover;
   prey: Quarry[];
   wounds: Wounds;
+  vitals: Vitals;
+  climate: ClimateSense;
   puff: StrikePuff;
   setInput: GameTestHooks['setInput'];
   viewFrom: GameTestHooks['viewFrom'];
@@ -54,7 +58,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, puff,
+  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
@@ -126,7 +130,7 @@ export function createTestHooks({
         .filter((p) => !near || Math.hypot(p.x - near.x, p.z - near.z) < near.r)
         .map((p) => ({ kind: p.kind, x: p.x, y: p.y, z: p.z, height: p.height, tiltX: p.tx, tiltZ: p.tz, crush: p.crush, growth: p.growth })),
     sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
-    tortoise: () => ({ ...tortoise.position, state: tortoise.state, ridden: tortoise.ridden, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
+    tortoise: () => ({ ...tortoise.position, state: tortoise.state, ridden: tortoise.ridden, tramples: tortoise.tramples, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
     tortoiseDo: (action) => tortoise.request(action),
     crabs: () =>
       crabs.list.map((c) => ({
@@ -223,7 +227,19 @@ export function createTestHooks({
     },
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
     lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),
-    wounds: () => ({ hits: wounds.hits, down: wounds.down, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),
+    vitals: () => ({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      rate: { ...vitals.rate },
+      speedScale: vitals.speedScale,
+      frozen: vitals.frozen,
+      groomed: crabs.groomingPlayer,
+      climate: { ...climate.now },
+    }),
+    setVitals: (v) => Object.assign(vitals, v),
+    wounds: () => ({ hits: wounds.hits, down: wounds.down, downBy: wounds.downBy, countdown: wounds.countdown, hunted: wounds.hunted, flinching: lizard.flinching, puff: puff.live }),
     teleport: (x, z, yaw, y) => {
       player.setFeet(new THREE.Vector3(x, y ?? terrainHeight(x, z), z), yaw);
       followCam.yaw = yaw;

@@ -96,7 +96,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
     g.advance(2, false);
     const spawn = g.player();
     g.hawkDo('hunt');
-    const hits: { jerk: number; flinched: boolean; clip: string | null; puff: number }[] = [];
+    const hits: { jerk: number; flinched: boolean; clip: string | null; puff: number; health: number }[] = [];
     let downAt = -1;
     let i = 0;
     for (; i < 60 * 60 && hits.length < 3; i++) {
@@ -107,7 +107,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
         const clip = g.hawk().clip;
         g.advance(8, false);
         const after = g.player();
-        hits.push({ jerk: Math.hypot(after.x - before.x, after.z - before.z), flinched: g.wounds().flinching, clip, puff: g.wounds().puff });
+        hits.push({ jerk: Math.hypot(after.x - before.x, after.z - before.z), flinched: g.wounds().flinching, clip, puff: g.wounds().puff, health: g.vitals().health });
         if (g.wounds().down) downAt = i;
       }
     }
@@ -127,7 +127,7 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
       }
     }
     g.advance(2, false);
-    return { spawn, hits, downAt, down, back, after: g.player(), wounds: g.wounds() };
+    return { spawn, hits, downAt, down, back, after: g.player(), wounds: g.wounds(), vitals: g.vitals() };
   });
   expect(r.hits).toHaveLength(3);
   for (const h of r.hits) {
@@ -137,20 +137,24 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
     expect(h.puff).toBeGreaterThan(10);
     expect(h.clip).toBe('strike');
   }
+  // Each takes 40% of its health.
+  expect(r.hits.map((h) => h.health)).toEqual([expect.closeTo(0.6, 5), expect.closeTo(0.2, 5), 0]);
   expect(r.downAt).toBeGreaterThan(0);
   expect(r.down.wounds.down).toBe(true);
+  expect(r.down.wounds.downBy).toBe('hawk');
   expect(r.down.wounds.countdown).not.toBeNull();
   expect(r.down.clip).toBe('collapse');
   expect(r.down.moved).toBeLessThan(0.005);
-  // Back up after the collapse and the 5 s countdown (about 1.85 s were already spent lying there).
+  // Back up 5 s after it went down (about 2 s were already spent lying there).
   expect(r.back).toBeGreaterThan(60);
   expect(r.back).toBeLessThan(5 * 60);
   expect(r.wounds.hits).toBe(0);
+  expect(r.vitals.health).toBe(1);
   expect(Math.hypot(r.after.x - r.spawn.x, r.after.z - r.spawn.z)).toBeLessThan(0.02);
   expect(errors).toEqual([]);
 });
 
-test('hiding under water, the hawk loses interest and the hits heal', async ({ page }) => {
+test('hiding under water, the hawk loses interest', async ({ page }) => {
   const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
@@ -175,7 +179,7 @@ test('hiding under water, the hawk loses interest and the hits heal', async ({ p
     }
     const atLoss = g.wounds();
     g.advance(4 * 60, false);
-    return { hit, seen, lost, atLoss, healed: g.wounds(), hawk: g.hawk() };
+    return { hit, seen, lost, atLoss, after: g.wounds(), health: g.vitals().health, hawk: g.hawk() };
   });
   expect(r.hit).toBeGreaterThanOrEqual(1);
   expect(r.seen).toBe(false);
@@ -183,8 +187,10 @@ test('hiding under water, the hawk loses interest and the hits heal', async ({ p
   expect(r.lost).toBeGreaterThan(2 * 60);
   expect(r.lost).toBeLessThan(5 * 60);
   expect(r.atLoss.hunted).toBe(false);
-  expect(r.healed.hits).toBe(0);
-  expect(r.healed.down).toBe(false);
+  // One strike took 40% of its health (the bars are held for this spec, so it hasn't mended).
+  expect(r.after.hits).toBe(1);
+  expect(r.health).toBeCloseTo(0.6, 5);
+  expect(r.after.down).toBe(false);
   expect(['return', 'land', 'perch', 'soar']).toContain(r.hawk.state);
   expect(errors).toEqual([]);
 });
@@ -208,7 +214,7 @@ test('riding the tortoise the lizard is out of reach: the hawk pulls out of its 
         break;
       }
     }
-    // Told to hunt again, it won't go for a lizard on the shell either; meanwhile the hits heal.
+    // Told to hunt again, it won't go for a lizard on the shell either.
     let hunted = 0;
     let ridden = 0;
     for (let i = 0; i < 8 * 60; i++) {
@@ -225,7 +231,8 @@ test('riding the tortoise the lizard is out of reach: the hawk pulls out of its 
   expect(r.ridden).toBe(8 * 60);
   // A hunt it's told to start lasts no longer than its next look round (every few steps).
   expect(r.hunted).toBeLessThan(8 * 15);
-  expect(r.wounds.hits).toBe(0);
+  expect(r.wounds.hits).toBe(1);
+  expect(r.wounds.down).toBe(false);
   expect(errors).toEqual([]);
 });
 

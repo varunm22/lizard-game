@@ -104,7 +104,7 @@ test('the tortoise stops to eat a plant at its mouth, and lies down to rest', as
   expect(errors).toEqual([]);
 });
 
-test('the tortoise shoves the lizard out of its way instead of stopping for it', async ({ page }) => {
+test('walking onto the lizard, the tortoise tramples it: half its health gone, and it is thrown out of the path', async ({ page }) => {
   const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
@@ -114,6 +114,8 @@ test('the tortoise shoves the lizard out of its way instead of stopping for it',
     g.advance(10, false);
     const start = g.player();
     let deepest = -Infinity;
+    let trampledAt = -1;
+    let thrown = 0;
     for (let s = 0; s < 20 * 60; s++) {
       g.advance(1, false);
       const t = g.tortoise();
@@ -122,16 +124,24 @@ test('the tortoise shoves the lizard out of its way instead of stopping for it',
       const oz = p.z - t.z;
       const along = ox * Math.sin(t.yaw) + oz * Math.cos(t.yaw);
       const across = ox * Math.cos(t.yaw) - oz * Math.sin(t.yaw);
+      if (trampledAt < 0 && t.tramples > 0) trampledAt = s;
+      // Half a second after, how far off to the side of its line it was thrown.
+      if (trampledAt >= 0 && s === trampledAt + 30) thrown = Math.abs(across);
       // How far inside the shell's outline the lizard's feet are (1 = on the rim).
       deepest = Math.max(deepest, 1 - Math.hypot(across / 0.086, along / 0.12));
     }
     const end = g.player();
-    return { travelled: g.tortoise().along - t0.along, shoved: Math.hypot(end.x - start.x, end.z - start.z), deepest };
+    return { travelled: g.tortoise().along - t0.along, shoved: Math.hypot(end.x - start.x, end.z - start.z), deepest, trampledAt, thrown, tramples: g.tortoise().tramples, health: g.vitals().health };
   });
   // It walked on past where the lizard sat, and the lizard was moved, never ending up under the shell.
   expect(run.travelled).toBeGreaterThan(0.4);
   expect(run.shoved).toBeGreaterThan(0.05);
   expect(run.deepest).toBeLessThan(0);
+  // Trampled once, for half its health, and thrown clear of the shell's width (8.6 cm each side).
+  expect(run.trampledAt).toBeGreaterThanOrEqual(0);
+  expect(run.tramples).toBe(1);
+  expect(run.health).toBeCloseTo(0.5, 5);
+  expect(run.thrown).toBeGreaterThan(0.1);
   expect(errors).toEqual([]);
 });
 

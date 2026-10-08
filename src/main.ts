@@ -20,7 +20,10 @@ import { findPerches } from './creatures/perches';
 import { quarries } from './creatures/quarry';
 import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
-import { MAX_HITS, Wounds } from './player/wounds';
+import { Wounds } from './player/wounds';
+import { Vitals } from './player/vitals';
+import { ClimateSense } from './player/climate';
+import { waterDepth } from './world/shore';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine, movementFacts } from './player/state';
@@ -69,12 +72,16 @@ async function main() {
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
-  // The hawk hunts the lizard: three strikes knock it down, and it comes back at the spawn.
-  const wounds = new Wounds(player, lizard, () => {
+  // Health, warmth, food and air. The hawk's strikes take health; at none the lizard goes down and
+  // comes back at the spawn.
+  const vitals = new Vitals();
+  feeding.onMouthful = () => vitals.eat();
+  const wounds = new Wounds(player, lizard, vitals, () => {
     player.setFeet(new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), SPAWN.yaw);
     followCam.yaw = SPAWN.yaw;
   });
   const cover = new Cover(world, obstacles, plants);
+  const climate = new ClimateSense(player, cover, () => iguanas.list.filter((ig) => !ig.down).map((ig) => ig.body.position), waterDepth);
   const prey = quarries(player, lizard, wounds, iguanas, crabs, tortoise);
   const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(obstacles, forestCover, PATROL, fit), cover, prey);
 
@@ -94,6 +101,12 @@ async function main() {
     followCam.shake();
     hud.flash();
   };
+  // Trampled by the tortoise: shoved out of its path, with the same jolt and flash.
+  tortoise.onTrample = (dx, dz, shell) => wounds.trample(dx, dz, shell);
+  wounds.onTrample = () => {
+    followCam.shake();
+    hud.flash();
+  };
   // Tests can override the live input; null hands control back to the keyboard and gamepad.
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -110,7 +123,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, puff,
+    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -125,16 +138,25 @@ async function main() {
   const tick = (dt: number) => {
     // Plants slow the lizard by where its physics body is, not where it's drawn.
     player.feetAt(1, tickFeet);
-    player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw));
+    // The cold slows it too, on land and in the water.
+    player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw)) * vitals.speedScale;
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
     iguanas.step(dt);
     crabs.step(dt);
     hawk.step(dt);
-    wounds.step(dt);
     // Knocked down, the lizard lies still whatever the controls say.
     const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    climate.step(dt);
+    const moving = input.move.x !== 0 || input.move.y !== 0;
+    vitals.step(dt, climate.now, {
+      still: player.grounded && !moving && player.horizontalSpeed < 0.02,
+      running: input.run && moving && player.horizontalSpeed > 0.3,
+      swimming: player.swimming,
+      groomed: crabs.groomingPlayer,
+    });
+    wounds.step(dt);
     player.step(dt, input);
     // Walking into another iguana pushes it slowly out of the way.
     if (input.move.y > 0) iguanas.pushedBy(player, dt);
@@ -159,7 +181,15 @@ async function main() {
     visual.update(states.state, alpha, frameDt);
     hawk.update(alpha, frameDt);
     puff.update(frameDt);
-    hud.wounds(wounds.hits, MAX_HITS, wounds.countdown);
+    hud.vitals({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      healthRate: vitals.rate.health,
+      warmthRate: vitals.rate.warmth,
+    });
+    hud.down(wounds.countdown);
     iguanas.update(alpha, frameDt);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
