@@ -5,9 +5,15 @@ on:
   push:
     branches: [main]
 
+# A newer push to the same branch or PR supersedes a run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
+  typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,10 +22,34 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npx playwright install --with-deps chromium
-      - run: npm test
-      - uses: actions/upload-artifact@v4
-        if: always()
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: screenshots
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The browser is cached per Playwright version. The runner image already has the system
+      # libraries Chromium needs, so there's no apt step (`--with-deps`), which is what used to hang.
+      - id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: npx playwright install chromium --only-shell
+        timeout-minutes: 3
+      - run: npx playwright test --shard=${{ matrix.shard }}/5
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.shard }}
           path: test-results/

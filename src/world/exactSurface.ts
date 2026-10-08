@@ -31,10 +31,22 @@ export function registerExactSurface(collider: RAPIER.Collider) {
   const indices = collider.indices();
   if (!indices) return;
   const vertices = collider.vertices();
-  exact.set(collider.handle, new RAPIER.TriMesh(vertices, indices, RAPIER.TriMeshFlags.ORIENTED));
+  exact.set(collider.handle, builtOnce(new RAPIER.TriMesh(vertices, indices, RAPIER.TriMeshFlags.ORIENTED)));
   let r = 0;
   for (let i = 0; i < vertices.length; i += 3) r = Math.max(r, Math.hypot(vertices[i], vertices[i + 1], vertices[i + 2]));
   reach.set(collider.handle, r);
+}
+
+/**
+ * Every query on a Rapier shape builds the shape afresh inside the physics engine (for a mesh, its
+ * bounding tree too) and frees it afterwards: for the shell, 2 to 3 ms a query, which made each step
+ * with the lizard on it take ~16 ms. Build the mesh's engine copy once and keep it.
+ */
+function builtOnce(mesh: RAPIER.TriMesh): RAPIER.TriMesh {
+  const raw = mesh.intoRaw();
+  raw.free = () => {};
+  mesh.intoRaw = () => raw;
+  return mesh;
 }
 
 /** Whether the ray's first `length` metres pass within `r` of `c`. */

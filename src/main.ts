@@ -187,7 +187,15 @@ async function main() {
     hooks.ready = true;
   };
 
-  let stopLoop: (() => void) | null = startLoop({
+  // Opened with ?test, tests drive time themselves from the start: no real-time loop, and nothing is
+  // drawn until a test asks. On a software renderer, a page that has drawn takes over a second to close.
+  const driven = new URLSearchParams(location.search).has('test');
+  if (driven) {
+    // What the first frame drawn would have done for everything that stays put.
+    scene.updateMatrixWorld();
+    hooks.ready = true;
+  }
+  let stopLoop: (() => void) | null = driven ? null : startLoop({
     step: tick,
     render(alpha, frameDt) {
       // Input is read once per rendered frame; the next physics steps use it.
@@ -198,8 +206,8 @@ async function main() {
   });
 
   // Tests drive time themselves: the first call stops the real-time loop for good, then each call
-  // runs exactly `n` fixed steps (input, physics, camera, animation) and draws once at the end.
-  hooks.advance = (n, drawFrame = true) => {
+  // runs exactly `n` fixed steps (input, physics, camera, animation) and, if asked, draws once at the end.
+  hooks.advance = (n, drawFrame = false) => {
     stopLoop?.();
     stopLoop = null;
     for (let i = 0; i < n; i++) {

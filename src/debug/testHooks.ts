@@ -2,12 +2,13 @@ import type { InputState } from '../input';
 
 /** State exposed on `window.__game` so Playwright tests can check the game without reading pixels. */
 export interface GameTestHooks {
+  /** Loaded and drawn once, or with `?test` in the URL, loaded (then nothing is drawn until asked). */
   ready: boolean;
   physicsSteps: number;
   /**
    * Stop real time and run exactly `n` fixed physics steps right now, with input, camera and
-   * animation updated each step, then draw one frame (unless `draw` is false). Headless Chromium
-   * renders slowly, so tests use this instead of waiting for frames.
+   * animation updated each step, then draw one frame if `draw`. Headless Chromium renders slowly,
+   * so tests use this instead of waiting for frames.
    */
   advance: (n: number, draw?: boolean) => void;
   /**
@@ -259,6 +260,11 @@ export interface GameTestHooks {
    * never hunt (tests that aren't about it); 'on'; 'perch'; 'soar'.
    */
   hawkDo: (action: 'hunt' | 'hunt_iguana' | 'hunt_crab' | 'off' | 'on' | 'perch' | 'soar') => void;
+  /**
+   * Stop these other iguanas (by index) and the crabs where they stand, for tests that aren't about
+   * them: they cost most of each step. Paused iguanas stay solid; the hawk passes paused animals over.
+   */
+  pause: (paused: { iguanas?: number[]; crabs?: boolean }) => void;
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
   /**

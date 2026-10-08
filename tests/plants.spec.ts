@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('plant stems block the lizard and lean a little, thick plants slow it, and they creep back upright', async ({ page }) => {
   const errors = await bootGame(page);
@@ -109,6 +110,6 @@ test('plant stems block the lizard and lean a little, thick plants slow it, and 
     g.viewFrom({ x: 0.25, y: 0.07, z: 0 });
     g.advance(30);
   });
-  await page.screenshot({ path: 'test-results/screenshots/plants-push.png' });
+  await screenshot(page, 'plants-push.png');
   expect(errors).toEqual([]);
 });

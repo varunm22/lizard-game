@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('F bites: the head lifts with the mouth open, lunges and snaps shut, and nothing is eaten with no algae at the mouth', async ({ page }) => {
   const errors = await bootGame(page);
@@ -35,7 +36,6 @@ test('F bites: the head lifts with the mouth open, lunges and snaps shut, and no
 });
 
 test('biting algae at the snout trims it down, and enough bites eat it', async ({ page }) => {
-  test.setTimeout(120_000);
   const errors = await bootGame(page);
   const r = await page.evaluate(() => {
     const g = window.__game!;
@@ -79,8 +79,7 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
 });
 
 test('a wild iguana grazing plays the bite, and each bite takes some of the patch', async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors = await bootGame(page);
+  const errors = await bootGame(page, { iguanas: [0] });
   await page.evaluate(() => (window.__game!.advance(2, false), window.__game!.iguanaDo(0, 'feed')));
   let sawBiting = false;
   let bites = 0;
@@ -111,7 +110,7 @@ test('a wild iguana grazing plays the bite, and each bite takes some of the patc
     bites = r.bites;
     if (r.shot) {
       shot = true;
-      await page.screenshot({ path: 'test-results/screenshots/iguana-bite.png' });
+      await screenshot(page, 'iguana-bite.png');
       await page.evaluate(() => window.__game!.viewFrom(null));
     }
   }

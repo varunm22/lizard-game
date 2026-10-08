@@ -122,7 +122,7 @@ class IguanaQuarry implements Quarry {
   }
   get available() {
     // In the sea it's out of reach, and already hidden by the water.
-    return !this.ig.gone && !this.ig.body.swimming;
+    return !this.ig.paused && !this.ig.gone && !this.ig.body.swimming;
   }
   get spheres() {
     return this.ig.model.bodySpheres;
@@ -168,7 +168,7 @@ class CrabQuarry implements Quarry {
     return this.crabs.list[this.index];
   }
   get available() {
-    return !this.crab.gone;
+    return !this.crabs.paused && !this.crab.gone;
   }
   get spheres() {
     const { x, y, z } = this.crab.pos;

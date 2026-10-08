@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard loads idle', async ({ page }) => {
   const errors = await bootGame(page);
@@ -48,6 +49,6 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
   expect([...lizard.clips].sort()).toEqual(['collapse', 'fall', 'idle', 'jump', 'land', 'run', 'swim', 'walk']);
   expect(await page.evaluate(() => window.__game!.player().state)).toBe('idle');
   expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('idle');
-  await page.screenshot({ path: 'test-results/screenshots/spawn.png' });
+  await screenshot(page, 'spawn.png');
   expect(errors).toEqual([]);
 });

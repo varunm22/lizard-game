@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
+import { screenshot } from './helpers/screenshot';
 
 /**
  * Every test drives time itself with `window.__game.advance`: the game stops its real-time loop and
  * runs exactly the steps asked for, so the slow headless renderer doesn't set the pace.
  */
-const steps = (page: Page, n: number, draw = true) =>
+const steps = (page: Page, n: number, draw = false) =>
   page.evaluate(([n, draw]) => window.__game!.advance(n as number, draw as boolean), [n, draw] as const);
 
 const player = (page: Page) => page.evaluate(() => window.__game!.player());
@@ -66,7 +67,7 @@ test('walking with W follows the ground and comes to rest; Shift runs', async ({
   expect(mid.speed).toBeGreaterThan(0.22);
   expect(mid.speed).toBeLessThan(0.28);
   expect(await page.evaluate(() => window.__game!.lizard().current)).toBe('walk');
-  await page.screenshot({ path: 'test-results/screenshots/walk.png' });
+  await screenshot(page, 'walk.png');
   await steps(page, 60);
   await page.keyboard.up('KeyW');
   const end = await player(page);
@@ -98,7 +99,7 @@ test('steering: A/D look around when still, turn the body when moving; S backs u
   await page.evaluate(() => window.__game!.setInput({ move: { x: 1, y: 0 } }, 40));
   await steps(page, 25);
   expect((await page.evaluate(() => window.__game!.lizard())).head.x).toBeLessThan(restHead.x - 0.005);
-  await page.screenshot({ path: 'test-results/screenshots/look-right.png' });
+  await screenshot(page, 'look-right.png');
   await steps(page, 50);
   const still = await player(page);
   expect(still.yaw).toBe(start.yaw);
@@ -197,7 +198,7 @@ test('walking into the log climbs it, rearing up the face, drapes over the top a
   expect(rear.climbing).toBe(true);
   expect(rear.spine.chest).toBeGreaterThan(0.6);
   for (const f of rear.feet.filter((f) => f.leg.startsWith('hind'))) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.004);
-  await page.screenshot({ path: 'test-results/screenshots/log-climb.png' });
+  await screenshot(page, 'log-climb.png');
 
   // On top, let go: it lies across the log, hips and chest bent down either side, tail hanging.
   await page.evaluate(() => {
@@ -215,7 +216,7 @@ test('walking into the log climbs it, rearing up the face, drapes over the top a
   expect(spine.chest).toBeLessThan(-0.1);
   expect(spine.tail[3]).toBeGreaterThan(0.5);
   for (const f of await page.evaluate(() => window.__game!.feet())) expect(Math.abs(f.gap), f.leg).toBeLessThan(0.004);
-  await page.screenshot({ path: 'test-results/screenshots/log-draped.png' });
+  await screenshot(page, 'log-draped.png');
 
   // Walking on, the front goes over the edge and it drops off the far side rather than balancing,
   // at walking speed: sliding down the log's rounded side doesn't fling it forward.
@@ -278,7 +279,7 @@ test('backing into the big rock, the tail bends round it instead of going into i
     deepest = Math.max(deepest, ...(await page.evaluate(() => window.__game!.clearance())));
   }
   await steps(page, 1);
-  await page.screenshot({ path: 'test-results/screenshots/tail-rock.png' });
+  await screenshot(page, 'tail-rock.png');
   await page.evaluate(() => window.__game!.viewFrom(null));
   // It backed up far enough for the tail (11 cm behind the hips) to reach well into the rock.
   expect((await player(page)).z).toBeLessThan(rock.z + 0.16);
@@ -339,7 +340,7 @@ test('landing on the mid rock and the log: stands on top and stays put', async (
     const on = await player(page);
     expect(on.grounded, name).toBe(true);
     expect(on.y, name).toBeGreaterThan(ground + o.height - 0.01);
-    await page.screenshot({ path: `test-results/screenshots/${name}-landed.png` });
+    await screenshot(page, `${name}-landed.png`);
     await steps(page, 90);
     const later = await player(page);
     expect(Math.hypot(later.x - on.x, later.y - on.y, later.z - on.z), name).toBeLessThan(0.002);
@@ -370,7 +371,7 @@ test('camera orbits on drag, and fades the big rock instead of zooming in past i
   expect((await obstacle(page, 'log')).opacity).toBe(1);
   const ground = await page.evaluate(([x, z]) => window.__game!.terrainHeight(x, z), [cam.x, cam.z]);
   expect(cam.y).toBeGreaterThan(ground);
-  await page.screenshot({ path: 'test-results/screenshots/rock-faded.png' });
+  await screenshot(page, 'rock-faded.png');
 
   // Walk clear and it turns solid again.
   await teleport(page, 0.6, 0.6, 0);
