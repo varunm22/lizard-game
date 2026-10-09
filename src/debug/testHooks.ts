@@ -283,6 +283,13 @@ export interface GameTestHooks {
    * them: they cost most of each step. Paused iguanas stay solid; the hawk passes paused animals over.
    */
   pause: (paused: { iguanas?: number[]; crabs?: boolean }) => void;
+  /** Corals and urchins on the sea floor and the sunken rocks (world/reef.ts): where each grows from and the height of its top. */
+  corals: () => { kind: string; x: number; y: number; z: number; top: number }[];
+  /**
+   * The reef fish (creatures/fish.ts): species, which school (named by its home), where each is,
+   * its speed (m/s) and length (m), the sea floor under it, and whether it's darting from a threat.
+   */
+  fish: () => { species: string; school: string; x: number; y: number; z: number; speed: number; length: number; bottom: number; darting: boolean }[];
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
   /**
