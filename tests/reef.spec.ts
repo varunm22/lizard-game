@@ -27,7 +27,7 @@ async function viewUnderwater(page: Page, at: { x: number; y: number; z: number 
   }, at);
 }
 
-test('reef: corals grow under water, fish school in the sea and keep off the bottom', async ({ page }) => {
+test('reef: algae in the shallows, coral deeper, fish school in the sea and keep off the bottom', async ({ page }) => {
   const errors = await bootGame(page);
   const reef = await page.evaluate(() => {
     const g = window.__game!;
@@ -40,10 +40,19 @@ test('reef: corals grow under water, fish school in the sea and keep off the bot
       // Every coral and urchin is wholly under the surface, growing from the floor or a rock.
       dry: corals.filter((c) => c.top > waterY).length,
       floating: corals.filter((c) => c.y > g.terrainHeight(c.x, c.z) + 0.25).length,
+      // Seaweed keeps to the shallows and coral to the deep, overlapping between 14 and 22 cm.
+      deepestAlgae: Math.max(...g.algae().map((a) => waterY - a.y)),
+      shallowestCoral: Math.min(...corals.filter((c) => !['urchin', 'sea_star'].includes(c.kind)).map((c) => waterY - c.y)),
+      mixed: corals.filter((c) => c.kind.startsWith('coral') && waterY - c.y < 0.22).length,
+      shallowUrchins: corals.filter((c) => c.kind === 'urchin' && waterY - c.y < 0.12).length,
     };
   });
-  expect(reef.kinds).toEqual(['coral_cauliflower', 'coral_lobe', 'sea_fan', 'sun_coral', 'urchin']);
-  expect(reef.count).toBeGreaterThan(100);
+  expect(reef.kinds).toEqual(['coral_cauliflower', 'coral_lobe', 'sea_fan', 'sea_star', 'sun_coral', 'urchin']);
+  expect(reef.count).toBeGreaterThan(200);
+  expect(reef.deepestAlgae).toBeLessThan(0.22);
+  expect(reef.shallowestCoral).toBeGreaterThan(0.14);
+  expect(reef.mixed).toBeGreaterThan(0);
+  expect(reef.shallowUrchins).toBeGreaterThan(0);
   expect(reef.dry).toBe(0);
   expect(reef.floating).toBe(0);
 
@@ -84,13 +93,22 @@ test('reef: corals grow under water, fish school in the sea and keep off the bot
   await screenshot(page, 'reef/sergeants.png');
   // The thickest patch of reef, from just above the corals.
   const garden = await page.evaluate(() => {
-    const corals = window.__game!.corals().filter((c) => c.kind !== 'urchin');
+    const corals = window.__game!.corals().filter((c) => c.kind.startsWith('coral') || c.kind === 'sea_fan');
     const crowd = (c: { x: number; z: number }) => corals.filter((o) => Math.hypot(o.x - c.x, o.z - c.z) < 0.25).length;
     const best = corals.reduce((a, c) => (crowd(c) > crowd(a) ? c : a));
     return { x: best.x, y: best.y + 0.03, z: best.z };
   });
   await viewUnderwater(page, garden);
   await screenshot(page, 'reef/corals.png');
+  // Where the seaweed of the shallows gives way to coral.
+  const edge = await page.evaluate(() => {
+    const g = window.__game!;
+    const { waterY } = g.ocean();
+    const c = g.corals().find((c) => c.kind === 'coral_cauliflower' && waterY - c.y < 0.2 && (c.z < -1 || c.z > 3))!;
+    return { x: c.x, y: c.y + 0.03, z: c.z };
+  });
+  await viewUnderwater(page, edge);
+  await screenshot(page, 'reef/zones.png');
   await page.evaluate(() => window.__game!.viewFrom(null));
   expect(errors).toEqual([]);
 });

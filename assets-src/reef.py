@@ -16,6 +16,7 @@ vertex). Objects:
   game can tint each one (purple, orange, yellow).
 - sun_coral: Tubastraea, a clump of orange cups ~3 cm across.
 - urchin: the pencil urchin, a dark red ball with a dozen thick blunt spines, ~3 cm across.
+- sea_star: the Panamic cushion star, a puffy five-armed orange star with dark knobs, ~4 cm across.
 - fish_salema, fish_sergeant, fish_surgeon, fish_angel: black-striped salema, Panamic sergeant
   major, yellowtail surgeonfish and king angelfish. Each faces -Y (+Z in glTF) with its snout at
   extras `length` / 2 and its tail at -length / 2, centred on the origin, body and fins as one mesh.
@@ -50,6 +51,9 @@ C = {
     'urchin': srgb('#5a1e1a'),
     'spine': srgb('#6e3e30'),
     'spine_band': srgb('#a87a62'),
+    'star': srgb('#d8782e'),
+    'star_tip': srgb('#e9a04a'),
+    'star_knob': srgb('#3a2418'),
     'eye': srgb('#101010'),
     'eye_ring': srgb('#d8d0b0'),
 }
@@ -172,6 +176,30 @@ def urchin(rng):
         pts = [centre + d * (0.004 + length * t) for t in (0, 0.33, 0.66, 1)]
         band = lambda co, s: C['spine_band'] if int(s * 5) % 2 else C['spine']
         tube(mb, pts, lambda s: 0.0016 * (1 - 0.2 * s), band, sides=5)
+    return mb
+
+
+def sea_star(rng):
+    """Panamic cushion star: a puffy pentagon of five short blunt arms, a dark knob down each arm."""
+    mb = MeshBuilder()
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=3, radius=1.0)
+    for v in bm.verts:
+        a = math.atan2(v.co.y, v.co.x)
+        arm = (math.cos(5 * a) * 0.5 + 0.5) ** 1.5
+        reach = 0.011 + 0.011 * arm
+        v.co = Vector((v.co.x * reach, v.co.y * reach, max(v.co.z, -0.2) * (0.006 + 0.002 * arm) + 0.0012))
+    for f in bm.faces:
+        c = f.calc_center_median()
+        a = math.atan2(c.y, c.x)
+        r = math.hypot(c.x, c.y)
+        arm = math.cos(5 * a) * 0.5 + 0.5
+        col = mix(C['star'], C['star_tip'], r / 0.022)
+        # A row of knobs along the ridge of each arm, and one at the centre.
+        if c.z > 0.004 and (arm > 0.93 and int(r / 0.004) % 2 == 1 or r < 0.003):
+            col = C['star_knob']
+        mb.face(*[mb.vert(v.co, scale(col, 0.92 + 0.12 * rng.random())) for v in f.verts])
+    bm.free()
     return mb
 
 
@@ -367,6 +395,8 @@ def main():
         make_object('sun_coral', sun_coral(rng), mat),
         make_object('urchin', urchin(rng), mat),
     ]
+    # The sea star draws from its own generator so adding it left every other model as it was.
+    objects.append(make_object('sea_star', sea_star(random.Random(67)), mat, smooth=False))
     for name, spec in SPECIES.items():
         objects.append(make_object(name, fish(spec), mat, extras={'length': spec['length']}))
     for i, obj in enumerate(objects):

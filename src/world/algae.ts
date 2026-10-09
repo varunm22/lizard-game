@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { toonGradient } from '../render/toon';
 import { rng } from './noise';
 import { shoreDistance } from './layout';
-import { rockyShore, WATER_Y } from './shore';
+import { algaeShare, rockyShore, WATER_Y } from './shore';
 import { terrainHeight } from './terrain';
 import type { Obstacle } from './obstacles';
 
@@ -25,7 +25,10 @@ export interface AlgaePatch {
   readonly z: number;
 }
 
-/** Algae grow from this far above the surface (spray-wetted lava) down to this deep (m). */
+/**
+ * Algae grow from this far above the surface (spray-wetted lava) down into the shallows, thinning
+ * out with depth (`SEA_ZONES`); deeper down is coral (`reef.ts`).
+ */
 const SPLASH_ZONE = 0.015;
 const MAX_DEPTH = 0.42;
 /** At most this many patches on any one boulder, and roughly this many per square metre of its top. */
@@ -345,5 +348,13 @@ function place(rocks: readonly Obstacle[], seed: number, perRockMax: number, flo
     add(new THREE.Vector3(x, y - 0.001, z), n);
     placed++;
   }
-  return out;
+  // Below the shallows they thin out to none. Sites are dropped after drawing them, by a hash of the
+  // spot rather than a random number, so every patch that's left is where it always was.
+  return out.filter((p) => spotHash(p.position.x, p.position.z) < algaeShare(WATER_Y - p.position.y));
+}
+
+/** A fixed pseudo-random number in [0, 1) for a spot. */
+function spotHash(x: number, z: number): number {
+  const h = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
+  return h - Math.floor(h);
 }

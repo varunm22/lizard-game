@@ -17,6 +17,17 @@ export const BEACH_WIDTH = 0.9;
 /** Depth of the open sea floor (m below the surface). */
 export const SEA_DEPTH = 0.4;
 
+/**
+ * The sea's life by depth (m below the surface): seaweed grows down to `algae[0]` and thins out to
+ * none by `algae[1]`; coral starts at `coral[0]` and is as thick as it gets by `coral[1]`. Between
+ * the two the zones overlap.
+ */
+export const SEA_ZONES = { algae: [0.12, 0.22], coral: [0.14, 0.24] } as const;
+/** How much of the seaweed grows at a depth (0 to 1). */
+export const algaeShare = (depth: number) => 1 - smoothstep(SEA_ZONES.algae[0], SEA_ZONES.algae[1], depth);
+/** How much of the coral grows at a depth (0 to 1). */
+export const coralShare = (depth: number) => smoothstep(SEA_ZONES.coral[0], SEA_ZONES.coral[1], depth);
+
 /** X of the waterline (m) at a given z: a few slow bends. */
 export function shoreX(z: number): number {
   return 2.0 + 0.22 * Math.sin(1.1 * z + 0.6) + 0.1 * Math.sin(2.7 * z - 1.3);

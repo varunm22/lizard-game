@@ -187,7 +187,10 @@ test('an iguana on its way goes round the lizard lying across its path instead o
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
-    // Send it off to feed, and once it's walking, lie the lizard across its way 20 cm ahead.
+    // Send it off to feed along the shore, past the seaweed straight out from it, so it has a way to
+    // walk over the lava first, and once it's walking, lie the lizard across its way 20 cm ahead.
+    const home = g.iguanas()[0];
+    for (const a of g.algae()) if (Math.abs(a.z - home.z) < 0.35) g.removeAlgae(a.id);
     g.iguanaDo(0, 'feed');
     let ig = g.iguanas()[0];
     for (let k = 0; k < 900 && !(ig.activity === 'to_food' && ig.state === 'walk' && !ig.swimming); k++) {

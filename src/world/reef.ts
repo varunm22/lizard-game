@@ -2,19 +2,20 @@ import * as THREE from 'three';
 import { loadGltf } from '../render/gltf';
 import { toonGradient } from '../render/toon';
 import { rng } from './noise';
-import { rockyShore, WATER_Y } from './shore';
+import { coralShare, rockyShore, WATER_Y } from './shore';
 import { TERRAIN_SIZE, terrainHeight } from './terrain';
 import { covers, type Obstacle } from './obstacles';
 
 /**
- * Corals and urchins on the sea floor, from assets-src/reef.py. Galapagos reefs are patchy, so these
- * are scattered rather than packed: cauliflower coral (Pocillopora) and lobe coral (Porites) bushes
- * and domes, sea fans standing broadside to the swell, orange sun corals at the foot of sunken
- * boulders, and pencil urchins on the bottom and the rocks. Most of them on the rocky bottom off the
- * lava, a few off the beach. Drawn, not simulated, like the algae: no colliders, the lizard swims
+ * Corals, urchins and sea stars on the sea floor, from assets-src/reef.py. The shallows are the
+ * algae's (`algae.ts`); coral comes in below them and thickens with depth (`SEA_ZONES`, with a band
+ * where the two mix): cauliflower coral (Pocillopora) and lobe coral (Porites) bushes and domes, sea
+ * fans standing broadside to the swell, and orange sun corals at the foot of sunken boulders. Pencil
+ * urchins and cushion stars live at any depth, among the algae too, on the bottom and the rocks.
+ * Most of it is on the rocky bottom off the lava, a little off the beach. Drawn, not simulated, like the algae: no colliders, the lizard swims
  * through them. Deterministic, from their own random numbers, so nothing else on the island moves.
  */
-export type CoralKind = 'coral_cauliflower' | 'coral_lobe' | 'sea_fan' | 'sun_coral' | 'urchin';
+export type CoralKind = 'coral_cauliflower' | 'coral_lobe' | 'sea_fan' | 'sun_coral' | 'urchin' | 'sea_star';
 
 export interface Coral {
   kind: CoralKind;
@@ -39,15 +40,18 @@ interface Rule {
   clearance: number;
   /** Chance to keep a spot off the sandy beach rather than the rocky shore. */
   onSand: number;
+  /** Coral keeps to the deep (`coralShare`); urchins and sea stars live in the shallows too. */
+  deep: boolean;
 }
 
 const FLOOR: Rule[] = [
-  { kind: 'coral_cauliflower', count: 30, radius: 0.04, clearance: 0.04, onSand: 0.35 },
-  { kind: 'coral_lobe', count: 16, radius: 0.05, clearance: 0.05, onSand: 0.2 },
-  { kind: 'sea_fan', count: 20, radius: 0.025, clearance: 0.03, onSand: 0.3 },
-  { kind: 'urchin', count: 24, radius: 0.015, clearance: 0.03, onSand: 0 },
+  { kind: 'coral_cauliflower', count: 75, radius: 0.04, clearance: 0.04, onSand: 0.35, deep: true },
+  { kind: 'coral_lobe', count: 36, radius: 0.05, clearance: 0.05, onSand: 0.2, deep: true },
+  { kind: 'sea_fan', count: 36, radius: 0.025, clearance: 0.03, onSand: 0.3, deep: true },
+  { kind: 'urchin', count: 30, radius: 0.015, clearance: 0.03, onSand: 0, deep: false },
+  { kind: 'sea_star', count: 22, radius: 0.02, clearance: 0.03, onSand: 0.5, deep: false },
 ];
-const SUN_CORALS = 22;
+const SUN_CORALS = 36;
 const ROCK_URCHINS = 24;
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -66,7 +70,7 @@ export async function loadReefKit(url: string) {
   return { geometry, extras };
 }
 
-export const CORAL_KINDS: readonly CoralKind[] = ['coral_cauliflower', 'coral_lobe', 'sea_fan', 'sun_coral', 'urchin'];
+export const CORAL_KINDS: readonly CoralKind[] = ['coral_cauliflower', 'coral_lobe', 'sea_fan', 'sun_coral', 'urchin', 'sea_star'];
 
 export class Reef {
   readonly corals: Coral[] = [];
@@ -114,6 +118,7 @@ export class Reef {
         const s = range(0.75, 1.25);
         const y = terrainHeight(x, z);
         if (WATER_Y - y < height * s + rule.clearance) continue;
+        if (rule.deep && rand() > coralShare(WATER_Y - y)) continue;
         if (rockyShore(z) < 0.5 && rand() > rule.onSand) continue;
         if (!free(x, z, rule.radius * s)) continue;
         placed.push({ x, z, r: rule.radius * s });
@@ -135,7 +140,7 @@ export class Reef {
         const z = o.position.z + Math.sin(a) * o.radius * 0.95;
         const y = terrainHeight(x, z);
         const s = range(0.8, 1.3);
-        if (WATER_Y - y < 0.05 || taken(x, z) || placed.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + 0.015)) continue;
+        if (rand() > coralShare(WATER_Y - y) || taken(x, z) || placed.some((p) => Math.hypot(p.x - x, p.z - z) < p.r + 0.015)) continue;
         placed.push({ x, z, r: 0.015 * s });
         // Leaning out from the rock's flank.
         const out = new THREE.Vector3(Math.cos(a), 0.6, Math.sin(a)).normalize();
