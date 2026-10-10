@@ -32,12 +32,13 @@ export function createHud(): {
     'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
   document.body.appendChild(corner);
   // The controls, in one short row at the bottom in the middle; they stay 3 s once it moves, then fade.
+  // Sized to its content: left at 50% alone would cap it at half the window and wrap it below ~870 px.
   const el = document.createElement('div');
   el.className = 'controls-hint';
   el.style.cssText =
     'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:#fffc;' +
     'font:14px system-ui,sans-serif;color:#2f3a2a;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;' +
-    'max-width:calc(100vw - 32px);box-sizing:border-box;transition:opacity 1.5s ease 3s;pointer-events:none';
+    'width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;transition:opacity 1.5s ease 3s;pointer-events:none';
   const CONTROLS: [string, string][] = [
     ['WASD', 'move'],
     ['Shift', 'run'],

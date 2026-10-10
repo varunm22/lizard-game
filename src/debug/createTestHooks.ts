@@ -7,6 +7,8 @@ import { pileShelters } from '../world/rockPiles';
 import type { Obstacle } from '../world/obstacles';
 import type { Plants, PlantKind } from '../world/plants';
 import type { Algae } from '../world/algae';
+import type { Reef } from '../world/reef';
+import type { Fishes } from '../creatures/fish';
 import type { Water } from '../world/water';
 import type { Cover } from '../world/cover';
 import type { Tortoise } from '../creatures/tortoise';
@@ -43,6 +45,8 @@ interface HookContext {
   crabs: Crabs;
   iguanas: Iguanas;
   algae: Algae;
+  reef: Reef;
+  fishes: Fishes;
   feeding: Feeding;
   water: Water;
   hawk: Hawk;
@@ -61,7 +65,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat,
+  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
@@ -244,6 +248,20 @@ export function createTestHooks({
       iguanas.list.forEach((ig, i) => (ig.paused = still.includes(i)));
       crabs.paused = crabsStill;
     },
+    corals: () => reef.corals.map((c) => ({ ...c })),
+    fish: () =>
+      fishes.list.map((f) => ({
+        species: f.species,
+        school: f.school.home.x.toFixed(3) + ',' + f.school.home.z.toFixed(3),
+        x: f.pos.x,
+        y: f.pos.y,
+        z: f.pos.z,
+        speed: f.vel.length(),
+        length: f.length,
+        bottom: terrainHeight(f.pos.x, f.pos.z),
+        darting: f.panic > 0,
+      })),
+    fishTouched: () => fishes.touched,
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
     lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),
     vitals: () => ({

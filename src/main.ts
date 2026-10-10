@@ -6,6 +6,8 @@ import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from './wor
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
+import { loadReefKit, Reef } from './world/reef';
+import { SeaBed } from './world/seaBed';
 import { forestCover, SPAWN, TORTOISE_ROUTE } from './world/layout';
 import { updateUnderwaterView } from './world/shore';
 import { Water } from './world/water';
@@ -14,6 +16,7 @@ import { Plants } from './world/plants';
 import { Route, Regrowth } from './creatures/route';
 import { Tortoise } from './creatures/tortoise';
 import { Crabs } from './creatures/crab';
+import { Fishes } from './creatures/fish';
 import { Iguanas } from './creatures/iguana';
 import { Hawk, PATROL } from './creatures/hawk';
 import { findPerches } from './creatures/perches';
@@ -43,6 +46,7 @@ import propsUrl from './assets/props.glb?url';
 import tortoiseUrl from './assets/tortoise.glb?url';
 import crabUrl from './assets/crab.glb?url';
 import hawkUrl from './assets/hawk.glb?url';
+import reefUrl from './assets/reef.glb?url';
 
 async function main() {
   await RAPIER.init();
@@ -54,6 +58,9 @@ async function main() {
   const props = await buildProps(propsUrl, scene, world, landmarks);
   const obstacles = [...landmarks, ...props.obstacles];
   const algae = new Algae(scene, props.algae, obstacles);
+  // Corals and urchins on the sea floor, clear of the algae.
+  const reefKit = await loadReefKit(reefUrl);
+  const reef = new Reef(scene, reefKit.geometry, obstacles, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
   const water = new Water(scene);
   const splashes = new Splashes(water);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
@@ -73,6 +80,8 @@ async function main() {
   const visual = new LizardVisual(lizard, player, world);
   const feeding = new Feeding(lizard, algae);
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
+  // Reef fish keep clear of the lizard and the other iguanas, unless the lizard is quick or corners one.
+  const fishes = new Fishes(scene, reefKit.geometry, reefKit.extras, obstacles, new SeaBed(obstacles), [player.position, ...iguanas.list.map((ig) => ig.body.position)], lizard.bodySpheres);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
   // Health, warmth, food and air. The hawk's strikes take health; at none the lizard goes down and
@@ -94,7 +103,7 @@ async function main() {
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
-  // One goal per creature, and the algae. They start over each time the page loads.
+  // One goal per creature, the algae and the fish. They start over each time the page loads.
   let basking = false;
   let canEat = false;
   const goals = new Goals([
@@ -103,6 +112,7 @@ async function main() {
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
     { id: 'algae', label: 'Eat some algae', met: () => feeding.mouthfuls > 0 },
+    { id: 'fish', label: 'Touch a fish', met: () => fishes.touched > 0 },
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
   goals.onDone = (goal) => goalsPanel.done(goal);
@@ -141,7 +151,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat: () => canEat,
+    tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -163,6 +173,7 @@ async function main() {
     regrowth.step(dt);
     iguanas.step(dt);
     crabs.step(dt);
+    fishes.step(dt);
     hawk.step(dt);
     // Knocked down, the lizard lies still whatever the controls say.
     const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
@@ -234,6 +245,8 @@ async function main() {
     plants.update(pushers, frameDt);
     water.update(frameDt);
     algae.update(frameDt);
+    reef.update(frameDt);
+    fishes.update(alpha);
     updateUnderwaterView(scene, camera);
     followSun(sun, feet);
   };
