@@ -13,9 +13,9 @@ import type { SeaBed } from '../world/seaBed';
  * drifts round its home on a slowly wandering heading, its fish keeping together and apart like a
  * real school, at its own height over the bottom (`SeaBed`), and never into the shallows, a rock or
  * out of the water. Anything big swimming at them (the lizard, another iguana) scatters them: each
- * fish within its kind's `fear` darts away and slows again once clear. Too quick to chase down in open
- * water, but a lizard dropping in on one from above (a running jump off a rock) or one cornered in the
- * shallows can touch one: `touched` counts them, for the "Touch a fish" goal. Bodies wave side to side in
+ * fish within its kind's `fear` darts away and slows again once clear. Too quick to chase down, and
+ * hemmed in they slip out sideways at a sprint, but a lizard dropping in on one from above (a running
+ * jump off a rock) can touch one: `touched` counts them, for the "Touch a fish" goal. Bodies wave side to side in
  * the vertex shader, faster when they swim faster. Stepped at the fixed rate with their own random
  * numbers, drawn interpolated. They cost little, so tests leave them swimming.
  */
@@ -58,6 +58,9 @@ const PANIC = 1.2;
 /** How hard a fish looks ahead for shallows (s of travel). */
 const LOOK_AHEAD = 0.6;
 const EDGE = TERRAIN_SIZE / 2 - 0.1;
+/** A fleeing fish looks this many body lengths ahead for open water, and hemmed in, swims this much faster than its dash. */
+const ESCAPE = 4;
+const SPRINT = 1.6;
 /** Half a fish's depth, as a share of its length: how near the lizard's body must come to touch it. */
 const FLANK = 0.2;
 
@@ -85,6 +88,8 @@ interface Fish {
   /** Tail beat phase (radians), and how long it stays quick after a fright (s). */
   phase: number;
   panic: number;
+  /** The heading it took to get out when hemmed in (radians), kept while it stays clear. */
+  out: number | null;
   /** Whether the lizard's body is touching it now. */
   brushed: boolean;
 }
@@ -121,6 +126,7 @@ export class Fishes {
   private s = new THREE.Vector3();
   private want = new THREE.Vector3();
   private away = new THREE.Vector3();
+  private flee = new THREE.Vector3();
 
   /**
    * `geometry` maps each kind's mesh name to its geometry, `extras` gives its length; `rocks` are where
@@ -182,7 +188,7 @@ export class Fishes {
           const yaw = school.heading + range(-0.3, 0.3);
           const f: Fish = {
             species, school, length, pos, prev: pos.clone(), vel: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(kind.cruise),
-            yaw, prevYaw: yaw, pitch: 0, prevPitch: 0, scale: range(0.85, 1.15), lift: range(-1, 1) * kind.spacing * 1.5, phase: range(0, 2 * Math.PI), panic: 0, brushed: false,
+            yaw, prevYaw: yaw, pitch: 0, prevPitch: 0, scale: range(0.85, 1.15), lift: range(-1, 1) * kind.spacing * 1.5, phase: range(0, 2 * Math.PI), panic: 0, out: null, brushed: false,
           };
           school.fish.push(f);
           fish.push(f);
@@ -204,7 +210,7 @@ export class Fishes {
   }
 
   step(dt: number) {
-    const { want, away } = this;
+    const { want, away, flee } = this;
     for (const school of this.schools) {
       const { kind, fish, centre } = school;
       centre.set(0, 0, 0);
@@ -250,25 +256,31 @@ export class Fishes {
         // Rise or sink to the school's height over the bottom, never too near the surface.
         const target = Math.min(WATER_Y - SURFACE_GAP - 0.01, floor + school.height + f.lift);
         want.y += clamp((target - pos.y) * 2, -kind.cruise * 0.6, kind.cruise * 0.6);
-        // Dart away at full speed from anything big coming close: nothing that swims can catch one in open water.
+        // Dart away at full speed from anything big coming close: nothing that swims can catch one in
+        // open water. Hemmed in by shallows, a rock or the edge, it slips out sideways, faster still.
         let fright = 0;
+        flee.set(0, 0, 0);
         for (const t of this.threats) {
           away.subVectors(pos, t);
           const d = away.length();
           if (d > kind.fear || d < 1e-6) continue;
-          away.y *= 0.4;
-          away.normalize().multiplyScalar(kind.dash);
-          want.add(away);
+          flee.add(away.setY(0).normalize());
           fright = 1;
         }
-        if (fright) f.panic = PANIC;
+        let sprint = 1;
+        if (fright) {
+          f.panic = PANIC;
+          if (this.escape(f, flee)) sprint = SPRINT;
+          // Running for it, it forgets the school: only its depth still counts.
+          want.set(0, want.y, 0).addScaledVector(flee, kind.dash * sprint);
+        }
         f.panic = Math.max(0, f.panic - dt);
         // Turn away from shallows, rocks breaking the surface and the edge of the world ahead.
         const ahead = Math.max(vel.length(), kind.cruise) * LOOK_AHEAD;
         const hl = Math.hypot(vel.x, vel.z) || 1;
         const ax = pos.x + (vel.x / hl) * ahead;
         const az = pos.z + (vel.z / hl) * ahead;
-        if (Math.abs(az) > EDGE - 0.15 || ax > EDGE - 0.15 || this.tooShallow(ax, az, f.length) || this.bed.at(ax, az) > pos.y - f.length * BED_GAP) {
+        if (!fright && (Math.abs(az) > EDGE - 0.15 || ax > EDGE - 0.15 || this.tooShallow(ax, az, f.length) || this.bed.at(ax, az) > pos.y - f.length * BED_GAP)) {
           const tx = school.home.x - pos.x;
           const tz = school.home.z - pos.z;
           const tl = Math.hypot(tx, tz) || 1;
@@ -278,17 +290,25 @@ export class Fishes {
         }
         // Ease toward what it wants, quicker and faster when frightened.
         const quick = f.panic > 0;
-        const top = quick ? kind.dash : kind.cruise * 1.8;
+        const top = quick ? kind.dash * sprint : kind.cruise * 1.8;
         const len = want.length();
         if (len > top) want.multiplyScalar(top / len);
-        vel.lerp(want, Math.min(1, dt * (quick ? 7 : 2.2)));
+        vel.lerp(want, Math.min(1, dt * (quick ? 7 * sprint : 2.2)));
         pos.addScaledVector(vel, dt);
-        // Hard limits: in the water, over the bottom, inside the world.
-        if (this.tooShallow(pos.x, pos.z, f.length) || Math.abs(pos.z) > EDGE || pos.x > EDGE || pos.x < OCEAN_X0 + 0.1) {
-          pos.x = f.prev.x;
-          pos.z = f.prev.z;
-          vel.x *= -0.3;
-          vel.z *= -0.3;
+        // Hard limits: in the water, over the bottom, inside the world. Up against one, it slides along it.
+        if (!this.open(pos.x, pos.z, f.length)) {
+          if (this.open(pos.x, f.prev.z, f.length)) {
+            pos.z = f.prev.z;
+            vel.z *= -0.3;
+          } else if (this.open(f.prev.x, pos.z, f.length)) {
+            pos.x = f.prev.x;
+            vel.x *= -0.3;
+          } else {
+            pos.x = f.prev.x;
+            pos.z = f.prev.z;
+            vel.x *= -0.3;
+            vel.z *= -0.3;
+          }
         }
         pos.y = clamp(pos.y, this.bed.at(pos.x, pos.z) + f.length * BED_GAP, WATER_Y - SURFACE_GAP);
         // Face the way it swims, nose up or down with its climb, and beat the tail with its speed.
@@ -342,6 +362,45 @@ export class Fishes {
       b.mesh.instanceMatrix.needsUpdate = true;
       b.swim.needsUpdate = true;
     }
+  }
+
+  /**
+   * Turn `flee` (level, unit, away from the threats) into the way out: straight on if the water is open
+   * for ESCAPE lengths, else the clear heading nearest it, sideways or even back past the threat at a
+   * slant, looking less far ahead if nothing is clear that far. Whether it was hemmed in.
+   */
+  private escape(f: Fish, flee: THREE.Vector3): boolean {
+    const clear = (x: number, z: number, reach: number) => [0.15, 0.4, 0.7, 1].every((t) => this.open(f.pos.x + x * reach * t, f.pos.z + z * reach * t, f.length));
+    if (clear(flee.x, flee.z, f.length * ESCAPE)) {
+      f.out = null;
+      return false;
+    }
+    // Keep to the way out it chose while that stays clear, rather than dithering between two.
+    if (f.out !== null && Math.cos(f.out - Math.atan2(flee.x, flee.z)) > -0.5 && clear(Math.sin(f.out), Math.cos(f.out), f.length * ESCAPE * 0.5)) {
+      flee.set(Math.sin(f.out), 0, Math.cos(f.out));
+      return true;
+    }
+    const base = Math.atan2(flee.x, flee.z);
+    // Each side in turn, widening: the side nearer its own heading first.
+    const side = Math.sin(f.yaw - base) >= 0 ? 1 : -1;
+    for (let reach = f.length * ESCAPE; reach > f.length * 0.4; reach /= 2) {
+      for (let k = 1; k <= 8; k++) {
+        for (const s of [side, -side]) {
+          const a = base + s * k * (Math.PI / 8);
+          if (clear(Math.sin(a), Math.cos(a), reach)) {
+            f.out = a;
+            flee.set(Math.sin(a), 0, Math.cos(a));
+            return true;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  /** Whether a fish of this length may swim at (x, z): deep enough and inside the world. */
+  private open(x: number, z: number, length: number) {
+    return !this.tooShallow(x, z, length) && Math.abs(z) <= EDGE && x <= EDGE && x >= OCEAN_X0 + 0.1;
   }
 
   /** Whether the water at (x, z) is too shallow for a fish of this length. */

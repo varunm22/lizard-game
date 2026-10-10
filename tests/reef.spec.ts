@@ -176,33 +176,34 @@ test('reef: dropping into the water onto a fish touches it, and it darts off', a
   expect(errors).toEqual([]);
 });
 
-test('reef: a fish chased into the shallows is cornered and touched', async ({ page }) => {
+test('reef: a school chased into the shallows slips out sideways and gets away', async ({ page }) => {
   const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const { waterY } = g.ocean();
-    // A school by the shore (named by its home), chased from half a metre out to sea at a run, always at its nearest fish.
+    // A school by the shore (named by its home), chased in toward the shallows from half a metre out
+    // to sea at a run, always at its nearest fish, for 15 s.
     const mine = () => g.fish().filter((f) => f.school === '2.600,-0.593');
     const m = mine();
     const c = { x: m.reduce((a, f) => a + f.x, 0) / m.length, z: m.reduce((a, f) => a + f.z, 0) / m.length };
     g.teleport(c.x + 0.5, c.z, -Math.PI / 2, waterY - 0.03);
-    let k = 0;
-    let depth = 0;
-    for (; k < 15 * 60 && g.fishTouched() === 0; k++) {
+    let shallowest = 1;
+    let fastest = 0;
+    for (let k = 0; k < 15 * 60; k++) {
       const p = g.player();
       const f = mine().reduce((a, f) => (Math.hypot(f.x - p.x, f.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? f : a));
       const turn = Math.atan2(f.x - p.x, f.z - p.z) - p.yaw;
       g.setInput({ move: { x: Math.max(-1, Math.min(1, -Math.atan2(Math.sin(turn), Math.cos(turn)) * 3)), y: 1 }, run: true, jump: false });
       g.advance(1);
-      depth = waterY - g.terrainHeight(f.x, f.z);
+      shallowest = Math.min(shallowest, waterY - g.terrainHeight(f.x, f.z));
+      fastest = Math.max(fastest, ...mine().map((f) => f.speed));
     }
     g.setInput(null);
-    return { touched: g.fishTouched(), depth, goal: g.goals().find((x) => x.id === 'fish')!.done };
+    return { touched: g.fishTouched(), shallowest, fastest };
   });
-  await screenshot(page, 'reef/cornered.png');
-  // Driven in toward the shallows, it runs out of room and one is caught.
-  expect(run.touched).toBe(1);
-  expect(run.depth).toBeLessThan(0.12);
-  expect(run.goal).toBe(true);
+  // It drove them in toward the shallows, but they sprinted out past it (sergeant majors dart at 0.35 m/s).
+  expect(run.shallowest).toBeLessThan(0.12);
+  expect(run.fastest).toBeGreaterThan(0.45);
+  expect(run.touched).toBe(0);
   expect(errors).toEqual([]);
 });
