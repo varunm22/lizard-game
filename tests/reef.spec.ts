@@ -155,3 +155,49 @@ test('reef: a school darts away from the lizard swimming into it, then settles',
   expect(result.top).toBeLessThan(0.15);
   expect(errors).toEqual([]);
 });
+
+test('reef: lying still on the bottom draws a curious fish to the snout, and a bite then touches it', async ({ page }) => {
+  const errors = await bootGame(page);
+  const first = await page.evaluate(() => {
+    const g = window.__game!;
+    // On the bottom beside a school of sergeant majors, facing it.
+    const sergeants = g.fish().filter((f) => f.species === 'sergeant');
+    const school = sergeants.filter((f) => f.school === sergeants[0].school);
+    const c = { x: school.reduce((a, f) => a + f.x, 0) / school.length, z: school.reduce((a, f) => a + f.z, 0) / school.length };
+    g.teleport(c.x - 0.25, c.z, Math.PI / 2);
+    const snout = () => g.lizard().snout;
+    const gap = (f: { x: number; y: number; z: number }) => Math.hypot(f.x - snout().x, f.y - snout().y, f.z - snout().z);
+    // Up to 20 s for a fish to come and hang just off the snout.
+    let k = 0;
+    let curious = null as null | { species: string; gap: number };
+    for (; k < 1200 && !curious; k++) {
+      g.advance(1);
+      const f = g.fish().find((f) => f.inspecting && gap(f) < f.length / 2 + 0.015);
+      if (f) curious = { species: f.species, gap: gap(f) };
+    }
+    // Let it settle there.
+    g.advance(30);
+    return { waited: k / 60, curious, scared: g.fish().filter((f) => f.darting).length };
+  });
+  await page.evaluate(() => {
+    const g = window.__game!;
+    const s = g.lizard().snout;
+    g.viewFrom({ x: 0.02, y: 0.03, z: 0.16 }, { x: s.x + 0.02, y: s.y, z: s.z });
+    g.advance(1);
+  });
+  await screenshot(page, 'reef/curious.png');
+  const run = await page.evaluate((first) => {
+    const g = window.__game!;
+    g.viewFrom(null);
+    g.bite();
+    g.advance(30);
+    return { ...first, touched: g.feeding().fishTouched, goal: g.goals().find((x) => x.id === 'fish')!.done, darting: g.fish().filter((f) => f.darting).length };
+  }, first);
+  expect(run.curious).not.toBeNull();
+  expect(run.scared).toBe(0);
+  expect(run.touched).toBe(1);
+  expect(run.goal).toBe(true);
+  // The bite sent the fish round the mouth darting off.
+  expect(run.darting).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});

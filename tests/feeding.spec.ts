@@ -31,7 +31,7 @@ test('F bites: the head lifts with the mouth open, lunges and snaps shut, and no
   expect(r.after).toBeLessThan(0.01);
   expect(r.steps).toBeGreaterThan(30);
   expect(r.steps).toBeLessThan(45);
-  expect(r.feeding).toEqual({ bites: 1, mouthfuls: 0, lastBite: null, canEat: false });
+  expect(r.feeding).toEqual({ bites: 1, mouthfuls: 0, lastBite: null, canEat: false, fishTouched: 0 });
   expect(errors).toEqual([]);
 });
 
