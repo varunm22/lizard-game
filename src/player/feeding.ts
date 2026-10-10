@@ -8,8 +8,7 @@ const MOUTH_SLACK = 0.003;
 
 /**
  * The player's bite (F): the bite clip plays wherever the lizard is, and as the jaws snap shut, the
- * algae patch touching its snout or head, if any, is bitten down (and eaten by the last bite), and
- * a fish at the snout is touched (and every fish near it darts off).
+ * algae patch touching its snout or head, if any, is bitten down (and eaten by the last bite).
  */
 export class Feeding {
   /** Bites taken, and those that got some algae. */
@@ -17,9 +16,6 @@ export class Feeding {
   mouthfuls = 0;
   /** The patch the last bite got, or null if it closed on nothing. */
   lastBite: { id: number; ate: boolean } | null = null;
-  /** Bites that touched a fish, and the fish a bite can touch (creatures/fish.ts). */
-  fishTouched = 0;
-  fish: { touch(x: number, y: number, z: number, r: number): boolean } | null = null;
   /** Called for each mouthful of algae swallowed. */
   onMouthful: (() => void) | null = null;
 
@@ -42,8 +38,6 @@ export class Feeding {
   private snap() {
     this.bites++;
     this.model.updateBodySpheres();
-    const [snout] = this.model.bodySpheres;
-    if (this.fish?.touch(snout.x, snout.y, snout.z, snout.r + MOUTH_SLACK)) this.fishTouched++;
     const patch = this.inReach();
     if (!patch) {
       this.lastBite = null;

@@ -156,48 +156,53 @@ test('reef: a school darts away from the lizard swimming into it, then settles',
   expect(errors).toEqual([]);
 });
 
-test('reef: lying still on the bottom draws a curious fish to the snout, and a bite then touches it', async ({ page }) => {
+test('reef: dropping into the water onto a fish touches it, and it darts off', async ({ page }) => {
   const errors = await bootGame(page);
-  const first = await page.evaluate(() => {
+  const run = await page.evaluate(() => {
     const g = window.__game!;
-    // On the bottom beside a school of sergeant majors, facing it.
-    const sergeants = g.fish().filter((f) => f.species === 'sergeant');
-    const school = sergeants.filter((f) => f.school === sergeants[0].school);
-    const c = { x: school.reduce((a, f) => a + f.x, 0) / school.length, z: school.reduce((a, f) => a + f.z, 0) / school.length };
-    g.teleport(c.x - 0.25, c.z, Math.PI / 2);
-    const snout = () => g.lizard().snout;
-    const gap = (f: { x: number; y: number; z: number }) => Math.hypot(f.x - snout().x, f.y - snout().y, f.z - snout().z);
-    // Up to 20 s for a fish to come and hang just off the snout.
+    const { waterY } = g.ocean();
+    // The fish nearest the surface, from 8 cm over it, as off a running jump.
+    const f = g.fish().sort((a, b) => b.y - a.y)[0];
+    g.teleport(f.x, f.z, 0, waterY + 0.08);
     let k = 0;
-    let curious = null as null | { species: string; gap: number };
-    for (; k < 1200 && !curious; k++) {
-      g.advance(1);
-      const f = g.fish().find((f) => f.inspecting && gap(f) < f.length / 2 + 0.015);
-      if (f) curious = { species: f.species, gap: gap(f) };
-    }
-    // Let it settle there.
-    g.advance(30);
-    return { waited: k / 60, curious, scared: g.fish().filter((f) => f.darting).length };
+    for (; k < 40 && g.fishTouched() === 0; k++) g.advance(1);
+    return { steps: k, touched: g.fishTouched(), goal: g.goals().find((x) => x.id === 'fish')!.done, darting: g.fish().filter((f) => f.darting).length };
   });
-  await page.evaluate(() => {
-    const g = window.__game!;
-    const s = g.lizard().snout;
-    g.viewFrom({ x: 0.02, y: 0.03, z: 0.16 }, { x: s.x + 0.02, y: s.y, z: s.z });
-    g.advance(1);
-  });
-  await screenshot(page, 'reef/curious.png');
-  const run = await page.evaluate((first) => {
-    const g = window.__game!;
-    g.viewFrom(null);
-    g.bite();
-    g.advance(30);
-    return { ...first, touched: g.feeding().fishTouched, goal: g.goals().find((x) => x.id === 'fish')!.done, darting: g.fish().filter((f) => f.darting).length };
-  }, first);
-  expect(run.curious).not.toBeNull();
-  expect(run.scared).toBe(0);
+  await screenshot(page, 'reef/plunge.png');
   expect(run.touched).toBe(1);
+  expect(run.steps).toBeLessThan(30);
   expect(run.goal).toBe(true);
-  // The bite sent the fish round the mouth darting off.
   expect(run.darting).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test('reef: a fish chased into the shallows is cornered and touched', async ({ page }) => {
+  const errors = await bootGame(page);
+  const run = await page.evaluate(() => {
+    const g = window.__game!;
+    const { waterY } = g.ocean();
+    // A school by the shore (named by its home), chased from half a metre out to sea at a run, always at its nearest fish.
+    const mine = () => g.fish().filter((f) => f.school === '2.600,-0.593');
+    const m = mine();
+    const c = { x: m.reduce((a, f) => a + f.x, 0) / m.length, z: m.reduce((a, f) => a + f.z, 0) / m.length };
+    g.teleport(c.x + 0.5, c.z, -Math.PI / 2, waterY - 0.03);
+    let k = 0;
+    let depth = 0;
+    for (; k < 15 * 60 && g.fishTouched() === 0; k++) {
+      const p = g.player();
+      const f = mine().reduce((a, f) => (Math.hypot(f.x - p.x, f.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? f : a));
+      const turn = Math.atan2(f.x - p.x, f.z - p.z) - p.yaw;
+      g.setInput({ move: { x: Math.max(-1, Math.min(1, -Math.atan2(Math.sin(turn), Math.cos(turn)) * 3)), y: 1 }, run: true, jump: false });
+      g.advance(1);
+      depth = waterY - g.terrainHeight(f.x, f.z);
+    }
+    g.setInput(null);
+    return { touched: g.fishTouched(), depth, goal: g.goals().find((x) => x.id === 'fish')!.done };
+  });
+  await screenshot(page, 'reef/cornered.png');
+  // Driven in toward the shallows, it runs out of room and one is caught.
+  expect(run.touched).toBe(1);
+  expect(run.depth).toBeLessThan(0.12);
+  expect(run.goal).toBe(true);
   expect(errors).toEqual([]);
 });

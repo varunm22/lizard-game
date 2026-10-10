@@ -13,10 +13,9 @@ import type { SeaBed } from '../world/seaBed';
  * drifts round its home on a slowly wandering heading, its fish keeping together and apart like a
  * real school, at its own height over the bottom (`SeaBed`), and never into the shallows, a rock or
  * out of the water. Anything big swimming at them (the lizard, another iguana) scatters them: each
- * fish within its kind's `fear` darts away and slows again once clear. But a lizard that keeps still
- * under water a while (`CALM_TIME`) only scares fish that all but touch it, and now and then one comes
- * over to look at it, hovering just off its snout for a few seconds: a quick bite then can touch it
- * (`touch`, the "Touch a fish" goal). Every bite startles the fish round the mouth. Bodies wave side to side in
+ * fish within its kind's `fear` darts away and slows again once clear. Too quick to chase down in open
+ * water, but a lizard dropping in on one from above (a running jump off a rock) or one cornered in the
+ * shallows can touch one: `touched` counts them, for the "Touch a fish" goal. Bodies wave side to side in
  * the vertex shader, faster when they swim faster. Stepped at the fixed rate with their own random
  * numbers, drawn interpolated. They cost little, so tests leave them swimming.
  */
@@ -59,30 +58,14 @@ const PANIC = 1.2;
 /** How hard a fish looks ahead for shallows (s of travel). */
 const LOOK_AHEAD = 0.6;
 const EDGE = TERRAIN_SIZE / 2 - 0.1;
-/** A threat moving slower than this (m/s) for this long (s) is calm: it only scares fish within CALM_FEAR (m) of its middle. */
-const STILL_SPEED = 0.01;
-const CALM_TIME = 2;
-const CALM_FEAR = 0.05;
-/**
- * A calm lizard under water draws a curious fish from within CURIOUS_RANGE (m) now and then (chance
- * per second); it swims over (giving up after APPROACH seconds), hovers facing it, its nose HOVER (m) ahead of the snout and a little below it for
- * INSPECT seconds (from-to), then goes back to its school and won't come again for REST seconds.
- */
-const CURIOUS_RANGE = 0.8;
-const CURIOUS_RATE = 0.8;
-const APPROACH = 8;
-const HOVER = 0.008;
-/** It hangs this much lower than the snout (m), about where the bite's lunge comes down. */
-const HOVER_LOW = 0.006;
-const INSPECT = [3, 6] as const;
-const REST = 6;
-/** A bite startles every fish within this of the snout (m). */
-const STARTLE = 0.15;
+/** Half a fish's depth, as a share of its length: how near the lizard's body must come to touch it. */
+const FLANK = 0.2;
 
-/** Something the fish keep away from (its middle), and, for the lizard, its snout, which a curious fish comes to look at. */
-export interface Threat {
-  pos: THREE.Vector3;
-  snout?: { x: number; y: number; z: number };
+interface Sphere {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
 }
 
 interface Fish {
@@ -99,13 +82,11 @@ interface Fish {
   scale: number;
   /** Its own height in the school, above or below the school's (m). */
   lift: number;
-  /** Seconds left looking at a calm lizard's snout once there (0 when it isn't), how long it has left to get there, and before it will come again. */
-  inspect: number;
-  approach: number;
-  rest: number;
   /** Tail beat phase (radians), and how long it stays quick after a fright (s). */
   phase: number;
   panic: number;
+  /** Whether the lizard's body is touching it now. */
+  brushed: boolean;
 }
 
 interface School {
@@ -127,16 +108,11 @@ interface Batch {
 
 export class Fishes {
   readonly list: Fish[] = [];
+  /** Fish the lizard has touched so far. */
+  touched = 0;
   private schools: School[] = [];
   private batches: Batch[] = [];
   private rand = rng(SEED + 1);
-  /** How long each threat has kept still (s), and where it was last step. */
-  private still: number[];
-  private last: THREE.Vector3[];
-  private hover = new THREE.Vector3();
-  private snout = new THREE.Vector3();
-  private fwd = new THREE.Vector3();
-  private spot = new THREE.Vector3();
 
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
@@ -148,7 +124,8 @@ export class Fishes {
 
   /**
    * `geometry` maps each kind's mesh name to its geometry, `extras` gives its length; `rocks` are where
-   * the rock-dwellers make their homes; `threats` are what the fish shy from (live positions).
+   * the rock-dwellers make their homes; `threats` are what the fish shy from (live positions);
+   * `body` is the lizard as spheres (live): a fish it meets is touched.
    */
   constructor(
     scene: THREE.Scene,
@@ -156,10 +133,9 @@ export class Fishes {
     extras: Map<string, Record<string, number>>,
     rocks: readonly Obstacle[],
     private bed: SeaBed,
-    private threats: readonly Threat[],
+    private threats: readonly THREE.Vector3[],
+    private body: readonly Sphere[],
   ) {
-    this.still = threats.map(() => 0);
-    this.last = threats.map((t) => t.pos.clone());
     const rand = rng(SEED);
     const range = (a: number, b: number) => a + (b - a) * rand();
     const depth = (x: number, z: number) => WATER_Y - bed.at(x, z);
@@ -206,7 +182,7 @@ export class Fishes {
           const yaw = school.heading + range(-0.3, 0.3);
           const f: Fish = {
             species, school, length, pos, prev: pos.clone(), vel: new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(kind.cruise),
-            yaw, prevYaw: yaw, pitch: 0, prevPitch: 0, scale: range(0.85, 1.15), lift: range(-1, 1) * kind.spacing * 1.5, phase: range(0, 2 * Math.PI), panic: 0, inspect: 0, approach: 0, rest: 0,
+            yaw, prevYaw: yaw, pitch: 0, prevPitch: 0, scale: range(0.85, 1.15), lift: range(-1, 1) * kind.spacing * 1.5, phase: range(0, 2 * Math.PI), panic: 0, brushed: false,
           };
           school.fish.push(f);
           fish.push(f);
@@ -228,31 +204,7 @@ export class Fishes {
   }
 
   step(dt: number) {
-    const { want, away, hover } = this;
-    this.threats.forEach((t, i) => {
-      this.still[i] = t.pos.distanceTo(this.last[i]) < STILL_SPEED * dt ? this.still[i] + dt : 0;
-      this.last[i].copy(t.pos);
-    });
-    // A calm lizard under water: now and then the nearest fish free to come looks at its snout.
-    const li = this.threats.findIndex((t, i) => t.snout && t.pos.y < WATER_Y - 0.01 && this.still[i] > CALM_TIME);
-    const lure = li >= 0 ? this.threats[li] : null;
-    if (lure?.snout) {
-      const snout = lure.snout;
-      const fwd = away.set(snout.x - lure.pos.x, 0, snout.z - lure.pos.z).normalize();
-      this.snout.set(snout.x, snout.y, snout.z);
-      this.fwd.copy(fwd);
-      hover.set(snout.x + fwd.x * HOVER, snout.y - HOVER_LOW, snout.z + fwd.z * HOVER);
-      if (!this.list.some((f) => f.inspect > 0) && this.rand() < dt * CURIOUS_RATE) {
-        let best: Fish | null = null;
-        for (const f of this.list) {
-          if (f.panic > 0 || f.rest > 0 || f.pos.distanceTo(hover) > CURIOUS_RANGE) continue;
-          if (!best || f.pos.distanceTo(hover) < best.pos.distanceTo(hover)) best = f;
-        }
-        if (best) [best.inspect, best.approach] = [INSPECT[0] + (INSPECT[1] - INSPECT[0]) * this.rand(), APPROACH];
-      }
-    } else {
-      for (const f of this.list) if (f.inspect > 0) [f.inspect, f.rest] = [0, REST];
-    }
+    const { want, away } = this;
     for (const school of this.schools) {
       const { kind, fish, centre } = school;
       centre.set(0, 0, 0);
@@ -298,30 +250,17 @@ export class Fishes {
         // Rise or sink to the school's height over the bottom, never too near the surface.
         const target = Math.min(WATER_Y - SURFACE_GAP - 0.01, floor + school.height + f.lift);
         want.y += clamp((target - pos.y) * 2, -kind.cruise * 0.6, kind.cruise * 0.6);
-        f.rest = Math.max(0, f.rest - dt);
-        if (f.inspect > 0) {
-          // Come over and hang nose to nose with the calm lizard a while.
-          const spot = this.spot.copy(hover).addScaledVector(this.fwd, (f.length / 2) * f.scale);
-          if (pos.distanceTo(spot) < 0.015) f.inspect -= dt;
-          else if ((f.approach -= dt) <= 0) f.inspect = 0;
-          if (f.inspect <= 0) [f.inspect, f.rest] = [0, REST];
-          want.subVectors(spot, pos).multiplyScalar(3);
-          const l = want.length();
-          if (l > kind.cruise * 1.6) want.multiplyScalar((kind.cruise * 1.6) / l);
-        }
-        // Dart away from anything big coming close; a calm one only from right beside it.
+        // Dart away at full speed from anything big coming close: nothing that swims can catch one in open water.
         let fright = 0;
-        this.threats.forEach((t, i) => {
-          const fear = this.still[i] > CALM_TIME ? CALM_FEAR : kind.fear;
-          away.subVectors(pos, t.pos);
+        for (const t of this.threats) {
+          away.subVectors(pos, t);
           const d = away.length();
-          if (d > fear || d < 1e-6) return;
+          if (d > kind.fear || d < 1e-6) continue;
           away.y *= 0.4;
-          away.normalize().multiplyScalar(kind.dash * (1.2 - d / fear));
+          away.normalize().multiplyScalar(kind.dash);
           want.add(away);
           fright = 1;
-        });
-        if (fright) f.inspect = 0;
+        }
         if (fright) f.panic = PANIC;
         f.panic = Math.max(0, f.panic - dt);
         // Turn away from shallows, rocks breaking the surface and the edge of the world ahead.
@@ -354,35 +293,37 @@ export class Fishes {
         pos.y = clamp(pos.y, this.bed.at(pos.x, pos.z) + f.length * BED_GAP, WATER_Y - SURFACE_GAP);
         // Face the way it swims, nose up or down with its climb, and beat the tail with its speed.
         const h = Math.hypot(vel.x, vel.z);
-        if (f.inspect > 0 && pos.distanceTo(this.snout) < 0.08) f.yaw = turnToward(f.yaw, Math.atan2(this.snout.x - pos.x, this.snout.z - pos.z), dt * 4);
-        else if (h > 0.004) f.yaw = turnToward(f.yaw, Math.atan2(vel.x, vel.z), dt * (quick ? 16 : 5));
+        if (h > 0.004) f.yaw = turnToward(f.yaw, Math.atan2(vel.x, vel.z), dt * (quick ? 16 : 5));
         f.pitch += (clamp(Math.atan2(vel.y, Math.max(h, 0.01)), -0.6, 0.6) - f.pitch) * Math.min(1, dt * 4);
         f.phase += dt * 2 * Math.PI * Math.min(12, 1.5 + (1.4 * vel.length()) / f.length);
+        // Touched by the lizard: counted once each time it's caught, and it shoots off.
+        const hit = this.contact(f);
+        if (hit && !f.brushed) {
+          this.touched++;
+          away.set(pos.x - hit.x, 0, pos.z - hit.z);
+          if (away.lengthSq() < 1e-8) away.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
+          vel.copy(away.normalize().multiplyScalar(kind.dash));
+          f.panic = PANIC;
+        }
+        f.brushed = !!hit;
       }
     }
   }
 
-  /**
-   * A bite snapping shut at a sphere (centre x, y, z, radius r; m): whether it touched a fish. Every
-   * fish near the mouth darts off, startled, the one touched included.
-   */
-  touch(x: number, y: number, z: number, r: number): boolean {
-    let touched = false;
-    const p = this.v.set(x, y, z);
-    for (const f of this.list) {
-      const d = f.pos.distanceTo(p);
-      if (d > STARTLE) continue;
-      // The fish as a segment snout to tail, as thick as its body.
-      const half = (f.length / 2) * f.scale;
-      const t = clamp((p.x - f.pos.x) * Math.sin(f.yaw) + (p.z - f.pos.z) * Math.cos(f.yaw), -half, half);
-      const gap = Math.hypot(p.x - f.pos.x - Math.sin(f.yaw) * t, p.y - f.pos.y, p.z - f.pos.z - Math.cos(f.yaw) * t);
-      if (gap < r + f.length * 0.25 * f.scale) touched = true;
-      this.s.subVectors(f.pos, p).setY(0);
-      if (this.s.lengthSq() < 1e-8) this.s.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
-      f.vel.copy(this.s.normalize().multiplyScalar(KINDS[f.species].dash));
-      [f.panic, f.inspect, f.rest] = [PANIC, 0, REST * 2];
+  /** The lizard's body sphere touching this fish, taken as a segment snout to tail as thick as its body; null if none does. */
+  private contact(f: Fish): Sphere | null {
+    const half = (f.length / 2) * f.scale;
+    const sx = Math.sin(f.yaw);
+    const sz = Math.cos(f.yaw);
+    for (const b of this.body) {
+      const dx = b.x - f.pos.x;
+      const dy = b.y - f.pos.y;
+      const dz = b.z - f.pos.z;
+      if (dx * dx + dy * dy + dz * dz > (half + b.r + f.length) ** 2) continue;
+      const t = clamp(dx * sx + dz * sz, -half, half);
+      if (Math.hypot(dx - sx * t, dy, dz - sz * t) < b.r + f.length * FLANK * f.scale) return b;
     }
-    return touched;
+    return null;
   }
 
   /** Draw every fish between its last two steps. */

@@ -217,10 +217,10 @@ export interface GameTestHooks {
   /** Bite, as pressing F does; false while a bite is already under way. */
   bite: () => boolean;
   /**
-   * The player's bites so far, those that got algae, those that touched a fish, what the last one got (null if nothing), and
+   * The player's bites so far, those that got algae, what the last one got (null if nothing), and
    * whether algae is within a bite now (the "[F] to eat" prompt shows).
    */
-  feeding: () => { bites: number; mouthfuls: number; fishTouched: number; lastBite: { id: number; ate: boolean } | null; canEat: boolean };
+  feeding: () => { bites: number; mouthfuls: number; lastBite: { id: number; ate: boolean } | null; canEat: boolean };
   /** Sprout a new algae patch on a bare site on the rocks now; its id, or null if there's no room. */
   sproutAlgae: () => number | null;
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
@@ -287,10 +287,11 @@ export interface GameTestHooks {
   corals: () => { kind: string; x: number; y: number; z: number; top: number }[];
   /**
    * The reef fish (creatures/fish.ts): species, which school (named by its home), where each is,
-   * its speed (m/s) and length (m), the sea floor under it, whether it's darting from a threat, and
-   * whether it's come to look at the lizard keeping still under water.
+   * its speed (m/s) and length (m), the sea floor under it, and whether it's darting from a threat.
    */
-  fish: () => { species: string; school: string; x: number; y: number; z: number; speed: number; length: number; bottom: number; darting: boolean; inspecting: boolean }[];
+  fish: () => { species: string; school: string; x: number; y: number; z: number; speed: number; length: number; bottom: number; darting: boolean }[];
+  /** Fish the lizard's body has touched so far (the "Touch a fish" goal). */
+  fishTouched: () => number;
   /** Whether a predator's eye at `from` could see the point (x, y, z) (world/cover.ts). */
   inSight: (from: { x: number; y: number; z: number }, x: number, y: number, z: number) => boolean;
   /**

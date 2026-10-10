@@ -80,9 +80,8 @@ async function main() {
   const visual = new LizardVisual(lizard, player, world);
   const feeding = new Feeding(lizard, algae);
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
-  // Reef fish keep clear of the lizard and the other iguanas, though one may come to look at the lizard keeping still.
-  const fishes = new Fishes(scene, reefKit.geometry, reefKit.extras, obstacles, new SeaBed(obstacles), [{ pos: player.position, snout: lizard.bodySpheres[0] }, ...iguanas.list.map((ig) => ({ pos: ig.body.position }))]);
-  feeding.fish = fishes;
+  // Reef fish keep clear of the lizard and the other iguanas, unless the lizard is quick or corners one.
+  const fishes = new Fishes(scene, reefKit.geometry, reefKit.extras, obstacles, new SeaBed(obstacles), [player.position, ...iguanas.list.map((ig) => ig.body.position)], lizard.bodySpheres);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
   // Health, warmth, food and air. The hawk's strikes take health; at none the lizard goes down and
@@ -113,7 +112,7 @@ async function main() {
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
     { id: 'algae', label: 'Eat some algae', met: () => feeding.mouthfuls > 0 },
-    { id: 'fish', label: 'Touch a fish', met: () => feeding.fishTouched > 0 },
+    { id: 'fish', label: 'Touch a fish', met: () => fishes.touched > 0 },
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
   goals.onDone = (goal) => goalsPanel.done(goal);

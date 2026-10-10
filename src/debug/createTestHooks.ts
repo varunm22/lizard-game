@@ -216,7 +216,7 @@ export function createTestHooks({
       (near ? algae.near(near.x, near.y, near.z, near.r) : algae.all()).map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     removeAlgae: (id) => algae.remove(id),
     bite: () => feeding.bite(),
-    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, fishTouched: feeding.fishTouched, lastBite: feeding.lastBite, canEat: canEat() }),
+    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, lastBite: feeding.lastBite, canEat: canEat() }),
     sproutAlgae: () => algae.sprout()?.id ?? null,
     ripples: () => water.ripples(),
     hawk: () => ({
@@ -260,8 +260,8 @@ export function createTestHooks({
         length: f.length,
         bottom: terrainHeight(f.pos.x, f.pos.z),
         darting: f.panic > 0,
-        inspecting: f.inspect > 0,
       })),
+    fishTouched: () => fishes.touched,
     inSight: (from, x, y, z) => cover.inSight(new THREE.Vector3(from.x, from.y, from.z), { x, y, z }, player.body),
     lizardInView: (from) => hawk.inView(prey[0], new THREE.Vector3(from.x, from.y, from.z)),
     vitals: () => ({
