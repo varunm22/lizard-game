@@ -237,6 +237,7 @@ export function createTestHooks({
       survived: hawk.survived,
       perch: hawk.perchIndex,
       flushed: hawk.flushed,
+      drivenOff: hawk.drivenOff,
       enabled: hawk.enabled,
     }),
     hawkClips: () => hawk.clipNames,

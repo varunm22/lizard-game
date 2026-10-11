@@ -302,6 +302,71 @@ test('it catches a crab, comes down on it to eat, and another crab is out on the
   expect(errors).toEqual([]);
 });
 
+test('moving about beside its kill drives the hawk off; it circles, comes back once the lizard is still, and eats on', async ({ page }) => {
+  const errors = await bootGame(page, { hawk: true, crabs: true });
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    g.hawkDo('hunt_crab');
+    for (let i = 0; i < 40 * 60 && !g.hawk().feeding; i++) g.advance(1, false);
+    const kill = g.hawk().quarry!;
+    const crab = () => g.crabs()[kill.index];
+    // Lying still right beside it doesn't bother it.
+    // Beside it on the same rock (whichever side has footing level with it).
+    for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2, Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4]) {
+      g.teleport(crab().x + Math.sin(a) * 0.12, crab().z + Math.cos(a) * 0.12, a + Math.PI / 2, crab().y + 0.03);
+      g.advance(20, false);
+      if (Math.abs(g.player().y - crab().y) < 0.04) break;
+    }
+    g.advance(70, false);
+    const stillBeside = { feeding: g.hawk().feeding, driven: g.hawk().drivenOff };
+    // Walking about beside it does.
+    g.setInput({ move: { x: 0.6, y: 1 }, run: false, jump: false });
+    let offAt = -1;
+    for (let i = 0; i < 60 && offAt < 0; i++) {
+      g.advance(1, false);
+      if (!g.hawk().feeding) offAt = i;
+    }
+    for (let i = 0; i < 60; i++) g.advance(1, false);
+    // While the lizard keeps moving about, it stays up, after nothing else.
+    let landed = false;
+    for (let i = 0; i < 4 * 60; i++) {
+      g.advance(1, false);
+      landed = landed || g.hawk().feeding;
+    }
+    const circling = { ...g.hawk(), crabDead: crab().dead, crabGone: crab().gone };
+    // Still again, it comes back down to the same kill and eats on.
+    g.setInput(null);
+    let backAt = -1;
+    for (let i = 0; i < 15 * 60 && backAt < 0; i++) {
+      g.advance(1, false);
+      if (g.hawk().feeding) backAt = i;
+    }
+    const back = g.hawk();
+    let goneAt = -1;
+    for (let i = 0; i < 15 * 60 && goneAt < 0; i++) {
+      g.advance(1, false);
+      if (crab().gone) goneAt = i;
+    }
+    return { kill, stillBeside, offAt, landed, circling, backAt, backQuarry: back.quarry, goneAt };
+  });
+  expect(r.kill.kind).toBe('crab');
+  expect(r.stillBeside).toEqual({ feeding: true, driven: 0 });
+  expect(r.offAt).toBeGreaterThanOrEqual(0);
+  expect(r.offAt).toBeLessThan(30);
+  expect(r.landed).toBe(false);
+  expect(r.circling.drivenOff).toBeGreaterThanOrEqual(1);
+  expect(r.circling.quarry).toEqual(r.kill);
+  expect(r.circling.crabDead).toBe(true);
+  expect(r.circling.crabGone).toBe(false);
+  expect(r.backAt).toBeGreaterThan(0);
+  expect(r.backQuarry).toEqual(r.kill);
+  // It picks up where it left off: what's left of the 9 s, not a fresh 9 s.
+  expect(r.goneAt).toBeGreaterThan(0);
+  expect(r.goneAt).toBeLessThan(9 * 60);
+  expect(errors).toEqual([]);
+});
+
 test('it takes two strikes to put another iguana down, then the hawk eats it and it comes back', async ({ page }) => {
   const errors = await bootGame(page, { hawk: true, iguanas: [0] });
   const r = await page.evaluate(() => {

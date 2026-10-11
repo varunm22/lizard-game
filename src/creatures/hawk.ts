@@ -92,6 +92,12 @@ const CALM_AFTER_FLUSH = 12;
 const IGNORE_TIME = 12;
 /** Standing over a kill, it eats for this long before the last of it is gone (s). */
 const FEED_TIME = { crab: 9, iguana: 18 };
+/**
+ * The lizard moving about within FLUSH.near of a kill (faster than this, m/s) drives the hawk off it;
+ * it circles overhead and comes back down once the lizard has kept still, or kept away, this long (s).
+ */
+const STIR_SPEED = 0.02;
+const STIR_SETTLE = 2;
 /** It lands this far back from the kill, facing it (m). */
 const FEED_BACK = 0.025;
 /**
@@ -171,6 +177,8 @@ export class Hawk {
   private awayFrom: THREE.Vector3 | null = null;
   /** How many times the lizard has flushed it off a perch. */
   flushed = 0;
+  /** How many times the lizard moving about beside a kill has driven it off its meal. */
+  drivenOff = 0;
   private stalkFor = STALK_FIRST;
   /** Lining up a stoop, it's flying straight out to have room to turn back onto its mark. */
   private runOut = false;
@@ -183,6 +191,10 @@ export class Hawk {
   /** A path being followed (strike, landing, take-off): Hermite from p0, v0 to p1, v1 over `time`. */
   private path: { p0: THREE.Vector3; v0: THREE.Vector3; p1: THREE.Vector3; v1: THREE.Vector3; time: number } | null = null;
   private struck = false;
+  /** How long it has eaten at its kill so far (s), across being driven off it. */
+  private eatenFor = 0;
+  /** Since the lizard last stirred near its kill (s). */
+  private sinceStir = STIR_SETTLE;
   private mixer: THREE.AnimationMixer;
   private actions: Record<string, THREE.AnimationAction>;
   private current: string | null = null;
@@ -193,6 +205,8 @@ export class Hawk {
   private aim = new THREE.Vector3();
   private v = new THREE.Vector3();
   private v2 = new THREE.Vector3();
+  private v3 = new THREE.Vector3();
+  private v4 = new THREE.Vector3();
   private e = new THREE.Euler(0, 0, 0, 'YXZ');
 
   private perches: Perch[] = [];
@@ -329,6 +343,7 @@ export class Hawk {
     this.prevQuat.copy(this.quat);
     this.stateTime += dt;
     this.calm = Math.max(0, this.calm - dt);
+    this.sinceStir = this.stirredNearKill() ? 0 : this.sinceStir + dt;
     this.look(dt);
     switch (this.state) {
       case 'perch':
@@ -479,6 +494,7 @@ export class Hawk {
 
   private startHunt() {
     if (!this.quarry) return;
+    this.eatenFor = 0;
     this.unseen = 0;
     this.lunges = 0;
     this.stalkFor = STALK_FIRST;
@@ -577,12 +593,13 @@ export class Hawk {
   /** Circle over its quarry, then swing in over it and stoop. */
   private stepStalk(dt: number) {
     const c = this.preyFeet(this.aim);
-    if (this.quarry!.down) {
+    // Over a kill it was driven off, it circles until the lizard has settled, then goes back down.
+    if (this.quarry!.down && this.sinceStir >= STIR_SETTLE) {
       this.goDown();
       return;
     }
     // Once it has circled long enough it stops circling and comes in over the top, lining up the dive.
-    const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled;
+    const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled && !this.quarry!.down;
     if (ready) {
       this.v.set(c.x, c.y + STALK.up, c.z);
       // It can't turn tighter than its speed allows: a mark inside that circle it would only ever circle
@@ -743,11 +760,32 @@ export class Hawk {
     if (q.kind === 'player') {
       // It stands over the lizard until the lizard is back on its feet, then leaves.
       if (!q.down) return this.doneFeeding();
-    } else if (this.stateTime >= FEED_TIME[q.kind]) {
-      q.eaten();
-      return this.doneFeeding();
+    } else {
+      if (this.sinceStir === 0) {
+        // The lizard moving about right beside it: it lifts off the kill and circles until it settles.
+        this.drivenOff++;
+        this.takeOff(true);
+        return;
+      }
+      this.eatenFor += dt;
+      if (this.eatenFor >= FEED_TIME[q.kind]) {
+        q.eaten();
+        return this.doneFeeding();
+      }
     }
-    void dt;
+  }
+
+  /** The lizard, up and moving, within FLUSH.near of the crab or iguana the hawk has killed. */
+  private stirredNearKill(): boolean {
+    const q = this.quarry;
+    if (!q || q.kind === 'player' || !q.down) return false;
+    const lizard = this.prey.find((p) => p.kind === 'player');
+    if (!lizard || lizard.down) return false;
+    const v = lizard.velocity;
+    if (Math.hypot(v.x, v.z) < STIR_SPEED) return false;
+    const f = lizard.feet(this.v3);
+    const k = q.feet(this.v4);
+    return Math.hypot(f.x - k.x, f.z - k.z) < FLUSH.near && Math.abs(f.y - k.y) < FLUSH.below;
   }
 
   private doneFeeding() {
@@ -758,6 +796,10 @@ export class Hawk {
   }
 
   private stepReturn(dt: number) {
+    if (this.landFor === 'feed' && this.sinceStir === 0 && this.quarry?.kind !== 'player') {
+      this.goTo('stalk');
+      return;
+    }
     const p = this.perch;
     const back = this.v2.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const approach = this.v.set(p.x + back.x * APPROACH.back, p.y + this.perchHeight() + APPROACH.up, p.z + back.z * APPROACH.back);
