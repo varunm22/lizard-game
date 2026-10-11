@@ -296,4 +296,11 @@ async function main() {
   };
 }
 
-main();
+// A failed start (a model that won't load, no WebGL) would otherwise leave a blank page: say what went wrong.
+main().catch((err) => {
+  console.error(err);
+  const note = document.createElement('pre');
+  note.textContent = `The game failed to start.\n\n${err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err)}`;
+  note.style.cssText = 'position:fixed;inset:0;margin:0;padding:24px;overflow:auto;white-space:pre-wrap;font:14px/1.4 ui-monospace,monospace;color:#3a2a20;background:#cfe6d8;z-index:10';
+  document.body.append(note);
+});
