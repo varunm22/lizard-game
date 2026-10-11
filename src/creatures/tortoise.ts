@@ -35,6 +35,11 @@ const TRAMPLE_REACH = 0.075;
 const TRAMPLE_REACH_LYING = 0.1;
 /** Clip blend time (s). */
 const CROSSFADE = 0.35;
+/**
+ * Slower than this share of its mean speed, it's in the drag between lurches, all but stopped: it
+ * only stops to eat or rest there, so the shell (and a lizard riding it) doesn't jolt to a halt.
+ */
+const DRAG_PAUSE = 0.3;
 /** Where its feet stand (m from the centre, +X its left, +Z forward), for fitting it to the ground. */
 const FEET = { side: 0.07, front: 0.092, back: -0.078 };
 /** The lizard is shoved clear of the shell's outline by this much (its half-width and some). */
@@ -56,6 +61,8 @@ const RIDER_LEAP = 0.1;
 
 interface Extras {
   gait_speed: number;
+  /** The walk's surge: its speed / gait_speed = 1 + a1 cos(th) + a2 cos(2 th), th = 4 pi (t - phase), t the cycle fraction. */
+  gait_surge: [number, number, number];
   bite_time: number;
   shell_top: number;
   shell_half_extents: [number, number];
@@ -190,18 +197,23 @@ export class Tortoise {
     switch (this.state) {
       case 'walk': {
         this.untilRest -= dt;
-        if (this.untilRest <= 0) {
+        const phase = this.walkPhase();
+        const pause = this.surge(phase) < DRAG_PAUSE;
+        if (this.untilRest <= 0 && pause) {
+          this.meal = null;
           this.enter('lie_down');
           break;
         }
-        const meal = this.findMeal();
-        if (meal) {
-          this.meal = meal;
+        // Look for a plant where its mouth will be when it next pauses, and stop there to eat it.
+        this.meal ??= this.findMeal(this.untilPause(phase));
+        if (this.meal && pause) {
           this.enter('eat');
           break;
         }
         const was = this.along;
-        this.along += this.speed * dt;
+        // Step and drag: it lurches forward as each foreleg reaches out, then all but stops while
+        // the hind leg is dragged up; the walk clip's planted feet slide back under it to match.
+        this.along += this.speed * this.surge(phase) * dt;
         this.pose();
         if (!this.clearLizard(player)) {
           // Pinned lizard: wait for it rather than walk over it.
@@ -303,6 +315,8 @@ export class Tortoise {
     const next = this.actions[name];
     if (next === this.current) return;
     next.reset().setEffectiveWeight(1).fadeIn(CROSSFADE).play();
+    // Set off from the middle of a drag, slowly, as it stopped.
+    if (name === 'walk') next.time = this.dragTime();
     // Fade out everything still showing, not just the last clip: one cut short mid-fade (eat, walk
     // for a frame, then lie down) would otherwise leave the weights short of 1, and the bind pose
     // made up the rest, so the shell jumped.
@@ -312,10 +326,38 @@ export class Tortoise {
     this.current = next;
   }
 
-  /** A plant at its mouth worth stopping for, or null. */
-  private findMeal(): Plant | null {
+  /** Where the walk clip is in its cycle (0..1). */
+  private walkPhase() {
+    const walk = this.actions.walk;
+    return walk.time / walk.getClip().duration;
+  }
+
+  /** When in the walk clip it's slowest, in the middle of a drag (s). */
+  private dragTime() {
+    const [phase] = this.extras.gait_surge;
+    return (phase + 0.25) * this.actions.walk.getClip().duration;
+  }
+
+  /** Its speed at cycle fraction t, as a share of its mean speed. */
+  private surge(t: number) {
+    const [phase, a1, a2] = this.extras.gait_surge;
+    const th = 4 * Math.PI * (t - phase);
+    return 1 + a1 * Math.cos(th) + a2 * Math.cos(2 * th);
+  }
+
+  /** How far it will walk from cycle fraction t until it next pauses in a drag (m). */
+  private untilPause(t: number) {
+    const cycle = this.actions.walk.getClip().duration;
+    const dt = 1 / 120;
+    let d = 0;
+    for (let s = 0; s < cycle / dt && this.surge(t + (s * dt) / cycle) >= DRAG_PAUSE; s++) d += this.speed * this.surge(t + (s * dt) / cycle) * dt;
+    return d;
+  }
+
+  /** A plant at its mouth, once it has walked `ahead` further, worth stopping for, or null. */
+  private findMeal(ahead: number): Plant | null {
     if (this.eatCooldown > 0) return null;
-    const { x, z, dx, dz } = this.route.at(this.along);
+    const { x, z, dx, dz } = this.route.at(this.along + ahead);
     const p = this.plants.nearest(x + dx * MOUTH_AHEAD, z + dz * MOUTH_AHEAD, BITE_REACH, 0.5);
     if (!p || this.passed.has(p)) return null;
     this.passed.add(p);
