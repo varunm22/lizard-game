@@ -23,7 +23,7 @@ import type { Perch, PerchFit } from './perches';
  * along steered paths.
  *
  * It hunts the lizard, the other iguanas and the crabs (quarry.ts), but it picks out the small ones
- * less well and mostly can't be bothered with them. Its shadow going over sends them running.
+ * less well. After the lizard it most likes a crab, an easy kill. Its shadow going over sends them running.
  */
 export type HawkState = 'perch' | 'take_off' | 'soar' | 'stalk' | 'stoop' | 'strike' | 'climb' | 'return' | 'land' | 'feed';
 
@@ -424,7 +424,7 @@ export class Hawk {
       w.seen = visible ? w.seen + SIGHT_EVERY * p.acuity : Math.max(0, w.seen - SIGHT_EVERY / 2);
       if (w.seen < SPOT_TIME || w.ignore > 0) continue;
       w.seen = 0;
-      // Worth the dive? Always for the lizard, often for an iguana, now and then for a crab.
+      // Worth the dive? Always for the lizard, often for an iguana or a crab.
       if (this.rand() < p.appeal) {
         this.quarry = p;
         this.startHunt();
