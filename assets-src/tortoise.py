@@ -33,6 +33,12 @@ FPS = 30
 # Walk: a lateral-sequence gait (hind left, fore left, hind right, fore right), each foot planted
 # three quarters of the time so at least three feet are always down.
 WALK = dict(frames=48, stride=0.021, duty=0.75, lift=0.011)
+# Where each pair's stance is centred (dy, + is back) and the body's height while walking. The legs
+# are short: with the stances centred on the rest ankles the forefeet couldn't reach forward nor the
+# hind feet back, and they slid. Forefeet a little back, hind feet under the hips and the body 3 mm
+# lower keep every planted foot within the IK's reach.
+WALK_CENTRE = {'front': 0.008, 'hind': -0.018}
+WALK_HEIGHT = -0.003
 TORTOISE_GAIT_SPEED = 2 * WALK['stride'] / (WALK['duty'] * WALK['frames'] / FPS)  # m/s at rate 1
 BITE_FRAME = 32
 
@@ -605,30 +611,54 @@ def idle(rig, targets):
     clip(rig, targets, 'idle', frames, pose, step=3)
 
 
+# The walk is a step and drag, not a glide: the tortoise lurches forward while a foreleg reaches
+# out (the opposite hind leg pushing), then all but stops while the hind leg is dragged up behind
+# it. Twice a cycle its speed swings from a quarter of the mean to over twice it:
+# speed / mean = 1 + A1 cos(th) + A2 cos(2 th), th = 4 pi (t - PHASE), t the cycle fraction. The game
+# moves the tortoise along its route at this speed (the `gait_surge` extra), and the planted feet
+# slide back under it to match, so they stay put on the ground.
+GAIT_SURGE = dict(phase=0.125, a1=1.0, a2=0.25)
+
+
+def walk_travel(t):
+    """How far the root has come (m) at cycle fraction t (any real t: a cycle adds the mean stride)."""
+    s = GAIT_SURGE
+    th = 4 * math.pi * (t - s['phase'])
+    mean = 2 * WALK['stride'] / WALK['duty']  # metres per cycle
+    return mean * (t + (s['a1'] * math.sin(th) + s['a2'] / 2 * math.sin(2 * th)) / (4 * math.pi))
+
+
 def walk(rig, targets, frames, stride, duty, lift):
     phase = {'hind_L': 0.0, 'front_L': 0.25, 'hind_R': 0.5, 'front_R': 0.75}
 
     def foot(leg, f):
-        p = (f / frames + phase[leg]) % 1.0
-        if p < duty:  # stance: planted, sliding back under the body
-            y, z = lerp(-stride, stride, p / duty), 0.0
-        else:  # swing: lift and plod forward again
+        t = f / frames
+        p = (t + phase[leg]) % 1.0
+        down = t - p  # when this foot was last set down (cycle fraction)
+        if p < duty:  # stance: planted, sliding back under the root as far as the root has come
+            y, z = -stride + walk_travel(t) - walk_travel(down), 0.0
+        else:  # swing: lift and plod forward to where it's next set down
             q = (p - duty) / (1 - duty)
-            y = lerp(stride, -stride, smooth(q))
+            y = lerp(-stride + walk_travel(down + duty) - walk_travel(down), -stride, smooth(q))
             z = lift * math.sin(math.pi * q) ** 0.8
-        return offset(rig, leg, 0, y, z)
+        return offset(rig, leg, 0, y + WALK_CENTRE['front' if leg.startswith('front') else 'hind'], z)
 
     def pose(f):
         w = 2 * math.pi * f / frames
+        th = 4 * math.pi * (f / frames - GAIT_SURGE['phase'])
+        # How far the root is ahead of a steady pace: the head lags a little of the lurch.
+        surge = walk_travel(f / frames) - (2 * stride / duty) * f / frames
         rot = {
-            # The shell rolls toward whichever side is bearing weight and yaws a touch with each step.
-            'body': (0.012 * math.sin(4 * w), 0.045 * math.sin(w + 0.6), 0.025 * math.sin(w)),
+            # The shell rolls toward whichever side is bearing weight, yaws a touch with each step and
+            # dips its nose a little as it lurches.
+            'body': (0.005 * math.sin(th), 0.03 * math.sin(w + 0.6), 0.02 * math.sin(w)),
             'neck1': (0.0, 0, -0.06 * math.sin(w)),
-            'neck2': (0.03 * math.sin(4 * w + 1.0), 0, -0.03 * math.sin(w)),
-            'head': (-0.03 * math.sin(4 * w + 1.4), 0, 0.04 * math.sin(w)),
+            'neck2': (0.012 * math.sin(th + 1.0), 0, -0.03 * math.sin(w)),
+            'head': (-0.012 * math.sin(th + 1.4), 0, 0.04 * math.sin(w)),
             'tail': (0, 0, 0.12 * math.sin(w - 0.8)),
         }
-        loc = {'body': body_loc(0.0035 + 0.0018 * math.cos(4 * w)), 'neck1': neck_loc(0.006)}
+        # It rises a little as the legs heave it forward and settles as it drags.
+        loc = {'body': body_loc(WALK_HEIGHT + 0.0007 * math.cos(th)), 'neck1': neck_loc(0.006 - 0.4 * surge)}
         return rot, loc, {leg: foot(leg, f) for leg in LEGS}
 
     clip(rig, targets, 'walk', frames, pose)
@@ -788,6 +818,7 @@ def build_animations(rig):
 def export(rig):
     # Facts the game would need, in glTF space (+Z toward the head, Y up).
     rig['gait_speed'] = TORTOISE_GAIT_SPEED
+    rig['gait_surge'] = [GAIT_SURGE['phase'], GAIT_SURGE['a1'], GAIT_SURGE['a2']]
     rig['bite_time'] = BITE_FRAME / FPS
     rig['shell_top'] = SHELL_TOP
     rig['shell_half_extents'] = [SHELL_W, SHELL_L]

@@ -134,8 +134,10 @@ export class PlayerController {
   private desired = new THREE.Vector3();
   /** Movement handed over by whatever the lizard stands on (the tortoise's shell), applied next step. */
   private carried = { x: 0, y: 0, z: 0, yaw: 0 };
-  /** Carried this step: riding something that moves. */
+  /** Carried this step: riding something that moves, and how far it carried it along the ground (this step or the last, whichever is more). */
   private riding = false;
+  private carriedLevel = 0;
+  private lastCarriedLevel = 0;
   /** Collision groups standing still checks against (Rapier's packed membership and filter); default everything. */
   stillGroups: number | undefined = undefined;
   /** What it can climb onto (Rapier's packed membership and filter): anything but plant stems by default. */
@@ -309,8 +311,11 @@ export class PlayerController {
       if (this.riding) {
         // Riding something that rises and falls under it, like the tortoise's shell, the controller
         // lifts it back off the surface as it comes up, by up to half a millimetre a step. Keep that
-        // lift, but hold on where it stands rather than sliding with it.
-        if (Math.hypot(moved.x, moved.z) < M.gripCreep * dt) moved.x = moved.z = 0;
+        // lift, but hold on where it stands rather than sliding with it. The controller also moves
+        // it on by as much as the last step's carry again (the tortoise lurching forward, faster
+        // than a creep), which would walk it off the front of the shell a stride at a time, or jolt
+        // it as the tortoise stops.
+        if (Math.hypot(moved.x, moved.z) < M.gripCreep * dt + this.carriedLevel) moved.x = moved.z = 0;
       } else if (moved.y <= GRIP_LIFT && Math.hypot(moved.x, moved.y, moved.z) < M.gripCreep * dt) {
         moved.x = moved.y = moved.z = 0;
       }
@@ -377,6 +382,9 @@ export class PlayerController {
   private applyCarry() {
     const c = this.carried;
     this.riding = c.x !== 0 || c.y !== 0 || c.z !== 0 || c.yaw !== 0;
+    const level = Math.hypot(c.x, c.z);
+    this.carriedLevel = Math.max(level, this.lastCarriedLevel);
+    this.lastCarriedLevel = level;
     if (!this.riding) return;
     this.position.x += c.x;
     this.position.y += c.y;
