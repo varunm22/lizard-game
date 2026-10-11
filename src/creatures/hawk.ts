@@ -23,7 +23,7 @@ import type { Perch, PerchFit } from './perches';
  * along steered paths.
  *
  * It hunts the lizard, the other iguanas and the crabs (quarry.ts), but it picks out the small ones
- * less well and mostly can't be bothered with them. Its shadow going over sends them running.
+ * less well. After the lizard it most likes a crab, an easy kill. Its shadow going over sends them running.
  */
 export type HawkState = 'perch' | 'take_off' | 'soar' | 'stalk' | 'stoop' | 'strike' | 'climb' | 'return' | 'land' | 'feed';
 
@@ -70,6 +70,11 @@ const CALM_AFTER_LOSING = 8;
 const CALM_AFTER_KILL = 20;
 /** A strike lands if the talons come within this of the prey's body (m, outside its spheres). */
 const HIT_REACH = 0.012;
+/**
+ * A crab scuttles a few centimetres sideways as the hawk comes down, too quick to lead: it snatches one
+ * from this near (m), so one strike in the open is all a crab takes.
+ */
+const CRAB_REACH = 0.045;
 /** Of a lizard's spheres, the ones it aims at: head, neck, chest, hips, tail base. A crab has one. */
 const TARGET_SPHERES = [1, 2, 3, 4, 5];
 const AIM_SPHERE = 3;
@@ -86,7 +91,13 @@ const CALM_AFTER_FLUSH = 12;
 /** Having passed over something it decided against, it won't weigh that one again for this long (s). */
 const IGNORE_TIME = 12;
 /** Standing over a kill, it eats for this long before the last of it is gone (s). */
-const FEED_TIME = 9;
+const FEED_TIME = { crab: 9, iguana: 18 };
+/**
+ * The lizard moving about within FLUSH.near of a kill (faster than this, m/s) drives the hawk off it;
+ * it circles overhead and comes back down once the lizard has kept still, or kept away, this long (s).
+ */
+const STIR_SPEED = 0.02;
+const STIR_SETTLE = 2;
 /** It lands this far back from the kill, facing it (m). */
 const FEED_BACK = 0.025;
 /**
@@ -118,6 +129,8 @@ const MAX_RISE = 0.45;
 const MAX_SINK = 0.7;
 /** It only stoops when the lizard is roughly ahead: within this angle of its heading (radians). */
 const STOOP_CONE = 0.9;
+/** Too close under it to turn onto, it flies out to this many turning radii away before coming round. */
+const RUN_OUT = 2.2;
 /** Quiet at the start, so a player has a little while to look around before the hawk notices (s). */
 const CALM_AT_START = 25;
 const CROSSFADE = 0.25;
@@ -164,7 +177,11 @@ export class Hawk {
   private awayFrom: THREE.Vector3 | null = null;
   /** How many times the lizard has flushed it off a perch. */
   flushed = 0;
+  /** How many times the lizard moving about beside a kill has driven it off its meal. */
+  drivenOff = 0;
   private stalkFor = STALK_FIRST;
+  /** Lining up a stoop, it's flying straight out to have room to turn back onto its mark. */
+  private runOut = false;
   /** Per prey: seconds of sight building toward a hunt, and how long it stays passed over. */
   private watch: { seen: number; ignore: number }[];
   /** Coming down to a perch, or onto a kill. */
@@ -174,6 +191,10 @@ export class Hawk {
   /** A path being followed (strike, landing, take-off): Hermite from p0, v0 to p1, v1 over `time`. */
   private path: { p0: THREE.Vector3; v0: THREE.Vector3; p1: THREE.Vector3; v1: THREE.Vector3; time: number } | null = null;
   private struck = false;
+  /** How long it has eaten at its kill so far (s), across being driven off it. */
+  private eatenFor = 0;
+  /** Since the lizard last stirred near its kill (s). */
+  private sinceStir = STIR_SETTLE;
   private mixer: THREE.AnimationMixer;
   private actions: Record<string, THREE.AnimationAction>;
   private current: string | null = null;
@@ -184,6 +205,8 @@ export class Hawk {
   private aim = new THREE.Vector3();
   private v = new THREE.Vector3();
   private v2 = new THREE.Vector3();
+  private v3 = new THREE.Vector3();
+  private v4 = new THREE.Vector3();
   private e = new THREE.Euler(0, 0, 0, 'YXZ');
 
   private perches: Perch[] = [];
@@ -320,6 +343,7 @@ export class Hawk {
     this.prevQuat.copy(this.quat);
     this.stateTime += dt;
     this.calm = Math.max(0, this.calm - dt);
+    this.sinceStir = this.stirredNearKill() ? 0 : this.sinceStir + dt;
     this.look(dt);
     switch (this.state) {
       case 'perch':
@@ -424,7 +448,7 @@ export class Hawk {
       w.seen = visible ? w.seen + SIGHT_EVERY * p.acuity : Math.max(0, w.seen - SIGHT_EVERY / 2);
       if (w.seen < SPOT_TIME || w.ignore > 0) continue;
       w.seen = 0;
-      // Worth the dive? Always for the lizard, often for an iguana, now and then for a crab.
+      // Worth the dive? Always for the lizard, often for an iguana or a crab.
       if (this.rand() < p.appeal) {
         this.quarry = p;
         this.startHunt();
@@ -470,6 +494,7 @@ export class Hawk {
 
   private startHunt() {
     if (!this.quarry) return;
+    this.eatenFor = 0;
     this.unseen = 0;
     this.lunges = 0;
     this.stalkFor = STALK_FIRST;
@@ -502,6 +527,7 @@ export class Hawk {
       this.landFor = 'perch';
       this.perch = this.choosePerch();
     }
+    this.runOut = false;
     if (state === 'stoop') {
       this.strikes++;
       if (this.quarry?.kind === 'player') this.lunges++;
@@ -567,14 +593,22 @@ export class Hawk {
   /** Circle over its quarry, then swing in over it and stoop. */
   private stepStalk(dt: number) {
     const c = this.preyFeet(this.aim);
-    if (this.quarry!.down) {
+    // Over a kill it was driven off, it circles until the lizard has settled, then goes back down.
+    if (this.quarry!.down && this.sinceStir >= STIR_SETTLE) {
       this.goDown();
       return;
     }
     // Once it has circled long enough it stops circling and comes in over the top, lining up the dive.
-    const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled;
+    const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled && !this.quarry!.down;
     if (ready) {
       this.v.set(c.x, c.y + STALK.up, c.z);
+      // It can't turn tighter than its speed allows: a mark inside that circle it would only ever circle
+      // round, side on, never getting it ahead to stoop at. So it flies straight out, far enough to come
+      // round onto it.
+      if (this.insideTurn(c)) this.runOut = true;
+      const level = Math.hypot(this.vel.x, this.vel.z);
+      if (this.runOut && Math.hypot(this.pos.x - c.x, this.pos.z - c.z) > (RUN_OUT * level) / TURN_SPEED) this.runOut = false;
+      if (this.runOut) this.v.set(this.pos.x + this.vel.x, c.y + STALK.up, this.pos.z + this.vel.z);
     } else {
       const a = Math.atan2(this.pos.z - c.z, this.pos.x - c.x) + LOOK_AHEAD;
       this.v.set(c.x + Math.cos(a) * STALK.r, c.y + STALK.up, c.z + Math.sin(a) * STALK.r);
@@ -584,6 +618,24 @@ export class Hawk {
     const off = Math.atan2(c.x - this.pos.x, c.z - this.pos.z) - Math.atan2(this.vel.x, this.vel.z);
     const ahead = Math.abs(wrapAngle(off)) < STOOP_CONE;
     if (ready && close && ahead) this.goTo('stoop');
+  }
+
+  /** Whether level point `c` is inside the circle the hawk flies turning towards it as hard as it can. */
+  private insideTurn(c: THREE.Vector3): boolean {
+    const level = Math.hypot(this.vel.x, this.vel.z);
+    if (level < 1e-4) return false;
+    const fx = this.vel.x / level;
+    const fz = this.vel.z / level;
+    const dx = c.x - this.pos.x;
+    const dz = c.z - this.pos.z;
+    // The part of the way to `c` that's across its heading: the side the turn's centre is on.
+    const along = dx * fx + dz * fz;
+    const sx = dx - along * fx;
+    const sz = dz - along * fz;
+    const side = Math.hypot(sx, sz);
+    if (side < 1e-6) return false;
+    const r = level / TURN_SPEED;
+    return Math.hypot(dx - (sx / side) * r, dz - (sz / side) * r) < r;
   }
 
   /** Dive at the lizard; when the strike's timing is reached, commit to it. */
@@ -666,7 +718,8 @@ export class Hawk {
     const t = this.v.copy(this.talons).applyQuaternion(this.quat).add(this.pos);
     // Gone mostly into cover at the last moment, the talons close on rock.
     const open = this.quarry!.down || this.canSee(this.quarry!);
-    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
+    const reach = this.quarry!.kind === 'crab' ? CRAB_REACH : HIT_REACH;
+    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + reach);
     if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
     else if (!hit) this.lizardGotAway();
   }
@@ -707,11 +760,32 @@ export class Hawk {
     if (q.kind === 'player') {
       // It stands over the lizard until the lizard is back on its feet, then leaves.
       if (!q.down) return this.doneFeeding();
-    } else if (this.stateTime >= FEED_TIME) {
-      q.eaten();
-      return this.doneFeeding();
+    } else {
+      if (this.sinceStir === 0) {
+        // The lizard moving about right beside it: it lifts off the kill and circles until it settles.
+        this.drivenOff++;
+        this.takeOff(true);
+        return;
+      }
+      this.eatenFor += dt;
+      if (this.eatenFor >= FEED_TIME[q.kind]) {
+        q.eaten();
+        return this.doneFeeding();
+      }
     }
-    void dt;
+  }
+
+  /** The lizard, up and moving, within FLUSH.near of the crab or iguana the hawk has killed. */
+  private stirredNearKill(): boolean {
+    const q = this.quarry;
+    if (!q || q.kind === 'player' || !q.down) return false;
+    const lizard = this.prey.find((p) => p.kind === 'player');
+    if (!lizard || lizard.down) return false;
+    const v = lizard.velocity;
+    if (Math.hypot(v.x, v.z) < STIR_SPEED) return false;
+    const f = lizard.feet(this.v3);
+    const k = q.feet(this.v4);
+    return Math.hypot(f.x - k.x, f.z - k.z) < FLUSH.near && Math.abs(f.y - k.y) < FLUSH.below;
   }
 
   private doneFeeding() {
@@ -722,6 +796,10 @@ export class Hawk {
   }
 
   private stepReturn(dt: number) {
+    if (this.landFor === 'feed' && this.sinceStir === 0 && this.quarry?.kind !== 'player') {
+      this.goTo('stalk');
+      return;
+    }
     const p = this.perch;
     const back = this.v2.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
     const approach = this.v.set(p.x + back.x * APPROACH.back, p.y + this.perchHeight() + APPROACH.up, p.z + back.z * APPROACH.back);

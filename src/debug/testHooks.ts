@@ -263,6 +263,8 @@ export interface GameTestHooks {
     survived: number;
     /** How many times the lizard has flushed it off a perch. */
     flushed: number;
+    /** How many times the lizard moving about beside a kill has driven it off its meal. */
+    drivenOff: number;
     perch: number;
     enabled: boolean;
   };

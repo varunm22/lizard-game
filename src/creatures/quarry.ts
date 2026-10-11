@@ -32,7 +32,7 @@ export interface Quarry {
    * this much longer to be sure of one.
    */
   readonly acuity: number;
-  /** The chance it bothers, once it has one in its eye: a crab is barely worth the dive. */
+  /** The chance it bothers, once it has one in its eye: a crab is a smaller prize than a lizard. */
   readonly appeal: number;
   /** Out of the hawk's reach where it is (the lizard riding the tortoise): it won't go for it. */
   readonly safe?: boolean;
@@ -48,10 +48,10 @@ export interface Quarry {
   hunted(on: boolean): void;
 }
 
-/** The hawk sees the lizard and the other iguanas this far off; a crab is a much smaller mark. */
-const ACUITY = { player: 1, iguana: 0.75, crab: 0.35 };
-/** How often it bothers: it always takes the lizard, an iguana about half the time, a crab rarely. */
-const APPEAL = { player: 1, iguana: 0.45, crab: 0.07 };
+/** The hawk sees the lizard and the iguanas this far off; a crab is small, but red on black lava. */
+const ACUITY = { player: 1, iguana: 0.75, crab: 0.7 };
+/** How often it bothers: always the lizard, an iguana about half the time, a crab (one strike) more. */
+const APPEAL = { player: 1, iguana: 0.45, crab: 0.6 };
 /** A crab's body, as one sphere this big, this far above the rock (m). */
 const CRAB = { r: 0.009, up: 0.006 };
 

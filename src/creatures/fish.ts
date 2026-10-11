@@ -51,8 +51,10 @@ const SEED = 83;
 /** Keep this far under the surface, and the body this share of its length clear of the bottom. */
 const SURFACE_GAP = 0.012;
 const BED_GAP = 0.35;
+/** A school's home is in water at least this deep (m), well clear of the shallows it turns back from. */
+const HOME_DEPTH = { open: 0.3, rock: 0.22 };
 /** Water shallower than this isn't swum into (m). */
-const SHALLOWEST = 0.05;
+const SHALLOWEST = 0.12;
 /** A fish that darted stays quick this long after (s). */
 const PANIC = 1.2;
 /** How hard a fish looks ahead for shallows (s of travel). */
@@ -146,7 +148,7 @@ export class Fishes {
     const range = (a: number, b: number) => a + (b - a) * rand();
     const depth = (x: number, z: number) => WATER_Y - bed.at(x, z);
     const homes: THREE.Vector3[] = [];
-    const wet = rocks.filter((o) => o.kind === 'rock' && depth(o.position.x + o.radius * 1.3, o.position.z) > 0.14);
+    const wet = rocks.filter((o) => o.kind === 'rock' && depth(o.position.x + o.radius * 1.3, o.position.z) > HOME_DEPTH.rock);
     for (const [species, kind] of Object.entries(KINDS) as [FishSpecies, Kind][]) {
       const g = geometry.get(kind.mesh);
       if (!g) throw new Error(`reef.glb has no ${kind.mesh}`);
@@ -171,7 +173,7 @@ export class Fishes {
             x = range(1.8, EDGE - 0.2);
             z = range(z0, z1);
           }
-          if (Math.abs(z) > EDGE - 0.1 || x > EDGE - 0.1 || depth(x, z) < (kind.home === 'open' ? 0.22 : 0.14)) continue;
+          if (Math.abs(z) > EDGE - 0.1 || x > EDGE - 0.1 || depth(x, z) < HOME_DEPTH[kind.home]) continue;
           if (homes.some((h) => Math.hypot(h.x - x, h.z - z) < 0.35)) continue;
           home = new THREE.Vector3(x, 0, z);
         }
