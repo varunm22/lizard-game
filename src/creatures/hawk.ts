@@ -70,6 +70,11 @@ const CALM_AFTER_LOSING = 8;
 const CALM_AFTER_KILL = 20;
 /** A strike lands if the talons come within this of the prey's body (m, outside its spheres). */
 const HIT_REACH = 0.012;
+/**
+ * A crab scuttles a few centimetres sideways as the hawk comes down, too quick to lead: it snatches one
+ * from this near (m), so one strike in the open is all a crab takes.
+ */
+const CRAB_REACH = 0.045;
 /** Of a lizard's spheres, the ones it aims at: head, neck, chest, hips, tail base. A crab has one. */
 const TARGET_SPHERES = [1, 2, 3, 4, 5];
 const AIM_SPHERE = 3;
@@ -86,7 +91,7 @@ const CALM_AFTER_FLUSH = 12;
 /** Having passed over something it decided against, it won't weigh that one again for this long (s). */
 const IGNORE_TIME = 12;
 /** Standing over a kill, it eats for this long before the last of it is gone (s). */
-const FEED_TIME = 9;
+const FEED_TIME = { crab: 9, iguana: 18 };
 /** It lands this far back from the kill, facing it (m). */
 const FEED_BACK = 0.025;
 /**
@@ -696,7 +701,8 @@ export class Hawk {
     const t = this.v.copy(this.talons).applyQuaternion(this.quat).add(this.pos);
     // Gone mostly into cover at the last moment, the talons close on rock.
     const open = this.quarry!.down || this.canSee(this.quarry!);
-    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + HIT_REACH);
+    const reach = this.quarry!.kind === 'crab' ? CRAB_REACH : HIT_REACH;
+    const hit = open && this.aimSpheres(this.quarry!).some((s) => Math.hypot(s.x - t.x, s.y - t.y, s.z - t.z) < s.r + reach);
     if (hit && this.quarry!.strike(this.path!.v1.x, this.path!.v1.z)) this.hitsLanded++;
     else if (!hit) this.lizardGotAway();
   }
@@ -737,7 +743,7 @@ export class Hawk {
     if (q.kind === 'player') {
       // It stands over the lizard until the lizard is back on its feet, then leaves.
       if (!q.down) return this.doneFeeding();
-    } else if (this.stateTime >= FEED_TIME) {
+    } else if (this.stateTime >= FEED_TIME[q.kind]) {
       q.eaten();
       return this.doneFeeding();
     }

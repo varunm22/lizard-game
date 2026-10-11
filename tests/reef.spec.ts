@@ -181,9 +181,14 @@ test('reef: a school chased into the shallows slips out sideways and gets away',
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const { waterY } = g.ocean();
-    // A school by the shore (named by its home), chased in toward the shallows from half a metre out
-    // to sea at a run, always at its nearest fish, for 15 s.
-    const mine = () => g.fish().filter((f) => f.school === '2.600,-0.593');
+    // The school living in the shallowest water (schools are named by their home), chased in toward
+    // the shallows from half a metre out to sea at a run, always at its nearest fish, for 15 s.
+    const depthAt = (name: string) => {
+      const [x, z] = name.split(',').map(Number);
+      return waterY - g.terrainHeight(x, z);
+    };
+    const school = [...new Set(g.fish().map((f) => f.school))].sort((a, b) => depthAt(a) - depthAt(b))[0];
+    const mine = () => g.fish().filter((f) => f.school === school);
     const m = mine();
     const c = { x: m.reduce((a, f) => a + f.x, 0) / m.length, z: m.reduce((a, f) => a + f.z, 0) / m.length };
     g.teleport(c.x + 0.5, c.z, -Math.PI / 2, waterY - 0.03);
@@ -201,8 +206,8 @@ test('reef: a school chased into the shallows slips out sideways and gets away',
     g.setInput(null);
     return { touched: g.fishTouched(), shallowest, fastest };
   });
-  // It drove them in toward the shallows, but they sprinted out past it (sergeant majors dart at 0.35 m/s).
-  expect(run.shallowest).toBeLessThan(0.12);
+  // It drove them in shallower than any school lives (homes are 22 cm deep or more), but they sprinted out past it.
+  expect(run.shallowest).toBeLessThan(0.2);
   expect(run.fastest).toBeGreaterThan(0.45);
   expect(run.touched).toBe(0);
   expect(errors).toEqual([]);
