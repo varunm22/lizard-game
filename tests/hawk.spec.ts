@@ -312,6 +312,8 @@ test('it takes two strikes to put another iguana down, then the hawk eats it and
     let down = -1;
     for (let i = 0; i < 120 * 60 && down < 0; i++) {
       g.advance(1, false);
+      // A struck iguana can bolt into cover and shake it off: send it back after the nearest one.
+      if (!g.hawk().hunting) g.hawkDo('hunt_iguana');
       const struck = g.iguanas().findIndex((ig) => ig.hits > 0 || ig.down);
       if (struck >= 0) {
         const ig = g.iguanas()[struck];

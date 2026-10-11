@@ -118,6 +118,8 @@ const MAX_RISE = 0.45;
 const MAX_SINK = 0.7;
 /** It only stoops when the lizard is roughly ahead: within this angle of its heading (radians). */
 const STOOP_CONE = 0.9;
+/** Too close under it to turn onto, it flies out to this many turning radii away before coming round. */
+const RUN_OUT = 2.2;
 /** Quiet at the start, so a player has a little while to look around before the hawk notices (s). */
 const CALM_AT_START = 25;
 const CROSSFADE = 0.25;
@@ -165,6 +167,8 @@ export class Hawk {
   /** How many times the lizard has flushed it off a perch. */
   flushed = 0;
   private stalkFor = STALK_FIRST;
+  /** Lining up a stoop, it's flying straight out to have room to turn back onto its mark. */
+  private runOut = false;
   /** Per prey: seconds of sight building toward a hunt, and how long it stays passed over. */
   private watch: { seen: number; ignore: number }[];
   /** Coming down to a perch, or onto a kill. */
@@ -502,6 +506,7 @@ export class Hawk {
       this.landFor = 'perch';
       this.perch = this.choosePerch();
     }
+    this.runOut = false;
     if (state === 'stoop') {
       this.strikes++;
       if (this.quarry?.kind === 'player') this.lunges++;
@@ -575,6 +580,13 @@ export class Hawk {
     const ready = this.stateTime >= this.stalkFor && this.seesPrey && this.enabled;
     if (ready) {
       this.v.set(c.x, c.y + STALK.up, c.z);
+      // It can't turn tighter than its speed allows: a mark inside that circle it would only ever circle
+      // round, side on, never getting it ahead to stoop at. So it flies straight out, far enough to come
+      // round onto it.
+      if (this.insideTurn(c)) this.runOut = true;
+      const level = Math.hypot(this.vel.x, this.vel.z);
+      if (this.runOut && Math.hypot(this.pos.x - c.x, this.pos.z - c.z) > (RUN_OUT * level) / TURN_SPEED) this.runOut = false;
+      if (this.runOut) this.v.set(this.pos.x + this.vel.x, c.y + STALK.up, this.pos.z + this.vel.z);
     } else {
       const a = Math.atan2(this.pos.z - c.z, this.pos.x - c.x) + LOOK_AHEAD;
       this.v.set(c.x + Math.cos(a) * STALK.r, c.y + STALK.up, c.z + Math.sin(a) * STALK.r);
@@ -584,6 +596,24 @@ export class Hawk {
     const off = Math.atan2(c.x - this.pos.x, c.z - this.pos.z) - Math.atan2(this.vel.x, this.vel.z);
     const ahead = Math.abs(wrapAngle(off)) < STOOP_CONE;
     if (ready && close && ahead) this.goTo('stoop');
+  }
+
+  /** Whether level point `c` is inside the circle the hawk flies turning towards it as hard as it can. */
+  private insideTurn(c: THREE.Vector3): boolean {
+    const level = Math.hypot(this.vel.x, this.vel.z);
+    if (level < 1e-4) return false;
+    const fx = this.vel.x / level;
+    const fz = this.vel.z / level;
+    const dx = c.x - this.pos.x;
+    const dz = c.z - this.pos.z;
+    // The part of the way to `c` that's across its heading: the side the turn's centre is on.
+    const along = dx * fx + dz * fz;
+    const sx = dx - along * fx;
+    const sz = dz - along * fz;
+    const side = Math.hypot(sx, sz);
+    if (side < 1e-6) return false;
+    const r = level / TURN_SPEED;
+    return Math.hypot(dx - (sx / side) * r, dz - (sz / side) * r) < r;
   }
 
   /** Dive at the lizard; when the strike's timing is reached, commit to it. */
