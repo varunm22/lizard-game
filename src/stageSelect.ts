@@ -1,11 +1,13 @@
 import { goToLevel, LEVEL, type Level } from './level';
 import islandTile from './assets/stages/island.jpg';
 import dunesTile from './assets/stages/dunes.jpg';
+import lagoonTile from './assets/stages/lagoon.jpg';
 
 /** The stages, in the order the picker shows them, each with a still from the game. */
 const STAGES: { id: Level; name: string; blurb: string; image: string }[] = [
   { id: 'island', name: 'Galápagos island', blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
   { id: 'dunes', name: 'Nesting dunes', blurb: 'Hatch, then cross the dunes to the colony past the racer snakes.', image: dunesTile },
+  { id: 'lagoon', name: 'Mangrove lagoon', blurb: 'Slip past the lava herons and float a log across the channel.', image: lagoonTile },
 ];
 
 const CSS = `

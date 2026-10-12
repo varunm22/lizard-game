@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { toonGradient } from '../render/toon';
 import { OCEAN_X0, SEA_DEPTH, WATER_Y } from './shore';
 import { terrainHeight } from './terrain';
+import { LEVEL } from '../level';
+
+const LAGOON = LEVEL === 'lagoon';
 
 /** Ripples alive at once; a new one replaces the oldest. */
 const MAX_RIPPLES = 16;
@@ -14,15 +17,23 @@ const RIPPLE_HEIGHT = 0.003;
 /** A ripple lasts base + perStrength * strength seconds. */
 const RIPPLE_LIFE = { base: 1.4, perStrength: 1.2 };
 /**
- * The sheet runs from OCEAN_X0 out to the horizon (m east), and this far north and south. Its grid
+ * The sheet runs from `west` (OCEAN_X0 off the island) out to the horizon (m east), and this far north and south. Its grid
  * is ~8 cm, enough for the swells; ripple rings and the shore wash are shaded per pixel.
  */
-const SHEET = { east: 12, halfWidth: 9, cell: 0.08 };
+const SHEET = LAGOON ? { west: -10, east: 10, halfWidth: 10, cell: 0.08 } : { west: OCEAN_X0, east: 12, halfWidth: 9, cell: 0.08 };
 /**
  * Water depth is read from a texture of the sea floor over this stretch (m), one texel every
  * DEPTH_TEXEL; past it the sea is open-water deep.
  */
-const DEPTH_MAP = { x0: OCEAN_X0, x1: 5, z0: -6, z1: 6 };
+const DEPTH_MAP = LAGOON ? { x0: -6.5, x1: 6.5, z0: -6.5, z1: 6.5 } : { x0: OCEAN_X0, x1: 5, z0: -6, z1: 6 };
+/**
+ * The water's tint over the shallows and the deep, how clear it is at its thinnest and thickest,
+ * and how far the wash of foam runs up the shore (m): turquoise sea off the island and the dunes;
+ * the lagoon's calm, tea-green water, darker over the mud, with barely a ripple at its edge.
+ */
+const LOOK = LAGOON
+  ? { shallow: '0.46, 0.72, 0.58', deep: '0.14, 0.38, 0.36', alpha: '0.3, 0.86', wash: 0.4 }
+  : { shallow: '0.42, 0.86, 0.82', deep: '0.16, 0.5, 0.66', alpha: '0.35, 0.82', wash: 1 };
 const DEPTH_TEXEL = 0.025;
 
 /** Sea-floor depth below the surface (m) at a world (x, z), from the depth texture. */
@@ -30,7 +41,7 @@ const DEPTH_GLSL = /* glsl */ `
 uniform sampler2D uDepth;
 float seaDepth(vec2 p) {
   vec2 uv = (p - vec2(${DEPTH_MAP.x0.toFixed(2)}, ${DEPTH_MAP.z0.toFixed(2)})) / vec2(${(DEPTH_MAP.x1 - DEPTH_MAP.x0).toFixed(2)}, ${(DEPTH_MAP.z1 - DEPTH_MAP.z0).toFixed(2)});
-  if (uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return ${SEA_DEPTH.toFixed(2)};
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return ${SEA_DEPTH.toFixed(2)};
   return texture2D(uDepth, uv).r * ${SEA_DEPTH.toFixed(2)};
 }
 `;
@@ -137,10 +148,10 @@ export class Water {
           /* glsl */ `#include <color_fragment>
           // Clear over the sand, turquoise in the shallows, deep blue offshore.
           float depth = seaDepth(vWaterXZ);
-          diffuseColor.rgb = mix(vec3(0.42, 0.86, 0.82), vec3(0.16, 0.5, 0.66), smoothstep(0.02, 0.3, depth));
-          diffuseColor.a = mix(0.35, 0.82, smoothstep(0.0, 0.25, depth));
+          diffuseColor.rgb = mix(vec3(${LOOK.shallow}), vec3(${LOOK.deep}), smoothstep(0.02, 0.3, depth));
+          diffuseColor.a = mix(${LOOK.alpha}, smoothstep(0.0, 0.25, depth));
           // Wash: foam where the water thins out on the sand, sliding up and back with the waves.
-          float wash = 0.004 + 0.003 * sin(uTime * 0.9 + vWaterXZ.y * 2.3) + 0.0015 * sin(uTime * 2.1 - vWaterXZ.y * 5.0);
+          float wash = ${LOOK.wash.toFixed(2)} * (0.004 + 0.003 * sin(uTime * 0.9 + vWaterXZ.y * 2.3) + 0.0015 * sin(uTime * 2.1 - vWaterXZ.y * 5.0));
           float shoreFoam = 1.0 - smoothstep(wash, wash + 0.004, depth);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.98, 1.0), 0.75 * shoreFoam);
           diffuseColor.a = max(diffuseColor.a, 0.8 * shoreFoam);
@@ -164,10 +175,10 @@ export class Water {
         );
     };
 
-    const width = SHEET.east - OCEAN_X0;
+    const width = SHEET.east - SHEET.west;
     const geometry = new THREE.PlaneGeometry(width, 2 * SHEET.halfWidth, Math.round(width / SHEET.cell), Math.round((2 * SHEET.halfWidth) / SHEET.cell))
       .rotateX(-Math.PI / 2)
-      .translate(OCEAN_X0 + width / 2, 0, 0);
+      .translate(SHEET.west + width / 2, 0, 0);
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.set(0, WATER_Y, 0);
     // The vertices move a few millimetres; don't let culling use the flat sheet's box.

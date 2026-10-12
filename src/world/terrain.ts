@@ -6,20 +6,21 @@ import { forestCover, lavaCover, sandCover, shoreDistance } from './layout';
 import { carveShore, lavaRelief, WATER_Y } from './shore';
 import { LEVEL } from '../level';
 import { duneColour, duneHeight } from '../dunes/layout';
+import { lagoonColour, lagoonHeight } from '../lagoon/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 
 /**
  * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes
- * are a longer crossing than the island, on a bigger square.
+ * and the mangrove lagoon are longer crossings than the island, on bigger squares.
  */
-export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : 8;
-/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (14 m / 448 on the dunes). */
-const CELLS = LEVEL === 'dunes' ? 448 : 256;
+export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : LEVEL === 'lagoon' ? 12 : 8;
+/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (the same on the bigger squares). */
+const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' ? 384 : 256;
 /**
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -41,10 +42,11 @@ export const IGNORE_BODIES = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~PLAYER_
 export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP;
 
 /**
- * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`)
- * on that level. Everything that stands on or follows the ground reads it from here.
+ * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`) or
+ * the mangrove lagoon's (`lagoon/layout.ts`) on those levels. Everything that stands on or follows
+ * the ground reads it from here.
  */
-export const terrainHeight: (x: number, z: number) => number = LEVEL === 'dunes' ? duneHeight : islandHeight;
+export const terrainHeight: (x: number, z: number) => number = LEVEL === 'dunes' ? duneHeight : LEVEL === 'lagoon' ? lagoonHeight : islandHeight;
 
 /**
  * The island's ground height (m). Layered noise, damped to almost flat in the middle of the
@@ -116,7 +118,7 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
   }
 }
 const tmp = new THREE.Color();
-const groundColour = LEVEL === 'dunes' ? duneColour : islandColour;
+const groundColour = LEVEL === 'dunes' ? duneColour : LEVEL === 'lagoon' ? lagoonColour : islandColour;
 
 /** A grid of ground vertices `cells` across a square of side `size` centred on the origin; `skip(x, z)` drops a cell. */
 function groundGrid(size: number, cells: number, skip?: (x: number, z: number) => boolean) {

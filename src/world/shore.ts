@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FOG, PALETTE } from '../render/scene';
 import { ridgedNoise, smoothstep, valueNoise } from './noise';
+import { LEVEL } from '../level';
 
 /**
  * The coast along the east (+X) side of the island. The waterline wanders north-south around
@@ -10,8 +11,11 @@ import { ridgedNoise, smoothstep, valueNoise } from './noise';
  */
 /** Height of the sea surface (m). All land is above it. */
 export const WATER_Y = -0.045;
-/** The water sheet starts this far west (m); everything west of it is dry land. */
-export const OCEAN_X0 = 1.0;
+/**
+ * The water sheet starts this far west (m); everything west of it is dry land. In the mangrove
+ * lagoon there is water everywhere, so the sheet covers the whole square.
+ */
+export const OCEAN_X0 = LEVEL === 'lagoon' ? -12 : 1.0;
 /** Width of the sloping beach between the waterline and the land behind it (m). */
 export const BEACH_WIDTH = 0.9;
 /** Depth of the open sea floor (m below the surface). */

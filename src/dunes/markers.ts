@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { terrainHeight } from '../world/terrain';
-import { COLONY, NEST, SAFE_POINTS } from './layout';
 
 /**
  * A column of light standing over a spot, seen from across the dunes: open-ended, glowing at its
@@ -106,6 +105,13 @@ function ring(x: number, z: number, radius: number, width: number, colour: THREE
  * reached; and a tall golden column of light and a ring round the adults at the end, visible over
  * the dunes from the start. Columns dim as the camera comes in under them.
  */
+/** Where a run starts and ends, and its safe points (world m; `r` the radius each counts within). */
+export interface Marks {
+  start: { x: number; z: number };
+  finish: { x: number; z: number; r: number };
+  safe: readonly { x: number; z: number; r: number }[];
+}
+
 export class Markers {
   readonly start = new THREE.Group();
   readonly finish = new THREE.Group();
@@ -117,7 +123,11 @@ export class Markers {
   private safeRings: THREE.ShaderMaterial[] = [];
   private safeStrength: number[] = [];
 
-  constructor(scene: THREE.Scene) {
+  constructor(
+    scene: THREE.Scene,
+    private marks: Marks,
+  ) {
+    const { start: NEST, finish: COLONY, safe: SAFE_POINTS } = marks;
     const add = (group: THREE.Group, mesh: THREE.Mesh) => {
       group.add(mesh);
       this.shaders.push(mesh.material as THREE.ShaderMaterial);
@@ -165,6 +175,7 @@ export class Markers {
   update(dt: number, camera: THREE.Vector3) {
     this.time += dt;
     for (const m of this.shaders) m.uniforms.time.value = this.time;
+    const { finish: COLONY, safe: SAFE_POINTS } = this.marks;
     const d = Math.hypot(camera.x - COLONY.x, camera.z - COLONY.z);
     this.finishColumn.uniforms.strength.value = 0.75 * THREE.MathUtils.smoothstep(d, COLONY.r + 0.3, COLONY.r + 2.5);
     SAFE_POINTS.forEach((p, i) => {
