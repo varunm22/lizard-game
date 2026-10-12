@@ -15,7 +15,7 @@ import { FollowCamera } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createDunesHooks } from '../debug/createDunesHooks';
 import { createGoalsPanel } from '../goalsPanel';
-import { levelSwitch } from '../level';
+import { stageSelect } from '../stageSelect';
 import { ViewCheck } from '../render/viewCheck';
 import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
@@ -78,7 +78,7 @@ export async function dunes() {
   const input = new Input(renderer.domElement);
 
   const hud = createDunesHud();
-  levelSwitch();
+  stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
   let introShown = true;
