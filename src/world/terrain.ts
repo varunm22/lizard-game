@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { toonGradient } from '../render/toon';
 import { ridgedNoise, smoothstep, valueNoise } from './noise';
 import { forestCover, lavaCover, sandCover, shoreDistance } from './layout';

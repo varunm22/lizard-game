@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import type { PlayerController } from './controller';
 import { MOVEMENT as M } from './movement';
 import type { Obstacle } from '../world/obstacles';

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
+import { ViewCheck } from './render/viewCheck';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
@@ -51,7 +52,9 @@ import { LEVEL } from './level';
 import { dunes } from './dunes/main';
 
 async function main() {
-  await RAPIER.init();
+  // The wasm build loads with the module. The single-file preview build swaps in the compat package
+  // (wasm inlined in the script), which has to be started first.
+  await (RAPIER as { init?: () => Promise<void> }).init?.();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
   const { renderer, scene, camera, sun } = createScene(document.body);
@@ -204,12 +207,15 @@ async function main() {
     world.step();
     hooks.physicsSteps++;
   };
+  const view = new ViewCheck();
   const readInput = (frameDt: number) => {
     frameInput = input.read(frameDt);
     followCam.applyInput(frameInput);
     if (frameInput.bite && !wounds.down) feeding.bite();
   };
   const updateViews = (alpha: number, frameDt: number) => {
+    // What the camera saw last frame: what's off screen or far off is animated and fitted less.
+    view.update(camera);
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
     tortoise.update(alpha, frameDt);
     visual.downed = wounds.down;
@@ -225,7 +231,7 @@ async function main() {
       warmthRate: vitals.rate.warmth,
     });
     hud.down(wounds.countdown);
-    iguanas.update(alpha, frameDt);
+    iguanas.update(alpha, frameDt, view);
     player.feetAt(alpha, feet);
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
     // Swimming, the camera follows the lizard up and down as if it were on the ground.
@@ -243,7 +249,7 @@ async function main() {
     canEat = !wounds.down && !!feeding.inReach();
     hud.canEat(canEat);
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
-    crabs.update(alpha, frameDt);
+    crabs.update(alpha, frameDt, view);
     plants.update(pushers, frameDt);
     water.update(frameDt);
     algae.update(frameDt);
@@ -286,6 +292,14 @@ async function main() {
       updateViews(1, FIXED_DT);
     }
     if (drawFrame) draw();
+  };
+  hooks.renderStats = () => {
+    stopLoop?.();
+    stopLoop = null;
+    draw();
+    let skinned = 0;
+    scene.traverse((o) => (skinned += (o as THREE.SkinnedMesh).isSkinnedMesh ? 1 : 0));
+    return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, skinned };
   };
   let accumulator = 0;
   hooks.frame = (frameDt, drawFrame = false) => {

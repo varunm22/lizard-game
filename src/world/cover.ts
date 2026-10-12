@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS_AND_IGUANAS } from './terrain';
 import { waterDepth } from './shore';
 import type { Obstacle } from './obstacles';

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import type { Obstacle } from '../world/obstacles';
 
 /** Opacity of an obstacle standing between the camera and the lizard. */

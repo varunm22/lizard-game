@@ -220,7 +220,6 @@ export class Hawk {
     this.watch = prey.map(() => ({ seen: 0, ignore: 0 }));
     this.root = gltf.scene;
     toonify(this.root);
-    this.root.traverse((o) => (o.frustumCulled = false));
     const rig = this.root.getObjectByName('Hawk');
     if (!rig) throw new Error('hawk.glb has no Hawk armature');
     this.extras = rig.userData as Extras;

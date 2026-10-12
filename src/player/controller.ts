@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
 import { MOVEMENT as M, centreAboveFeet } from './movement';

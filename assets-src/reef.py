@@ -67,7 +67,9 @@ def coral_cauliflower(rng):
     def branch(start, d, length, depth):
         pts = path(start, d, length, 3, rng=rng, wobble=0.15)
         r0 = 0.0042 if depth == 0 else 0.0032
-        tube(mb, pts, lambda s: r0 * (1 - 0.25 * s), colour, sides=5)
+        # Square in section, and the forks in two straight pieces: a few millimetres thick, it reads
+        # the same at half the triangles. Only the tips are capped; a fork's end is inside its forks.
+        tube(mb, pts if depth == 0 else [pts[0], pts[2], pts[3]], lambda s: r0 * (1 - 0.25 * s), colour, sides=4, cap=depth == 2)
         if depth < 2:
             for k in range(2):
                 a = rng.uniform(0, 2 * math.pi)

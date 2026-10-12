@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS } from '../world/terrain';
 import { exactShape, surfacePose } from '../world/exactSurface';
 import type { LizardModel } from './lizardModel';

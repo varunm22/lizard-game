@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d';
 import type { PlayerController } from '../player/controller';
 import type { LizardModel } from '../player/lizardModel';
 import type { Wounds } from '../player/wounds';

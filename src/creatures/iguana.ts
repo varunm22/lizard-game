@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d';
 import { IguanaNavigation, KICK_GAP, LINE_UP, type BaskSpot } from './iguanaNavigation';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
@@ -18,6 +18,7 @@ import type { Plants } from '../world/plants';
 import { Splashes } from '../world/splashes';
 import type { Water } from '../world/water';
 import { SaltSpray } from './saltSpray';
+import type { ViewCheck } from '../render/viewCheck';
 export type { BaskSpot } from './iguanaNavigation';
 
 /**
@@ -33,6 +34,12 @@ export type { BaskSpot } from './iguanaNavigation';
 export type IguanaActivity = 'bask' | 'shuffle' | 'to_food' | 'graze' | 'to_land' | 'bolt' | 'freeze' | 'dead';
 
 /** Where each lives (z of its stretch of lava shore) and its skin tint (multiplies the texture). */
+/**
+ * Drawn in full (feet fitted to the rock, body kept out of it) only in view and within this of the
+ * camera (m): further off it is under about 100 pixels long. `VIEW_RADIUS` holds it, snout to tail.
+ */
+const FULL_DETAIL_NEAR = 1.5;
+const VIEW_RADIUS = 0.12;
 const HOMES = [
   { z: -1.0, tint: [1.14, 0.9, 0.82] },
   { z: -1.6, tint: [0.92, 1.04, 0.9] },
@@ -708,8 +715,12 @@ export class Iguanas {
     for (const ig of this.list) if (!ig.paused) ig.step(dt, this.plants);
   }
 
-  update(alpha: number, dt: number) {
-    for (const ig of this.list) if (!ig.paused) ig.update(alpha, dt, this.spray);
+  update(alpha: number, dt: number, view: ViewCheck) {
+    for (const ig of this.list) {
+      if (ig.paused) continue;
+      ig.visual.lowDetail = !view.close(ig.model.root.position, VIEW_RADIUS, FULL_DETAIL_NEAR);
+      ig.update(alpha, dt, this.spray);
+    }
     this.spray.update(dt);
   }
 
