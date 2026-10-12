@@ -56,7 +56,7 @@ const MIN_SPEED_SCALE = 0.35;
 export type PlantKind = keyof typeof KINDS;
 
 /** Whether two plants, one of `kind` at (x, z), would stand too close (see MIN_SPACING). */
-function crowds(kind: PlantKind, x: number, z: number, p: { kind: PlantKind; x: number; z: number }) {
+export function crowds(kind: PlantKind, x: number, z: number, p: { kind: PlantKind; x: number; z: number }) {
   const gap = KINDS[kind].solid && KINDS[p.kind].solid ? MIN_SPACING : SOFT_SPACING;
   return Math.abs(p.x - x) < gap && Math.abs(p.z - z) < gap && Math.hypot(p.x - x, p.z - z) < gap;
 }
@@ -168,6 +168,7 @@ export class Plants {
   /**
    * `open(x, z)` says whether a plant may grow at a ground point (false where a rock or log sits).
    * `clear` is a spot kept bare (the spawn point). Each plant's solid centre goes into `world`.
+   * `place` lays them out (the island's own layout unless a level gives its own).
    */
   static async load(
     url: string,
@@ -175,10 +176,11 @@ export class Plants {
     world: RAPIER.World,
     open: (x: number, z: number) => boolean,
     clear: { x: number; z: number },
+    place: (open: (x: number, z: number) => boolean, clear: { x: number; z: number }) => Placement[] = scatter,
   ) {
     const gltf = await loadGltf(url);
     const plants = new Plants(world);
-    const placed = scatter(open, clear);
+    const placed = place(open, clear);
     for (const name of Object.keys(KINDS) as PlantKind[]) {
       const src = gltf.scene.getObjectByName(name) as THREE.Mesh | undefined;
       if (!src) throw new Error(`plants.glb has no ${name}`);
@@ -499,7 +501,7 @@ function makePatch(
   return patch;
 }
 
-interface Placement {
+export interface Placement {
   kind: PlantKind;
   x: number;
   z: number;

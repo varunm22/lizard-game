@@ -328,8 +328,69 @@ export interface GameTestHooks {
   teleport: (x: number, z: number, yaw: number, y?: number) => void;
 }
 
+/**
+ * State exposed on `window.__dunes` on the nesting dunes level (`?level=dunes`), where the island's
+ * `__game` isn't set. The shared hooks work as `GameTestHooks` describes them.
+ */
+export interface DunesTestHooks
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'obstacles' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  /** Each racer snake: state, where its neck is and its course, speed, lift, what it's after and counts. */
+  racers(): {
+    state: string;
+    x: number;
+    y: number;
+    z: number;
+    course: number;
+    speed: number;
+    lift: number;
+    prey: string | null;
+    home: { x: number; z: number };
+    strikes: number;
+    catches: number;
+    chases: number;
+    giveUps: number;
+    paused: boolean;
+    /** Length of path its body lies along (m), and its own length. */
+    trail: number;
+    length: number;
+  }[];
+  /**
+   * One racer's body as posed: its joints (world m, head first) and the arc distance of each back from
+   * the neck, and the world position of each spine bone of its skin (the same order, minus the head).
+   */
+  racerBody(i: number): { joints: { x: number; y: number; z: number }[]; arcs: number[]; bones: { x: number; y: number; z: number }[] };
+  /** Lay racer `i` coiled at (x, z) with its head along `yaw`, lying up there (its new home). */
+  placeRacer(i: number, x: number, z: number, yaw: number): void;
+  /** Stop or start the racers and the other hatchlings: `true`/`false` for all, or the indices to leave running. */
+  pause(what: { racers?: boolean | number[]; hatchlings?: boolean | number[] }): void;
+  /** The other hatchlings: phase, feet, and how many made it or were caught. */
+  hatchlings(): { phase: string; x: number; y: number; z: number; made: number; caught: number; paused: boolean }[];
+  /** Put hatchling `i` running from (x, z) along `yaw`. */
+  placeHatchling(i: number, x: number, z: number, yaw: number): void;
+  /** The run: state, clock, best, counts, how much danger the lizard's in, and the goals. */
+  run(): {
+    state: string;
+    time: number;
+    best: number | null;
+    attempts: number;
+    catches: number;
+    finishes: number;
+    danger: string;
+    inCover: boolean;
+    goals: { id: string; label: string; done: boolean }[];
+  };
+  /** Start the run over (R). */
+  restart(): void;
+  /** The saltbushes (and whether each is see-through now), and the burrow mouths. */
+  bushes(): { name: string; x: number; y: number; z: number; radius: number; height: number; faded: boolean }[];
+  burrows(): { x: number; z: number; yaw: number }[];
+  /** The start and finish: the nest burrow and the colony (its middle and reach). */
+  marks(): { start: { x: number; z: number; yaw: number }; finish: { x: number; z: number; r: number } };
+}
+
 declare global {
   interface Window {
     __game?: GameTestHooks;
+    __dunes?: DunesTestHooks;
   }
 }

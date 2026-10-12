@@ -33,5 +33,6 @@ In Claude cloud sessions Chromium is preinstalled; do not run `playwright instal
 - [Player, physics and animation](docs/player.md): movement workarounds, surface fitting, rig conventions and feeding.
 - [Terrain, plants and water](docs/world.md): island layout, rock piles, collision groups, vegetation and algae.
 - [Creature behavior and interactions](docs/creatures.md): tortoise riding, iguana navigation, crab grooming and hawk hunting.
+- [Nesting dunes level](docs/dunes.md): `?level=dunes`, racer snakes, hatchlings, the run and its tests (`window.__dunes`).
 
 These guides retain the detailed behavior, regression constraints and test hooks; load only the ones relevant to the change.

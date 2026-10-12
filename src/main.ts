@@ -47,6 +47,8 @@ import tortoiseUrl from './assets/tortoise.glb?url';
 import crabUrl from './assets/crab.glb?url';
 import hawkUrl from './assets/hawk.glb?url';
 import reefUrl from './assets/reef.glb?url';
+import { LEVEL } from './level';
+import { dunes } from './dunes/main';
 
 async function main() {
   await RAPIER.init();
@@ -296,4 +298,5 @@ async function main() {
   };
 }
 
-main();
+if (LEVEL === 'dunes') dunes();
+else main();
