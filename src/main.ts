@@ -48,7 +48,7 @@ import tortoiseUrl from './assets/tortoise.glb?url';
 import crabUrl from './assets/crab.glb?url';
 import hawkUrl from './assets/hawk.glb?url';
 import reefUrl from './assets/reef.glb?url';
-import { LEVEL } from './level';
+import { LEVEL, levelSwitch } from './level';
 import { dunes } from './dunes/main';
 
 async function main() {
@@ -108,6 +108,7 @@ async function main() {
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
+  levelSwitch();
   // One goal per creature, the algae and the fish. They start over each time the page loads.
   let basking = false;
   let canEat = false;

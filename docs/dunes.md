@@ -1,6 +1,6 @@
 # Nesting dunes (`?level=dunes`)
 
-A second level, opened with `?level=dunes` (the island stays the default). The lizard hatches in a
+A second level, opened with `?level=dunes` or the "Nesting dunes →" link in the top-right corner (the island stays the default; the link remembers the choice for the tab where the URL can't carry it, as in the embedded preview). The lizard hatches in a
 burrow on the western nesting flat and has to cross the dunes to the adult colony on the shore
 rocks in the east, past racer snakes (*Pseudalsophis occidentalis*), as Fernandina hatchlings do
 each May and June. Everything lives in `src/dunes/`; shared systems (controller, camera, water,
