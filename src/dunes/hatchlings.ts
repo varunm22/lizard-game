@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
 import { PlayerController } from '../player/controller';
@@ -14,6 +14,7 @@ import { steer } from './ground';
 import { BURROWS, COLONY, NEST, type Burrow } from './layout';
 import { BodyPrey } from './prey';
 import type { Racer, Racers } from './racers';
+import type { ViewCheck } from '../render/viewCheck';
 
 export type HatchlingPhase = 'burrow' | 'run' | 'freeze' | 'hide' | 'safe' | 'caught' | 'gone';
 
@@ -45,6 +46,9 @@ const HOME_BURROWS = BURROWS.slice(1)
   .slice(0, 8)
   .map((p) => p.b);
 const STEER_EVERY = 4;
+/** Drawn in full (feet fitted to the ground) only in view and this close to the camera (m), as the island's iguanas. */
+const FULL_DETAIL_NEAR = 1.5;
+const VIEW_RADIUS = 0.12;
 
 /**
  * One of the lizard's nest-mates: comes up from its burrow and makes for the adults on the shore the
@@ -361,7 +365,10 @@ export class Hatchlings {
     for (const h of this.list) h.move(dt);
   }
 
-  update(alpha: number, dt: number) {
-    for (const h of this.list) h.update(alpha, dt);
+  update(alpha: number, dt: number, view: ViewCheck) {
+    for (const h of this.list) {
+      h.visual.lowDetail = !view.close(h.model.root.position, VIEW_RADIUS, FULL_DETAIL_NEAR);
+      h.update(alpha, dt);
+    }
   }
 }

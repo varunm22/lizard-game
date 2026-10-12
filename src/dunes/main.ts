@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from '../world/terrain';
@@ -15,6 +15,7 @@ import { FollowCamera } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createDunesHooks } from '../debug/createDunesHooks';
 import { createGoalsPanel } from '../goalsPanel';
+import { ViewCheck } from '../render/viewCheck';
 import { COLONY, NEST, RACER_HOMES } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
 import snakeUrl from '../assets/snake.glb?url';
@@ -36,7 +37,7 @@ import { clock, createDunesHud } from './hud';
 
 /** The nesting dunes level (`?level=dunes`): hatch, and run for the shore past the racer snakes. */
 export async function dunes() {
-  await RAPIER.init();
+  await (RAPIER as { init?: () => Promise<void> }).init?.();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
   const { renderer, scene, camera, sun } = createScene(document.body);
@@ -99,6 +100,7 @@ export async function dunes() {
   let viewTarget: THREE.Vector3 | null = null;
   const feet = new THREE.Vector3();
   const toFinish = new THREE.Vector3();
+  const view = new ViewCheck();
   const groundedFeet = new THREE.Vector3();
 
   const hooks = createDunesHooks({
@@ -150,7 +152,8 @@ export async function dunes() {
     bushes.fade(camera.position, followCam.target, frameDt);
     lizard.updateBodySpheres();
     racers.update(frameDt);
-    hatchlings.update(alpha, frameDt);
+    view.update(camera);
+    hatchlings.update(alpha, frameDt, view);
     colony.update(frameDt);
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     plants.update(pushers, frameDt);

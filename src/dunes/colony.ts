@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { LizardModel } from '../player/lizardModel';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';

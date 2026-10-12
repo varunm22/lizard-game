@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS_AND_IGUANAS, terrainHeight } from '../world/terrain';
 import { WATER_Y } from '../world/shore';
 import { covers, type Obstacle } from '../world/obstacles';

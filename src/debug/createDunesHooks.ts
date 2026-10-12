@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS_AND_IGUANAS, terrainHeight } from '../world/terrain';
 import type { Obstacle } from '../world/obstacles';
 import type { PlayerController } from '../player/controller';
