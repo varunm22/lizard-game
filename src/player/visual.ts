@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS } from '../world/terrain';
 import { LIZARD_GAIT_SPEED, LIZARD_SWIM_SPEED, type LizardModel } from './lizardModel';
 import type { PlayerController } from './controller';
@@ -55,6 +55,8 @@ const SWIM_LIFT = 0.01;
 const SWIM_LIFT_RATE = 6;
 /** Tail beat rate when drifting with no swimming input, relative to the clip. */
 const SWIM_IDLE_RATE = 0.4;
+/** In low detail, the surface is sampled once every this many frames. */
+const LOW_DETAIL_EVERY = 4;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
@@ -94,6 +96,13 @@ export class LizardVisual {
    * don't reach for it.
    */
   downed = false;
+  /**
+   * Off screen or far off (the other iguanas): the surface is sampled only every LOW_DETAIL_EVERY
+   * frames, and the legs aren't fitted to it nor the body kept out of the rock. Movement and physics
+   * don't depend on it.
+   */
+  lowDetail = false;
+  private lowFrame = 0;
 
   constructor(
     readonly model: LizardModel,
@@ -111,42 +120,15 @@ export class LizardVisual {
     const yaw = p.yawAt(alpha);
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
-    const ease = 1 - Math.exp(-SURFACE_RATE * dt);
     // Climbing, look down from above the top so the front feet find it before the body is up.
     const top = p.climbTop;
     this.sampleUp = top === null ? SAMPLE_UP : Math.max(SAMPLE_UP, top - this.feet.y + 0.005);
 
-    // Sample the surface along the body. In the air or the water the body just straightens.
+    // Sample the surface along the body. In the air or the water the body just straightens. In low
+    // detail, only every LOW_DETAIL_EVERY frames, holding the last samples in between.
     const standing = p.grounded && !p.swimming && !this.downed;
-    this.targetNormal.copy(UP);
-    let hindSlope = 0;
-    for (let i = 0; i < SAMPLES.length; i++) {
-      let h = 0;
-      if (standing) {
-        const hit = this.cast(this.feet.x + fx * SAMPLES[i], this.feet.z + fz * SAMPLES[i]);
-        h = hit === null ? -SAMPLE_DOWN : this.sampleUp - hit.timeOfImpact;
-      }
-      this.heights[i] += (h - this.heights[i]) * ease;
-    }
-    if (this.downed && p.grounded) {
-      const centre = this.cast(this.feet.x, this.feet.z);
-      if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
-    }
-    if (standing) {
-      const centre = this.cast(this.feet.x, this.feet.z);
-      if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
-      const hind = this.model.rig.hindFoot.s;
-      const hindHit = this.cast(this.feet.x + fx * hind, this.feet.z + fz * hind);
-      if (hindHit) {
-        // Ground rising toward the snout leans the normal back (against the facing).
-        this.local.set(hindHit.normal.x, hindHit.normal.y, hindHit.normal.z);
-        hindSlope = Math.atan2(-(this.local.x * fx + this.local.z * fz), this.local.y);
-      }
-    }
-    this.hindSlope += (hindSlope - this.hindSlope) * ease;
-    const angle = this.targetNormal.angleTo(UP);
-    if (angle > MAX_TILT) this.targetNormal.lerp(UP, 1 - MAX_TILT / angle).normalize();
-    this.normal.lerp(this.targetNormal, 1 - Math.exp(-TILT_RATE * dt)).normalize();
+    const resample = !this.lowDetail || this.lowFrame++ % LOW_DETAIL_EVERY === 0;
+    if (resample) this.sampleSurface(standing, fx, fz, this.lowDetail ? dt * LOW_DETAIL_EVERY : dt);
 
     const ahead = top === null ? 0 : CLIMB_LOOKAHEAD;
     const fit = (this.fit = fitSpine(this.model.rig, (s) => this.surfaceAt(s > 0 ? s + ahead : s), this.hindSlope));
@@ -182,8 +164,45 @@ export class LizardVisual {
     this.model.headTurn += (goal - this.model.headTurn) * (1 - Math.exp(-HEAD_TURN_RATE * dt));
     this.model.update(dt);
     this.reach += ((standing ? 1 : 0) - this.reach) * (1 - Math.exp(-REACH_RATE * dt));
+    // Far off, the feet keep the clip's pose and nothing is pushed out of the rock: too small to see.
+    if (this.lowDetail) return;
     this.legs.apply((x, y, z) => this.footGround(x, y, z), this.reach);
     if (!this.downed) this.clearance.apply(dt);
+  }
+
+  /** Sample the surface under the body, easing the heights, the ground normal and the hind slope toward it. */
+  private sampleSurface(standing: boolean, fx: number, fz: number, dt: number) {
+    const p = this.player;
+    const ease = 1 - Math.exp(-SURFACE_RATE * dt);
+    this.targetNormal.copy(UP);
+    let hindSlope = 0;
+    for (let i = 0; i < SAMPLES.length; i++) {
+      let h = 0;
+      if (standing) {
+        const hit = this.cast(this.feet.x + fx * SAMPLES[i], this.feet.z + fz * SAMPLES[i]);
+        h = hit === null ? -SAMPLE_DOWN : this.sampleUp - hit.timeOfImpact;
+      }
+      this.heights[i] += (h - this.heights[i]) * ease;
+    }
+    if (this.downed && p.grounded) {
+      const centre = this.cast(this.feet.x, this.feet.z);
+      if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
+    }
+    if (standing) {
+      const centre = this.cast(this.feet.x, this.feet.z);
+      if (centre) this.targetNormal.set(centre.normal.x, centre.normal.y, centre.normal.z);
+      const hind = this.model.rig.hindFoot.s;
+      const hindHit = this.cast(this.feet.x + fx * hind, this.feet.z + fz * hind);
+      if (hindHit) {
+        // Ground rising toward the snout leans the normal back (against the facing).
+        this.local.set(hindHit.normal.x, hindHit.normal.y, hindHit.normal.z);
+        hindSlope = Math.atan2(-(this.local.x * fx + this.local.z * fz), this.local.y);
+      }
+    }
+    this.hindSlope += (hindSlope - this.hindSlope) * ease;
+    const angle = this.targetNormal.angleTo(UP);
+    if (angle > MAX_TILT) this.targetNormal.lerp(UP, 1 - MAX_TILT / angle).normalize();
+    this.normal.lerp(this.targetNormal, 1 - Math.exp(-TILT_RATE * dt)).normalize();
   }
 
   /** On the shell, draw the feet at an eased height over it instead of the physics body's. */

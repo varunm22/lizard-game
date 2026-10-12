@@ -27,7 +27,9 @@ export const SUN_OFFSET = new THREE.Vector3(2.5, 5, 1.7);
 
 export function createScene(container: HTMLElement): SceneContext {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Past 1.5 device pixels per CSS pixel the picture hardly sharpens, but a 2x screen would fill (and
+  // multisample) almost twice the pixels.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
 import { EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';

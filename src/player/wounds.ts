@@ -1,4 +1,4 @@
-import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d';
 import type { PlayerController } from './controller';
 import type { LizardModel } from './lizardModel';
 import { VITALS, type DownCause, type Vitals } from './vitals';

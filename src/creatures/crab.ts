@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { wrapAngle } from '../math/angles';
 import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
+import type { ViewCheck } from '../render/viewCheck';
 import { rng } from '../world/noise';
 import { IGNORE_STEMS_AND_IGUANAS } from '../world/terrain';
 import { inOcean, shoreX, WATER_Y } from '../world/shore';
@@ -28,6 +29,8 @@ import type { LizardModel } from '../player/lizardModel';
  */
 export type CrabState = 'idle' | 'walk' | 'graze' | 'display' | 'flee' | 'hop' | 'duck' | 'groom' | 'dead';
 
+/** Off screen or further than this from the camera (m) it isn't animated: about 10 pixels across. */
+const ANIMATE_NEAR = 3;
 /** Steps up to this (m) it walks over; higher ones, up to HOP_MAX, it hops. Higher still is a wall. */
 const STEP_UP = 0.005;
 const HOP_MAX = 0.08;
@@ -191,6 +194,8 @@ class Crab {
   private mixer: THREE.AnimationMixer;
   private actions: Record<string, THREE.AnimationAction>;
   private current: THREE.AnimationAction | null = null;
+  /** Animation time owed while it was out of sight (s), played on as soon as it's seen. */
+  private unplayed = 0;
   private target = new THREE.Vector2();
   /** Nearest it has got to the target, and how long since it got any nearer (s). */
   private closest = Infinity;
@@ -221,7 +226,6 @@ class Crab {
     private rand: () => number,
   ) {
     this.root = clone(source);
-    this.root.traverse((o) => (o.frustumCulled = false));
     this.mixer = new THREE.AnimationMixer(this.root);
     this.actions = createAnimationActions(this.mixer, animations, ['hop_left', 'hop_right', 'duck', 'display']);
     this.yaw = rand() * Math.PI * 2;
@@ -373,11 +377,14 @@ class Crab {
     return null;
   }
 
-  /** Draw it between the last two steps. */
-  update(alpha: number, frameDt: number) {
+  /** Draw it between the last two steps. Its clip only plays on while it can be seen. */
+  update(alpha: number, frameDt: number, view: ViewCheck) {
     this.root.position.lerpVectors(this.prevPos, this.pos, alpha);
     this.root.quaternion.slerpQuaternions(this.prevRot, this.rot, alpha);
-    this.mixer.update(frameDt);
+    this.unplayed += frameDt;
+    if (!view.close(this.root.position, 0.05, ANIMATE_NEAR)) return;
+    this.mixer.update(this.unplayed);
+    this.unplayed = 0;
   }
 
   /** Idle long enough: graze, wander somewhere, or now and then show off. */
@@ -813,8 +820,8 @@ export class Crabs {
     }
   }
 
-  update(alpha: number, frameDt: number) {
+  update(alpha: number, frameDt: number, view: ViewCheck) {
     if (this.paused) return;
-    for (const c of this.list) if (!c.gone) c.update(alpha, frameDt);
+    for (const c of this.list) if (!c.gone) c.update(alpha, frameDt, view);
   }
 }

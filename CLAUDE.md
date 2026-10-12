@@ -1,7 +1,7 @@
 # Lizard Game
 
 Toon-styled 3D browser game: a small lizard exploring a miniature natural world.
-Three.js + TypeScript for rendering, Rapier (`@dimforge/rapier3d-compat`) for physics, Vite for builds.
+Three.js + TypeScript for rendering, Rapier (`@dimforge/rapier3d`, its .wasm loaded by `vite-plugin-wasm`; the single-file `build:preview` aliases it to `@dimforge/rapier3d-compat`) for physics, Vite for builds.
 
 ## Commands
 
@@ -26,6 +26,7 @@ In Claude cloud sessions Chromium is preinstalled; do not run `playwright instal
 - Gravity stays vertical. No wall/ceiling traversal or full runtime foot IK. The physics capsule stays straight; visual fitting follows the surface. Restore the last clip pose before mixing, never the rest pose.
 - Preserve the documented Rapier tolerances and exact-surface queries; they prevent movement and animation regressions at this small scale.
 - Debug hook implementations live in `src/debug/createTestHooks.ts`; their public contract is in `testHooks.ts`. Main owns mutable input/view overrides and the frame-driving callbacks. Tests share `tests/helpers/bootGame.ts`; hawk scenarios explicitly enable the hawk, and vitals scenarios the drifting bars.
+- Keep it light enough for a browser: `tests/budget.spec.ts` caps draw calls and triangles at the spawn (hook `renderStats`). `toonify` joins each creature's parts into one skinned mesh with a pose-padded bounding sphere, so creatures are culled off screen. Crabs off screen or over 3 m away don't animate, and the other iguanas only fit feet and body to the rock in view within 1.5 m (`ViewCheck`, `LizardVisual.lowDetail`); none of that touches the simulation.
 - Shared animation initialization lives in `src/render/animationActions.ts`. Playback, restart and crossfade behavior remain creature-specific. Shared Blender helpers live in `assets-src/common.py`; geometry and random calls remain species-specific.
 
 ## Read the relevant subsystem guide before changing it
