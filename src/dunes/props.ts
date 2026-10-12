@@ -7,7 +7,7 @@ import { WATER_Y } from '../world/shore';
 import { CACTUS_GROUP, terrainHeight } from '../world/terrain';
 import { covers, hull, type Obstacle } from '../world/obstacles';
 import { Bushes } from './bushes';
-import { BURROWS, COLONY, cove, duneLava, duneSand, duneShoreX, KNOLLS, NEST, RACER_HOMES } from './layout';
+import { BURROWS, COLONY, cove, DUNES_EDGE, duneLava, duneSand, duneShoreX, KNOLLS, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 
 /**
  * Scatters the nesting dunes' props: black lava boulders on the knolls, along the flows and over
@@ -26,8 +26,8 @@ const DRIFTWOOD = 0xd9d4cc;
 const BUSH_BASE = { radius: 0.03, height: 0.08 };
 
 /** Kept clear of props (m): round the nest, the finish, each snake's coil and each burrow mouth. */
-const CLEAR = { nest: 0.45, colony: 0.1, racer: 0.22, burrow: 0.13 };
-const EDGE = 3.85;
+const CLEAR = { nest: 0.45, colony: 0.1, racer: 0.22, burrow: 0.13, safe: 0.3 };
+const EDGE = DUNES_EDGE;
 
 interface Kit {
   geometry: Map<string, THREE.BufferGeometry>;
@@ -73,6 +73,7 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
     Math.hypot(x - NEST.x, z - NEST.z) > r + CLEAR.nest &&
     Math.hypot(x - COLONY.x, z - COLONY.z) > r + CLEAR.colony &&
     RACER_HOMES.every((h) => Math.hypot(x - h.x, z - h.z) > r + CLEAR.racer) &&
+    SAFE_POINTS.every((p) => Math.hypot(x - p.x, z - p.z) > r + CLEAR.safe) &&
     BURROWS.every((b) => Math.hypot(x - b.x, z - b.z) > r + CLEAR.burrow) &&
     !obstacles.some((o) => covers(o, x, z, r + gap)) &&
     !bushes.list.some((b) => Math.hypot(x - b.x, z - b.z) < r + b.radius * 0.6);
@@ -94,8 +95,11 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
 
   // Rocks: lava boulders, each a convex hull, sunk a little into the ground.
   const rockVariants = [...kit.geometry.keys()].filter((n) => n.startsWith('rock_'));
+  /** Rocks being placed for a safe point's crevice, which may stand by it. */
+  const safeRocks: [number, number][] = [];
   const rock = (x: number, z: number, r: number, sink = 0.15) => {
-    if (!inside(x, z, r) || !free(x, z, r * 0.8, 0.01)) return false;
+    const crevice = safeRocks.some(([sx, sz]) => sx === x && sz === z);
+    if (!inside(x, z, r) || (!crevice && !free(x, z, r * 0.8, 0.01))) return false;
     const geometry = need(pick(rockVariants));
     const box = geometry.boundingBox!;
     const sc = r / Math.max(box.max.x, -box.min.x, box.max.z, -box.min.z);
@@ -120,6 +124,20 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   const size = (small: number, big: number) => small + (big - small) * rand() ** 2.5;
   const anywhere = () => [range(-EDGE, EDGE), range(-EDGE, EDGE)] as const;
 
+  // Each safe point's crevice: boulders either side of it and one behind, against the knoll, open
+  // toward the way the lizard comes in.
+  for (const p of SAFE_POINTS) {
+    const cx = Math.sin(p.yaw);
+    const cz = Math.cos(p.yaw);
+    for (const [along, across, r] of [[0.06, 0.19, 0.1], [0.06, -0.19, 0.11], [0.2, 0.02, 0.12], [-0.08, 0.27, 0.07], [-0.08, -0.28, 0.08]]) {
+      const x = p.x + cx * along + cz * across;
+      const z = p.z + cz * along - cx * across;
+      safeRocks.push([x, z]);
+      rock(x, z, r, 0.1);
+    }
+  }
+  safeRocks.length = 0;
+
   // Round and on top of each knoll: a crown of boulders, the snakes' cover.
   for (const k of KNOLLS) {
     scatter(5, 60, () => {
@@ -129,22 +147,22 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
     });
   }
   // Along the flows and over the shore rocks, tumbled into the water.
-  scatter(26, 2500, () => {
+  scatter(70, 6000, () => {
     const [x, z] = anywhere();
     return duneLava(x, z) > 0.7 && s(x, z) < -0.9 ? [x, z, size(0.03, 0.12)] : null;
   });
-  scatter(40, 3000, () => {
+  scatter(80, 6000, () => {
     const [x, z] = anywhere();
-    return x > 0.8 && duneLava(x, z) > 0.6 && s(x, z) > -0.9 && s(x, z) < -0.04 ? [x, z, size(0.03, 0.15)] : null;
+    return x > 3.8 && duneLava(x, z) > 0.6 && s(x, z) > -0.9 && s(x, z) < -0.04 ? [x, z, size(0.03, 0.15)] : null;
   });
-  scatter(30, 3000, () => {
+  scatter(55, 6000, () => {
     const [x, z] = anywhere();
-    return x > 1.5 && cove(z) < 0.3 && s(x, z) > -0.03 && s(x, z) < 1.3 ? [x, z, size(0.04, 0.2)] : null;
+    return x > 4.6 && cove(z) < 0.3 && s(x, z) > -0.03 && s(x, z) < 1.3 ? [x, z, size(0.04, 0.2)] : null;
   });
   // A few loose ones out on the sand.
-  scatter(10, 1500, () => {
+  scatter(25, 3000, () => {
     const [x, z] = anywhere();
-    return duneSand(x, z) > 0.95 && x > -2.6 && s(x, z) < -0.2 ? [x, z, size(0.02, 0.06)] : null;
+    return duneSand(x, z) > 0.95 && x > -4.6 && s(x, z) < -0.2 ? [x, z, size(0.02, 0.06)] : null;
   });
 
   // Upright plants with a solid stem: lava cactus on the bare lava, mangroves at the back of the cove.
@@ -164,14 +182,14 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
     const collider = world.createCollider(desc);
     add({ name: `${kind.replace('_', '-')}-${obstacles.length}`, kind: cactus ? 'cactus' : 'tree', position: mesh.position, height: h * sc, radius: r * sc, mesh, collider });
   };
-  for (let i = 0, placed = 0; i < 2000 && placed < 12; i++) {
+  for (let i = 0, placed = 0; i < 5000 && placed < 30; i++) {
     const [x, z] = anywhere();
     if (duneLava(x, z) < 0.8 || terrainHeight(x, z) < WATER_Y + 0.015 || !inside(x, z, 0.06) || !free(x, z, 0.06, 0.03)) continue;
     tree('lava_cactus', x, z);
     placed++;
   }
-  for (let i = 0, placed = 0; i < 800 && placed < 3; i++) {
-    const z = range(0.7, 1.7);
+  for (let i = 0, placed = 0; i < 800 && placed < 4; i++) {
+    const z = range(1.45, 2.85);
     const x = duneShoreX(z) - range(0.3, 0.65);
     if (cove(z) < 0.8 || !free(x, z, 0.3, 0.05)) continue;
     tree('mangrove', x, z);
@@ -179,8 +197,8 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   }
 
   // Driftwood thrown up along the strand line, bleached silver.
-  for (let i = 0, placed = 0; i < 1500 && placed < 6; i++) {
-    const z = range(-3.4, 3.4);
+  for (let i = 0, placed = 0; i < 3000 && placed < 11; i++) {
+    const z = range(-6.4, 6.4);
     const x = duneShoreX(z) - range(0.12, 0.6);
     const variant = pick(['log_0', 'log_1', 'log_1', 'log_2']);
     const { radius: r, length } = kit.extras.get(variant)!;
@@ -200,9 +218,9 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   }
 
   // Saltbushes over the sand: scattered through the dunes and thicker at the back of the shore.
-  for (let i = 0, placed = 0; i < 4000 && placed < 16; i++) {
-    const x = range(-2.7, 1.9);
-    const z = range(-3.5, 3.5);
+  for (let i = 0, placed = 0; i < 10000 && placed < 42; i++) {
+    const x = range(-4.6, 4.8);
+    const z = range(-6.5, 6.5);
     const variant = pick(['saltbush_0', 'saltbush_1']);
     const ex = kit.extras.get(variant)!;
     const sc = range(0.85, 1.25);
@@ -263,10 +281,10 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   // Shell and coral grit over the sand, thicker toward the shore.
   const grit: THREE.Matrix4[][] = [[], [], [], []];
   const g = rng(SEED + 5);
-  for (let i = 0; i < 26000 && grit.reduce((n, l) => n + l.length, 0) < 7000; i++) {
+  for (let i = 0; i < 80000 && grit.reduce((n, l) => n + l.length, 0) < 18000; i++) {
     const x = -EDGE + g() * 2 * EDGE;
     const z = -EDGE + g() * 2 * EDGE;
-    const shore = THREE.MathUtils.smoothstep(x, -2.5, 1.8);
+    const shore = THREE.MathUtils.smoothstep(x, -4.5, 4.8);
     if (g() > 0.25 + 0.75 * shore || duneSand(x, z) < 0.9) continue;
     const y = terrainHeight(x, z);
     if (y < WATER_Y + 0.004) continue;

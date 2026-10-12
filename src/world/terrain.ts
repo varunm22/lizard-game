@@ -8,15 +8,18 @@ import { LEVEL } from '../level';
 import { duneColour, duneHeight } from '../dunes/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 
-/** Side of the walkable square (m). The physics heightfield covers exactly this. */
-export const TERRAIN_SIZE = 8;
-/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard. */
-const CELLS = 256;
+/**
+ * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes
+ * are a longer crossing than the island, on a bigger square.
+ */
+export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : 8;
+/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (14 m / 448 on the dunes). */
+const CELLS = LEVEL === 'dunes' ? 448 : 256;
 /**
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;

@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS_AND_IGUANAS, terrainHeight } from '../world/terrain';
 import { WATER_Y } from '../world/shore';
 import { covers, type Obstacle } from '../world/obstacles';
+import { DUNES_EDGE } from './layout';
 
 /**
  * Ground under the dunes' drawn animals (snakes and hatchlings, which have no colliders of their
@@ -41,7 +42,7 @@ export class GroundProbe {
 
 /** Obstacles taller than this (m) are gone round; lower rocks are crawled or run straight over. */
 const CLIMBABLE = 0.055;
-const EDGE = 3.85;
+const EDGE = DUNES_EDGE;
 
 /**
  * Whether a small animal can go to (x, z): inside the walls, out of the sea, and not into a tree,

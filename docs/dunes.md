@@ -19,12 +19,16 @@ plants, lizard model) are reused unchanged.
 
 ## Layout (`layout.ts`)
 
-West to east: the nesting flat (34 burrows, the lizard's is `NEST_BURROW`), a belt of wind-ridged
+The dunes square is 14 m (`TERRAIN_SIZE` and the heightfield's cells depend on the level, so cells
+stay ~3 cm; the island stays 8 m). West to east, about 11 m from the nest to the colony: the
+nesting flat (most of the 70 burrows; the lizard's is `NEST_BURROW`), a first belt of wind-ridged
 dunes (crests across the south-east trade wind, slip faces on the lee, broken along their length),
-two lava flows and six lava knolls standing out of the sand, then the lava coast with a sandy cove
-(mangroves). `COLONY` is the finish; its `r` is where the run is won, at the edge of the adults.
-`RACER_HOMES` are where the snakes lie up, mostly at the foot of knolls and shore rocks near the
-straight line from the nest to the colony.
+the first safe point, a lava field of tongues and knolls with sand between, the second safe point, a
+taller belt of beach dunes, then the lava coast with a sandy cove (mangroves). A few burrows are
+dug out across the sand too, as places to duck into. `COLONY` is the finish; its `r` is where the
+run is won, at the edge of the adults. `SAFE_POINTS` are rock crevices at the west foot of a knoll,
+boulders either side (`props.ts`). `RACER_HOMES` are spots round the knolls (only on the far side
+of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals and props off the walls.
 
 ## Racer snakes (`snakeBody.ts`, `racers.ts`, `assets-src/snake.py`)
 
@@ -47,10 +51,14 @@ straight line from the nest to the colony.
   They come up from burrows round the nest, dash and freeze toward the colony, freeze while watched,
   dive for a bush when chased, and are replaced after being caught or getting home.
 - `colony.ts`: five adults (the lizard model ×3.4, tinted), idle, solid (a ball per spine joint).
-- `run.ts`: ready → running (first movement) → caught (2.5 s in the coils, then back at the nest)
-  or home. R restarts. Goals: reach the colony, freeze until a watching snake looks away, hide from a
-  hunting snake, outrun one, cross without being chased, cross in under 30 s.
-- `markers.ts`: a pale ring at the nest; a golden light column (unfogged, additive, fades as the
+- `run.ts`: ready → running (first movement) → caught (2.5 s in the coils) or home. Reaching a safe
+  point sets the checkpoint: inside it no snake hunts the lizard (`BodyPrey.huntable`), and a later
+  catch puts the lizard back there with the clock still running; caught before the first, it starts
+  over at the nest. R restarts. Goals: shelter in a safe point, reach the colony, freeze until a
+  watching snake looks away, hide from a hunting snake, outrun one, cross without being chased,
+  cross in under 60 s.
+- `markers.ts`: a pale ring at the nest; a teal column and ring at each safe point (pale green once
+  reached); a golden light column (unfogged, additive, fades as the
   camera comes in) and ring at the colony. `hud.ts`: intro card, clock and best, distance and arrow
   to the light, danger warning, messages, controls.
 
@@ -66,5 +74,6 @@ left open between patches.
 ## Tests
 
 `tests/dunes.spec.ts` with `tests/helpers/bootDunes.ts`, which holds the snakes and hatchlings
-still unless a test asks for them. Racer 2 lies on the open nesting flat with a clear view about
-0.75 m out (further, dune swells hide the lizard from its eye), so hunting tests use it.
+still unless a test asks for them. Hunting tests lay racer 2 down (`placeRacer`) on the open
+nesting flat at (-5.2, -1.6) facing east, which has a clear view about 0.75 m out (further, dune
+swells hide the lizard from its eye).

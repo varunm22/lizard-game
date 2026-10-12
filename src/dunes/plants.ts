@@ -2,10 +2,10 @@ import { crowds, type PlantKind, type Placement } from '../world/plants';
 import { WATER_Y } from '../world/shore';
 import { rng, smoothstep, valueNoise } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
-import { BURROWS, COLONY, cove, duneBelt, duneLava, duneRidges, duneSand, duneShoreX, NEST, RACER_HOMES } from './layout';
+import { BURROWS, COLONY, cove, DUNES_EDGE, duneBelt, duneLava, duneRidges, duneSand, duneShoreX, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 
 const SEED = 88;
-const EDGE = 3.85;
+const EDGE = DUNES_EDGE;
 const shape = { hump: 0, lee: 0 };
 
 /**
@@ -29,6 +29,7 @@ export function dunePlants(open: (x: number, z: number) => boolean, _clear: { x:
     if (terrainHeight(x, z) < WATER_Y + 0.012) return false;
     if (Math.hypot(x - NEST.x, z - NEST.z) < 0.2 || Math.hypot(x - COLONY.x, z - COLONY.z) < COLONY.r + 0.15) return false;
     if (RACER_HOMES.some((h) => Math.hypot(x - h.x, z - h.z) < 0.2)) return false;
+    if (SAFE_POINTS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r)) return false;
     if (BURROWS.some((b) => Math.hypot(x - b.x, z - b.z) < 0.12)) return false;
     const lava = duneLava(x, z);
     if (kind === 'tiquilia' ? lava < 0.6 : lava > 0.3) return false;
@@ -69,21 +70,21 @@ export function dunePlants(open: (x: number, z: number) => boolean, _clear: { x:
     duneRidges(x, z, shape);
     return duneSand(x, z) * duneBelt(x) * Math.max(shape.hump, shape.lee) * (0.3 + 0.7 * patchy(x, z));
   };
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 380; i++) {
     const [cx, cz] = somewhere(dune);
     const n = Math.round(range(4, 11));
     for (let j = 0; j < n; j++) add('grass', ...around(cx, cz, range(0.05, 0.13)), range(0.55, 0.9));
   }
   // Odd tufts over the flats, the nesting flat too.
   const flat = (x: number, z: number) => duneSand(x, z) * (s(x, z) < -0.5 ? 1 : 0) * patchy(x, z) * 0.6;
-  for (let i = 0; i < 260; i++) add('grass', ...somewhere(flat), range(0.5, 0.8));
+  for (let i = 0; i < 700; i++) add('grass', ...somewhere(flat), range(0.5, 0.8));
   // Morning glory runners: out across the hollows and the lower slopes, from the back of the beach.
   const runners = (x: number, z: number) => {
     duneRidges(x, z, shape);
     const hollow = 1 - Math.max(shape.hump, shape.lee) * duneBelt(x);
-    return duneSand(x, z) * hollow * smoothstep(-3.2, -2, x) * patchy(x, z) * (s(x, z) < -0.25 ? 1 : 0);
+    return duneSand(x, z) * hollow * smoothstep(-5.0, -4.0, x) * patchy(x, z) * (s(x, z) < -0.25 ? 1 : 0);
   };
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 190; i++) {
     let [x, z] = somewhere(runners);
     // A runner trails off in one direction, a vine's length, leaves every few cm.
     const dir = range(0, 2 * Math.PI);
@@ -99,14 +100,14 @@ export function dunePlants(open: (x: number, z: number) => boolean, _clear: { x:
     const d = -s(x, z);
     return duneSand(x, z) * smoothstep(0.08, 0.2, d) * smoothstep(0.9, 0.45, d) * (0.4 + 0.6 * cove(z));
   };
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 200; i++) {
     const [cx, cz] = somewhere(strand);
     const n = Math.round(range(4, 10));
     for (let j = 0; j < n; j++) add('sesuvium', ...around(cx, cz, 0.1), range(0.7, 1.2));
   }
   // Tiquilia on the lava, in scattered grey mounds.
   const lava = (x: number, z: number) => (duneLava(x, z) > 0.7 && s(x, z) < -0.1 ? 1 : 0);
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 220; i++) {
     const [cx, cz] = somewhere(lava);
     const n = Math.round(range(2, 6));
     for (let j = 0; j < n; j++) add('tiquilia', ...around(cx, cz, 0.12), range(0.7, 1.3));

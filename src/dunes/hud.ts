@@ -68,7 +68,8 @@ export function createDunesHud(): DunesHud {
     'You have just hatched. Cross the dunes to the adult iguanas on the shore, under the <b>golden light</b>.' +
     '<ul><li>Racer snakes hunt by <b>movement</b>. When one lifts its head at you, <b>freeze</b>.</li>' +
     '<li>Duck into a <b>burrow</b> or under a <b>saltbush</b> to hide.</li>' +
-    '<li>A snake is quick off the mark but tires: run when it looks away.</li></ul>' +
+    '<li>A snake is quick off the mark but tires: run when it looks away.</li>' +
+    '<li>Teal lights mark <b>safe points</b>. Caught after reaching one, you start again from there.</li></ul>' +
     '<span class="go">Move to start.</span>';
   document.body.appendChild(intro);
 

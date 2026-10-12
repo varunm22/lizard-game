@@ -3,22 +3,27 @@ import { ridgedNoise, rng, smoothstep, valueNoise } from '../world/noise';
 import { lavaRelief, SEA_DEPTH, WATER_Y } from '../world/shore';
 
 /**
- * The nesting dunes (`?level=dunes`), laid out like the hatching grounds on Fernandina: a flat of
- * pale sand pocked with nest burrows in the west, where the lizard hatches; a belt of low dunes,
- * their crests running SW-NE across the trade wind, broken into separate dunes with gaps between;
- * tongues and knolls of black lava poking up through the sand, where the racer snakes lie up; and
- * a black lava shore to the east with a little sandy cove, where the adult colony basks. The sea
- * lies to the east as on the island, so the water, its swells and swimming work the same.
+ * The nesting dunes (`?level=dunes`), laid out like the hatching grounds on Fernandina, a 14 m
+ * square crossed west to east in four stretches: a flat of pale sand pocked with nest burrows,
+ * where the lizard hatches; a first belt of dunes, their crests running SW-NE across the trade
+ * wind, broken into separate dunes with gaps between; a field of black lava tongues and knolls with
+ * sand between, where most of the racer snakes lie up; and a second belt of dunes behind the beach,
+ * then the black lava shore with a sandy cove, where the adult colony basks. Two safe points, rock
+ * crevices at the foot of a knoll, split the crossing. The sea lies to the east as on the island,
+ * so the water, its swells and swimming work the same.
  */
 
-/** X of the waterline (m) at a given z: a few slow bends, a little further out than the island's. */
+/** Inside this (m, either way from the middle in x and z) the dunes' animals and props keep off the walls. */
+export const DUNES_EDGE = 6.85;
+
+/** X of the waterline (m) at a given z: a few slow bends. */
 export function duneShoreX(z: number): number {
-  return 2.45 + 0.2 * Math.sin(0.8 * z + 1.0) + 0.08 * Math.sin(2.3 * z - 0.4);
+  return 5.6 + 0.3 * Math.sin(0.5 * z + 1.0) + 0.1 * Math.sin(1.7 * z - 0.4);
 }
 
-/** How much the coast at z is the sandy cove rather than lava (0 lava, 1 sand): z 0.65 to 1.75. */
+/** How much the coast at z is the sandy cove rather than lava (0 lava, 1 sand): z 1.4 to 3. */
 export function cove(z: number): number {
-  return smoothstep(0.45, 0.8, z) * smoothstep(1.95, 1.6, z);
+  return smoothstep(1.15, 1.6, z) * smoothstep(3.3, 2.85, z);
 }
 
 /**
@@ -36,7 +41,7 @@ export interface Burrow {
  * The lizard's own burrow, where it hatches: its tunnel runs west into the sand, so it comes out
  * facing east, toward the sea it can't yet see.
  */
-const NEST_BURROW: Burrow = { x: -3.32, z: 0.35, yaw: -Math.PI / 2, size: 1 };
+const NEST_BURROW: Burrow = { x: -6.2, z: 0.4, yaw: -Math.PI / 2, size: 1 };
 
 /** Where the lizard starts: just inside its burrow's mouth, facing out. */
 export const NEST = { x: NEST_BURROW.x + 0.035, z: NEST_BURROW.z, yaw: Math.PI / 2 };
@@ -45,10 +50,50 @@ export const NEST = { x: NEST_BURROW.x + 0.035, z: NEST_BURROW.z, yaw: Math.PI /
  * The finish: a patch of the lava shore where the adult colony basks, just above the waves. The run
  * is over once the lizard's feet are within `r` of its middle, at the edge of the adults lying there.
  */
-export const COLONY = { x: duneShoreX(-0.35) - 0.42, z: -0.35, r: 0.6 };
+export const COLONY = { x: duneShoreX(-0.6) - 0.45, z: -0.6, r: 0.6 };
+
+/**
+ * The safe points: a crevice at the foot of a lava knoll, part way across. Within `r` the lizard is
+ * out of every snake's reach, and once it has reached one, a catch sends it back there rather than
+ * to the nest. `yaw` is the way out of it, toward the next stretch.
+ */
+export const SAFE_POINTS = [
+  { x: -1.86, z: 0.12, r: 0.2, yaw: Math.PI / 2 },
+  { x: 1.48, z: -0.34, r: 0.2, yaw: Math.PI / 2 },
+] as const;
 
 /** Where the trade wind blows the sand: from the south-east toward the north-west (unit, x and z). */
 export const WIND = { x: -0.86, z: -0.51 };
+
+/** The black lava flows: tongues running in from the shore, as points along each with its half-width there (m). */
+const FLOWS: { pts: [number, number][]; w: number[] }[] = [
+  // The lava field in the middle: tongues reaching in from the north and the south.
+  { pts: [[-0.5, 7.4], [-0.1, 5.2], [-0.8, 3.4], [-0.3, 1.9]], w: [0.75, 0.6, 0.45, 0.22] },
+  { pts: [[0.5, -7.4], [0.95, -5.1], [0.2, -3.1], [0.75, -1.9]], w: [0.75, 0.6, 0.45, 0.22] },
+  // From the shore, north and south of the colony.
+  { pts: [[7.4, 5.0], [5.0, 4.5], [3.6, 5.1], [2.4, 4.6]], w: [0.95, 0.7, 0.5, 0.25] },
+  { pts: [[7.4, -4.6], [4.8, -5.0], [3.4, -4.3], [2.5, -4.8]], w: [0.95, 0.7, 0.5, 0.25] },
+];
+/** Lava knolls standing out of the sand: the snakes' lookouts, and the two safe points' crevices. */
+export const KNOLLS = [
+  // First dunes.
+  { x: -3.6, z: 1.6, r: 0.42 },
+  { x: -2.75, z: -1.15, r: 0.4 },
+  { x: -3.95, z: -2.8, r: 0.34 },
+  // The first safe point's.
+  { x: -1.28, z: 0.12, r: 0.52 },
+  // The lava field.
+  { x: -0.15, z: 1.05, r: 0.45 },
+  { x: 0.4, z: -1.0, r: 0.5 },
+  { x: 1.0, z: 2.5, r: 0.4 },
+  { x: -0.6, z: -2.7, r: 0.38 },
+  // The second safe point's.
+  { x: 2.0, z: -0.34, r: 0.48 },
+  // Beach dunes.
+  { x: 3.3, z: 1.45, r: 0.38 },
+  { x: 3.6, z: -1.95, r: 0.42 },
+  { x: 2.7, z: 3.3, r: 0.3 },
+] as const;
 
 /**
  * The nest burrows: dozens of females dig in the same flat each season. Mostly in the west, the
@@ -57,16 +102,27 @@ export const WIND = { x: -0.86, z: -0.51 };
 export const BURROWS: Burrow[] = (() => {
   const rand = rng(97);
   const list: Burrow[] = [NEST_BURROW];
-  for (let i = 0; i < 4000 && list.length < 34; i++) {
-    const x = -3.85 + rand() * 1.9;
-    const z = -3.7 + rand() * 7.4;
-    // Thicker toward the west, where the sand is deep and flat.
-    if (rand() > smoothstep(-1.9, -3.2, x) + 0.15) continue;
-    if (list.some((b) => Math.hypot(b.x - x, b.z - z) < 0.36)) continue;
-    // The run out of the lizard's own burrow is clear.
-    if (Math.abs(z - NEST.z) < 0.22 && x > NEST.x - 0.1 && x < NEST.x + 0.75) continue;
+  const dig = (x: number, z: number) => {
+    if (list.some((b) => Math.hypot(b.x - x, b.z - z) < 0.36)) return;
+    // The run out of the lizard's own burrow is clear, and the safe points.
+    if (Math.abs(z - NEST.z) < 0.22 && x > NEST.x - 0.1 && x < NEST.x + 0.75) return;
+    if (SAFE_POINTS.some((p) => Math.hypot(p.x - x, p.z - z) < 0.5)) return;
     // Dug into the wind's lee mostly: tunnels lean west-ish, with plenty of scatter.
     list.push({ x, z, yaw: -Math.PI / 2 + (rand() - 0.5) * 2.4, size: 0.85 + rand() * 0.35 });
+  };
+  // The nesting flat, thick toward the west where the sand is deep and flat.
+  for (let i = 0; i < 6000 && list.length < 48; i++) {
+    const x = -6.85 + rand() * 2.4;
+    const z = -6.6 + rand() * 13.2;
+    if (rand() > smoothstep(-4.4, -5.8, x) + 0.15) continue;
+    dig(x, z);
+  }
+  // A few more out across the sand, dug by females that went further: somewhere to duck into.
+  for (let i = 0; i < 6000 && list.length < 70; i++) {
+    const x = -4.4 + rand() * 8.4;
+    const z = -6.4 + rand() * 12.8;
+    if (lavaShape(x, z) > 0 || x > duneShoreX(z) - 1.1) continue;
+    dig(x, z);
   }
   return list;
 })();
@@ -116,20 +172,6 @@ function burrowRelief(x: number, z: number, out = { h: 0, hole: 0, spoil: 0 }) {
 }
 const relief = { h: 0, hole: 0, spoil: 0 };
 
-/** The black lava flows: tongues running in from the shore, as points along each with its half-width there (m). */
-const FLOWS: { pts: [number, number][]; w: number[] }[] = [
-  { pts: [[3.2, 2.7], [2.0, 2.35], [1.0, 2.75], [0.0, 2.45], [-0.8, 2.85], [-1.4, 3.3]], w: [0.8, 0.65, 0.55, 0.45, 0.32, 0.22] },
-  { pts: [[3.2, -2.5], [2.1, -2.75], [1.2, -2.15], [0.45, -2.4], [-0.1, -2.05]], w: [0.85, 0.65, 0.5, 0.38, 0.22] },
-];
-/** Lava knolls standing out of the dunes: the snakes' lookouts. */
-export const KNOLLS = [
-  { x: -0.75, z: 0.95, r: 0.42 },
-  { x: 0.55, z: -0.7, r: 0.5 },
-  { x: -1.75, z: -1.3, r: 0.36 },
-  { x: 1.1, z: 0.95, r: 0.36 },
-  { x: -1.6, z: 1.95, r: 0.3 },
-  { x: -0.35, z: -1.35, r: 0.26 },
-] as const;
 
 /** Distance from (x, z) to the segment from a to b, and how far along it (0 to 1) the nearest point is. */
 function toSegment(x: number, z: number, a: [number, number], b: [number, number]) {
@@ -159,15 +201,20 @@ function lavaShape(x: number, z: number): number {
 /** Height of the sand alone at (x, z), before the lava and the coast. */
 function sandHeight(x: number, z: number): number {
   // Rising gently inland from the back of the shore, with long low swells and small bumps.
-  const rise = 0.035 + 0.075 * smoothstep(1.8, -3.6, x);
+  const rise = 0.035 + 0.12 * smoothstep(4.8, -6.6, x);
   const swell = valueNoise(x / 1.6 + 3, z / 1.6 - 8, 41) * 0.03;
   const bumps = valueNoise(x / 0.4 - 2, z / 0.4 + 5, 42) * 0.006;
   return rise + swell + bumps + duneRidges(x, z) * duneBelt(x) + burrowRelief(x, z, relief).h;
 }
 
-/** Where the dunes are, 0 to 1: a belt across the middle, and bigger ones out past the west wall. */
+/**
+ * Where the dunes are, 0 to 1: a belt past the nesting flat, a taller one behind the beach, and
+ * bigger ones out past the west wall.
+ */
 export function duneBelt(x: number): number {
-  return smoothstep(1.7, 0.9, x) * (smoothstep(-2.95, -2.05, x) + 1.6 * smoothstep(-4.3, -5.6, x));
+  const first = smoothstep(-4.9, -4.2, x) * smoothstep(-1.4, -2.1, x);
+  const beach = 1.2 * smoothstep(2.0, 2.6, x) * smoothstep(4.8, 4.1, x);
+  return first + beach + 1.6 * smoothstep(-7.3, -8.6, x);
 }
 
 /**
@@ -197,7 +244,7 @@ export function duneRidges(x: number, z: number, shape?: { hump: number; lee: nu
 
 /** Height of bare lava at (x, z): standing a few cm proud of the sand, rough and ropy. */
 function lavaHeight(x: number, z: number): number {
-  const rise = 0.035 + 0.075 * smoothstep(1.8, -3.6, x);
+  const rise = 0.035 + 0.12 * smoothstep(4.8, -6.6, x);
   const swell = valueNoise(x / 1.6 + 3, z / 1.6 - 8, 41) * 0.03;
   return rise + swell + 0.06 + lavaRelief(x, z, 0.035) + valueNoise(x / 0.5 + 9, z / 0.5, 54) * 0.015;
 }
@@ -302,14 +349,21 @@ export function burrowDepth(x: number, z: number): number {
  * watching the sand, most of them near the straight way from the nest to the colony. Each lies
  * coiled with its head pointing along `yaw`.
  */
-export const RACER_HOMES = [
-  { x: -1.0, z: 0.62, yaw: -2.2 },
-  { x: 0.22, z: -0.42, yaw: -1.4 },
-  { x: -1.95, z: -1.0, yaw: -0.9 },
-  { x: 0.82, z: 1.2, yaw: -1.9 },
-  { x: -1.42, z: 1.72, yaw: -2.6 },
-  { x: 0.3, z: 2.08, yaw: -2.8 },
-  { x: 1.5, z: -0.8, yaw: -1.6 },
-  { x: 1.55, z: 0.35, yaw: -1.5 },
-  { x: 0.55, z: -1.86, yaw: -0.4 },
-] as const;
+const HOME_SPOTS: [knoll: number, facing: number][] = [
+  [0, -2.3], [0, 2.2], [1, -1.0], [1, 1.6], [2, -0.6],
+  // The first safe point's knoll: only on its far side, looking out over the lava field.
+  [3, 1.9],
+  [4, -1.9], [4, 1.1], [5, -1.5], [5, 2.4], [6, -2.2], [7, 0.4],
+  // The second safe point's: its far side.
+  [8, 2.0],
+  [9, -1.6], [10, -1.2], [11, -2.4],
+];
+export const RACER_HOMES: readonly { x: number; z: number; yaw: number }[] = [
+  ...HOME_SPOTS.map(([k, a]) => {
+    const n = KNOLLS[k];
+    return { x: n.x + Math.sin(a) * (n.r + 0.08), z: n.z + Math.cos(a) * (n.r + 0.08), yaw: a };
+  }),
+  // On the shore rocks, short of the colony.
+  { x: 4.55, z: 1.15, yaw: -1.7 },
+  { x: 4.45, z: -2.55, yaw: -1.3 },
+];

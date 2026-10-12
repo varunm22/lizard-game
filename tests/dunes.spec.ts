@@ -4,10 +4,11 @@ import { screenshot } from './helpers/screenshot';
 
 /**
  * The nesting dunes (`?level=dunes`): the ground, the racer snakes' bodies and hunting, and the run
- * from the nest to the colony. Racer 2 lies up on the open nesting flat with a clear view, so the
- * hunting tests put the lizard in front of it.
+ * from the nest to the colony, past its safe points. The hunting tests lay racer 2 down on the open
+ * nesting flat facing east (`LOOKOUT`), where it has a clear view, and put the lizard in front of it.
  */
 const RACER = 2;
+const LOOKOUT = { x: -5.2, z: -1.6, yaw: Math.PI / 2 };
 
 test('the dunes load: the ground, the props on it, the snakes lying up, the run waiting at the nest', async ({ page }) => {
   const errors = await bootDunes(page);
@@ -29,21 +30,23 @@ test('the dunes load: the ground, the props on it, the snakes lying up, the run 
   expect(s.obstacles).toBeGreaterThan(60);
   expect(s.sunk).toBe(0);
   expect(s.bushes).toBeGreaterThan(10);
-  expect(s.racers.length).toBe(9);
+  expect(s.racers.length).toBeGreaterThan(12);
   for (const r of s.racers) {
     expect(r.state).toBe('lurk');
     expect(r.trail).toBeGreaterThanOrEqual(r.length);
   }
   expect(s.run.state).toBe('ready');
   expect(Math.hypot(s.player.x - s.marks.start.x, s.player.z - s.marks.start.z)).toBeLessThan(0.02);
-  expect(Math.hypot(s.player.x - s.marks.finish.x, s.player.z - s.marks.finish.z)).toBeGreaterThan(4);
+  expect(Math.hypot(s.player.x - s.marks.finish.x, s.player.z - s.marks.finish.z)).toBeGreaterThan(10);
+  expect(s.marks.safe.length).toBe(2);
   await screenshot(page, 'dunes-start.png');
 });
 
 test('a racer sees a lizard moving, chases it and strikes, its body sliding along its own track; the run starts over', async ({ page }) => {
   await bootDunes(page, { racers: [RACER] });
-  const s = await page.evaluate((ri) => {
+  const s = await page.evaluate(({ ri, lookout }) => {
     const g = window.__dunes!;
+    g.placeRacer(ri, lookout.x, lookout.z, lookout.yaw);
     const home = g.racers()[ri];
     const r = g.racers()[ri];
     g.teleport(r.x + Math.sin(r.course) * 0.6, r.z + Math.cos(r.course) * 0.6, r.course + Math.PI / 2);
@@ -60,12 +63,12 @@ test('a racer sees a lizard moving, chases it and strikes, its body sliding alon
     const caught = g.run();
     g.advance(170);
     return { seen, body, caught, after: g.run(), player: g.player(), start: g.marks().start, racer: g.racers()[ri] };
-  }, RACER);
+  }, { ri: RACER, lookout: LOOKOUT });
   // Head up to watch first, then after it.
   expect(s.seen.indexOf('alert')).toBeGreaterThanOrEqual(0);
   expect(s.seen.indexOf('alert')).toBeLessThan(s.seen.indexOf('chase'));
-  expect(s.seen).toContain('strike');
   expect(s.caught.state).toBe('caught');
+  expect(s.racer.strikes).toBeGreaterThanOrEqual(1);
   expect(s.racer.catches).toBe(1);
   // Each joint sits its own arc back along the path, so they're spaced as on the model (chords of a
   // curve are a little shorter), and every bone of the skin sits on its joint (a bone lies along the
@@ -84,8 +87,9 @@ test('a racer sees a lizard moving, chases it and strikes, its body sliding alon
 
 test('a lizard that holds still is not chased: the snake watches, then looks away', async ({ page }) => {
   await bootDunes(page, { racers: [RACER] });
-  const s = await page.evaluate((ri) => {
+  const s = await page.evaluate(({ ri, lookout }) => {
     const g = window.__dunes!;
+    g.placeRacer(ri, lookout.x, lookout.z, lookout.yaw);
     const r = g.racers()[ri];
     g.teleport(r.x + Math.sin(r.course) * 0.75, r.z + Math.cos(r.course) * 0.75, r.course + Math.PI / 2);
     // A few steps in plain sight, then freeze.
@@ -94,7 +98,7 @@ test('a lizard that holds still is not chased: the snake watches, then looks awa
     const watching = { racer: g.racers()[ri].state, danger: g.run().danger };
     g.advance(260);
     return { watching, later: g.racers()[ri], run: g.run() };
-  }, RACER);
+  }, { ri: RACER, lookout: LOOKOUT });
   expect(s.watching).toEqual({ racer: 'alert', danger: 'watched' });
   expect(s.later.state).toBe('lurk');
   expect(s.later.chases).toBe(0);
@@ -119,6 +123,41 @@ test('a lizard under a saltbush is out of sight', async ({ page }) => {
   }, RACER);
   expect(s.cover).toBe(true);
   expect(s.racer).toBe('lurk');
+});
+
+test('a safe point keeps the lizard out of reach, and a catch after it sends the lizard back there', async ({ page }) => {
+  await bootDunes(page, { racers: [RACER] });
+  const s = await page.evaluate((ri) => {
+    const g = window.__dunes!;
+    const p = g.marks().safe[0];
+    // Walk into the first safe point's crevice from just west of it.
+    g.teleport(p.x - 0.25, p.z, p.yaw);
+    g.setInput({ move: { x: 0, y: 1 }, run: false }, 50);
+    g.advance(50);
+    const inside = g.run();
+    // A snake right by the crevice doesn't come for the lizard shuffling about in it.
+    g.placeRacer(ri, p.x - 0.55, p.z, Math.PI / 2);
+    g.setInput({ move: { x: 1, y: 0.3 }, run: false }, 60);
+    g.advance(60);
+    const watched = g.racers()[ri];
+    // Out in the open in front of a snake, then caught: back at the safe point, the clock running on.
+    g.placeRacer(ri, -5.2, -1.6, Math.PI / 2);
+    g.teleport(-5.2 + 0.5, -1.6, 0);
+    const before = g.run().time;
+    g.setInput({ move: { x: 0, y: 1 }, run: false }, 400);
+    for (let i = 0; i < 40 && g.run().state !== 'caught'; i++) g.advance(6);
+    const caught = g.run();
+    g.setInput({ move: { x: 0, y: 0 } }, 1);
+    g.advance(170);
+    return { inside, watched, caught, after: g.run(), before, player: g.player(), p };
+  }, RACER);
+  expect(s.inside).toMatchObject({ checkpoint: 0, safe: true, state: 'running' });
+  expect(s.inside.goals.find((g) => g.id === 'safe')!.done).toBe(true);
+  expect(s.watched.chases).toBe(0);
+  expect(s.caught.state).toBe('caught');
+  expect(s.after).toMatchObject({ state: 'running', checkpoint: 0, attempts: 1 });
+  expect(s.after.time).toBeGreaterThan(s.before);
+  expect(Math.hypot(s.player.x - s.p.x, s.player.z - s.p.z)).toBeLessThan(0.02);
 });
 
 test('reaching the adults under the light wins the run and ticks off its goals', async ({ page }) => {

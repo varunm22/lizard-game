@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayerController } from '../player/controller';
-import { burrowDepth } from './layout';
+import { burrowDepth, SAFE_POINTS } from './layout';
 import type { Bushes } from './bushes';
 import type { Prey, Racer } from './racers';
 
@@ -44,13 +44,21 @@ export class BodyPrey implements Prey {
     return coverAt(this.bushes, this.f.x, this.f.z);
   }
 
+  /** Free and out on the dunes: not caught, not home, not in a safe point's crevice. */
   huntable() {
-    return this.free();
+    if (!this.free()) return false;
+    this.body.feetAt(1, this.f);
+    return safePointAt(this.f.x, this.f.z) < 0;
   }
 
   caught(by: Racer) {
     this.onCaught(by);
   }
+}
+
+/** The safe point (x, z) is in, by index, or -1. */
+export function safePointAt(x: number, z: number): number {
+  return SAFE_POINTS.findIndex((p) => Math.hypot(x - p.x, z - p.z) < p.r);
 }
 
 /** Whether (x, z) is down a burrow or under a saltbush. */

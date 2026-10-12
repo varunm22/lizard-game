@@ -11,7 +11,7 @@ import type { Bushes } from '../dunes/bushes';
 import { coil, type Racers } from '../dunes/racers';
 import type { Hatchlings } from '../dunes/hatchlings';
 import type { DuneRun } from '../dunes/run';
-import { BURROWS, COLONY, NEST } from '../dunes/layout';
+import { BURROWS, COLONY, NEST, SAFE_POINTS } from '../dunes/layout';
 import { coverAt } from '../dunes/prey';
 
 interface DunesHookContext {
@@ -142,6 +142,8 @@ export function createDunesHooks(ctx: DunesHookContext): DunesTestHooks {
         attempts: run.attempts,
         catches: run.catches,
         finishes: run.finishes,
+        checkpoint: run.checkpoint,
+        safe: run.safe,
         danger: run.danger,
         inCover: coverAt(bushes, f.x, f.z),
         goals: run.goals.list.map((g) => ({ ...g })),
@@ -153,6 +155,6 @@ export function createDunesHooks(ctx: DunesHookContext): DunesTestHooks {
       return bushes.list.map((b) => ({ name: b.name, x: b.x, y: b.y, z: b.z, radius: b.radius, height: b.height, faded: faded.has(b.name) }));
     },
     burrows: () => BURROWS.map((b) => ({ x: b.x, z: b.z, yaw: b.yaw })),
-    marks: () => ({ start: { ...NEST }, finish: { ...COLONY } }),
+    marks: () => ({ start: { ...NEST }, safe: SAFE_POINTS.map((p) => ({ ...p })), finish: { ...COLONY } }),
   };
 }

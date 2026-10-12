@@ -380,6 +380,9 @@ export interface DunesTestHooks
     attempts: number;
     catches: number;
     finishes: number;
+    /** The furthest safe point reached this attempt, or -1, and whether the lizard is in one now. */
+    checkpoint: number;
+    safe: boolean;
     danger: string;
     inCover: boolean;
     goals: { id: string; label: string; done: boolean }[];
@@ -390,7 +393,11 @@ export interface DunesTestHooks
   bushes(): { name: string; x: number; y: number; z: number; radius: number; height: number; faded: boolean }[];
   burrows(): { x: number; z: number; yaw: number }[];
   /** The start and finish: the nest burrow and the colony (its middle and reach). */
-  marks(): { start: { x: number; z: number; yaw: number }; finish: { x: number; z: number; r: number } };
+  marks(): {
+    start: { x: number; z: number; yaw: number };
+    safe: { x: number; z: number; r: number; yaw: number }[];
+    finish: { x: number; z: number; r: number };
+  };
 }
 
 declare global {

@@ -4,8 +4,8 @@ import type { PlayerController } from '../player/controller';
 import type { LizardVisual } from '../player/visual';
 import { terrainHeight } from '../world/terrain';
 import type { Bushes } from './bushes';
-import { COLONY, NEST } from './layout';
-import { BodyPrey, coverAt } from './prey';
+import { COLONY, NEST, SAFE_POINTS } from './layout';
+import { BodyPrey, coverAt, safePointAt } from './prey';
 import type { Racers } from './racers';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
@@ -13,13 +13,15 @@ export type RunState = 'ready' | 'running' | 'caught' | 'home';
 /** Lying in the coils this long (s) before the lizard is back in its burrow. */
 export const CAUGHT_TIME = 2.5;
 /** A crossing this quick (s) counts for the fast goal. */
-export const FAST = 30;
+export const FAST = 60;
 
 /**
  * One go at the crossing: from the nest burrow to the adults under the light. The clock starts as
- * the lizard first moves; a racer's catch ends it (a moment in the coils, then back in the burrow
- * to try again), reaching the colony wins it. R starts over at any time. Also keeps the dunes'
- * goals, ticked off for good the first time each is met.
+ * the lizard first moves. On the way are two safe points, rock crevices no snake reaches into: once
+ * the lizard has reached one, a racer's catch sends it back there (after a moment in the coils) with
+ * the clock still running; caught before the first, it's back in the burrow to start over. Reaching
+ * the colony wins it. R starts over at any time. Also keeps the dunes' goals, ticked off for good
+ * the first time each is met.
  */
 export class DuneRun {
   state: RunState = 'ready';
@@ -29,6 +31,8 @@ export class DuneRun {
   attempts = 1;
   catches = 0;
   finishes = 0;
+  /** The furthest safe point reached on this attempt (index into SAFE_POINTS), or -1. */
+  checkpoint = -1;
   /** Seconds left lying caught. */
   private caughtLeft = 0;
   /** Whether any racer has chased the lizard on this attempt. */
@@ -43,6 +47,9 @@ export class DuneRun {
   onReset: (() => void) | null = null;
   onCaught: (() => void) | null = null;
   onHome: (() => void) | null = null;
+  /** Called as the lizard reaches a safe point for the first time on an attempt, and as it's put back at one after a catch. */
+  onSafe: ((index: number) => void) | null = null;
+  onRespawn: ((index: number) => void) | null = null;
 
   constructor(
     private player: PlayerController,
@@ -58,6 +65,7 @@ export class DuneRun {
       if (p === this.prey && p.speed() < 0.04) this.froze = true;
     };
     const specs: GoalSpec[] = [
+      { id: 'safe', label: 'Shelter in a safe point', met: () => this.checkpoint >= 0 },
       { id: 'shore', label: 'Reach the adults on the shore', met: () => this.finishes > 0 },
       { id: 'freeze', label: 'Freeze till a watching racer looks away', met: () => this.froze },
       { id: 'hide', label: 'Hide from a racer in a burrow or bush', met: () => this.hidingFromHunter(), hold: 1 },
@@ -102,11 +110,28 @@ export class DuneRun {
     this.onCaught?.();
   }
 
+  /** In a safe point's crevice now. */
+  get safe() {
+    this.player.feetAt(1, this.feet);
+    return safePointAt(this.feet.x, this.feet.z) >= 0;
+  }
+
+  /** Back at the last safe point reached, the clock still running, the snakes called off. */
+  private respawn() {
+    const p = SAFE_POINTS[this.checkpoint];
+    this.state = 'running';
+    this.visual.downed = false;
+    this.player.setFeet(this.feet.set(p.x, terrainHeight(p.x, p.z), p.z), p.yaw);
+    this.racers.callOff(this.prey);
+    this.onRespawn?.(this.checkpoint);
+  }
+
   /** Back in the nest burrow, clock reset, the snakes called off. */
   restart() {
     this.state = 'ready';
     this.time = 0;
     this.attempts++;
+    this.checkpoint = -1;
     this.chasedThisRun = false;
     this.visual.downed = false;
     this.player.setFeet(this.feet.set(NEST.x, terrainHeight(NEST.x, NEST.z), NEST.z), NEST.yaw);
@@ -121,6 +146,12 @@ export class DuneRun {
       this.time += dt;
       if (this.danger === 'chased') this.chasedThisRun = true;
       this.player.feetAt(1, this.feet);
+      const safe = safePointAt(this.feet.x, this.feet.z);
+      if (safe > this.checkpoint) {
+        this.checkpoint = safe;
+        this.racers.callOff(this.prey);
+        this.onSafe?.(safe);
+      }
       if (Math.hypot(this.feet.x - COLONY.x, this.feet.z - COLONY.z) < COLONY.r) {
         this.state = 'home';
         this.finishes++;
@@ -131,7 +162,10 @@ export class DuneRun {
     }
     if (this.state === 'caught') {
       this.caughtLeft -= dt;
-      if (this.caughtLeft <= 0) this.restart();
+      if (this.caughtLeft <= 0) {
+        if (this.checkpoint >= 0) this.respawn();
+        else this.restart();
+      }
     }
     this.goals.step(dt);
   }

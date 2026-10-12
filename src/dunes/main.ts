@@ -17,7 +17,7 @@ import { createDunesHooks } from '../debug/createDunesHooks';
 import { createGoalsPanel } from '../goalsPanel';
 import { levelSwitch } from '../level';
 import { ViewCheck } from '../render/viewCheck';
-import { COLONY, NEST, RACER_HOMES } from './layout';
+import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
 import snakeUrl from '../assets/snake.glb?url';
 import propsUrl from '../assets/props.glb?url';
@@ -82,9 +82,27 @@ export async function dunes() {
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
   let introShown = true;
-  run.onCaught = () => hud.message('Caught by a racer snake!', 'Back to your burrow...');
+  /** Seconds left showing a passing message (a safe point reached, put back at one), else null. */
+  let messageLeft: number | null = null;
+  const flashMessage = (title: string, detail: string) => {
+    hud.message(title, detail);
+    messageLeft = 2.5;
+  };
+  run.onCaught = () => {
+    messageLeft = null;
+    hud.message('Caught by a racer snake!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to your burrow...');
+  };
+  run.onSafe = (i) => {
+    markers.reached(i, true);
+    flashMessage(`Safe point ${i + 1} of ${SAFE_POINTS.length}`, 'No snake reaches in here. Caught later, you start again from here.');
+  };
+  run.onRespawn = () => {
+    hud.message(null);
+  };
   run.onReset = () => {
     hud.message(null);
+    messageLeft = null;
+    SAFE_POINTS.forEach((_, i) => markers.reached(i, false));
     followCam.yaw = NEST.yaw;
   };
   run.onHome = () => {
@@ -160,6 +178,10 @@ export async function dunes() {
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     plants.update(pushers, frameDt);
     markers.update(frameDt, camera.position);
+    if (messageLeft !== null && (messageLeft -= frameDt) <= 0) {
+      messageLeft = null;
+      if (run.state === 'running') hud.message(null);
+    }
     if (introShown && run.state !== 'ready') {
       introShown = false;
       hud.intro(false);
