@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
@@ -123,7 +123,6 @@ export class Tortoise {
   ) {
     this.root = gltf.scene;
     toonify(this.root);
-    this.root.traverse((o) => (o.frustumCulled = false));
     const rig = this.root.getObjectByName('Tortoise');
     if (!rig) throw new Error('tortoise.glb has no Tortoise armature');
     this.extras = rig.userData as Extras;

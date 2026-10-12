@@ -17,6 +17,11 @@ export interface GameTestHooks {
    * checking what the game looks like at a display's own frame rate, not just at whole steps.
    */
   frame: (frameDt: number, draw?: boolean) => void;
+  /**
+   * Draw one frame as the game stands and say what it cost: draw calls and triangles, the shadow
+   * pass included, and how many skinned meshes are in the scene (one per creature).
+   */
+  renderStats: () => { calls: number; triangles: number; skinned: number };
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
   /**

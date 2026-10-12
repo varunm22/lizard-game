@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { IGNORE_STEMS, IGNORE_STEMS_AND_IGUANAS, terrainHeight } from '../world/terrain';
 import { lavaCover, ROCK_PILES, TORTOISE_ROUTE } from '../world/layout';
 import { SEA_DEPTH, shoreX, WATER_Y } from '../world/shore';
@@ -73,6 +73,7 @@ export function createTestHooks({
     ready: false,
     advance: () => {},
     frame: () => {},
+    renderStats: () => ({ calls: 0, triangles: 0, skinned: 0 }),
     physicsSteps: 0,
     terrainHeight,
     obstacles: () =>

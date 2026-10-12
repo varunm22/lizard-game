@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { ROCK_PILES } from './layout';
 import { shoreX, WATER_Y } from './shore';
 import { terrainHeight } from './terrain';

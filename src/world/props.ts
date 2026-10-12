@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { loadGltf } from '../render/gltf';
 import { toonGradient } from '../render/toon';
 import { rng } from './noise';

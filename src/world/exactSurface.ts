@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 
 /**
  * Exact stand-ins for small convex colliders, for the queries that fit the drawn lizard to what it's

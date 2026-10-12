@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { PALETTE } from '../render/scene';
 import { toonGradient } from '../render/toon';
 import { terrainHeight } from './terrain';
