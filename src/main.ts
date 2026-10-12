@@ -48,6 +48,9 @@ import tortoiseUrl from './assets/tortoise.glb?url';
 import crabUrl from './assets/crab.glb?url';
 import hawkUrl from './assets/hawk.glb?url';
 import reefUrl from './assets/reef.glb?url';
+import { LEVEL } from './level';
+import { stageSelect } from './stageSelect';
+import { dunes } from './dunes/main';
 
 async function main() {
   // The wasm build loads with the module. The single-file preview build swaps in the compat package
@@ -106,6 +109,7 @@ async function main() {
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
+  stageSelect();
   // One goal per creature, the algae and the fish. They start over each time the page loads.
   let basking = false;
   let canEat = false;
@@ -310,4 +314,5 @@ async function main() {
   };
 }
 
-main();
+if (LEVEL === 'dunes') dunes();
+else main();

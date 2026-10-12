@@ -4,16 +4,22 @@ import { toonGradient } from '../render/toon';
 import { ridgedNoise, smoothstep, valueNoise } from './noise';
 import { forestCover, lavaCover, sandCover, shoreDistance } from './layout';
 import { carveShore, lavaRelief, WATER_Y } from './shore';
+import { LEVEL } from '../level';
+import { duneColour, duneHeight } from '../dunes/layout';
+import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 
-/** Side of the walkable square (m). The physics heightfield covers exactly this. */
-export const TERRAIN_SIZE = 8;
-/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard. */
-const CELLS = 256;
+/**
+ * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes
+ * are a longer crossing than the island, on a bigger square.
+ */
+export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : 8;
+/** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (14 m / 448 on the dunes). */
+const CELLS = LEVEL === 'dunes' ? 448 : 256;
 /**
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -35,11 +41,17 @@ export const IGNORE_BODIES = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~PLAYER_
 export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP;
 
 /**
- * Ground height (m) at a world position. Layered noise, damped to almost flat in the middle of the
+ * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`)
+ * on that level. Everything that stands on or follows the ground reads it from here.
+ */
+export const terrainHeight: (x: number, z: number) => number = LEVEL === 'dunes' ? duneHeight : islandHeight;
+
+/**
+ * The island's ground height (m). Layered noise, damped to almost flat in the middle of the
  * clearing so there's an easy play area, rising gently into the forest, rough where it's lava, a
  * bank at the island's inland rim, and the coast carved in.
  */
-export function terrainHeight(x: number, z: number): number {
+function islandHeight(x: number, z: number): number {
   const r = Math.hypot(x, z);
   const swell = valueNoise(x / 1.3 + 11, z / 1.3 - 4) * 0.05;
   const bumps = valueNoise(x / 0.35 - 7, z / 0.35 + 3) * 0.012;
@@ -79,8 +91,8 @@ const LAVA = new THREE.Color(0x353130);
 const LAVA_CREST = new THREE.Color(0x544c46);
 const LAVA_WET = new THREE.Color(0x222020);
 
-/** Colour of the ground at (x, z), height y, into `c`. */
-function groundColour(x: number, z: number, y: number, c: THREE.Color) {
+/** Colour of the island's ground at (x, z), height y, into `c`. */
+function islandColour(x: number, z: number, y: number, c: THREE.Color) {
   // Clearing: grass with drier patches, bare soil where the noise says so or the ground gets steep.
   const patch = valueNoise(x / 0.5 + 31, z / 0.5 - 17);
   c.copy(GRASS).lerp(DRY, smoothstep(-0.2, 0.5, valueNoise(x / 0.8 - 5, z / 0.8 + 21)));
@@ -104,6 +116,7 @@ function groundColour(x: number, z: number, y: number, c: THREE.Color) {
   }
 }
 const tmp = new THREE.Color();
+const groundColour = LEVEL === 'dunes' ? duneColour : islandColour;
 
 /** A grid of ground vertices `cells` across a square of side `size` centred on the origin; `skip(x, z)` drops a cell. */
 function groundGrid(size: number, cells: number, skip?: (x: number, z: number) => boolean) {
@@ -137,12 +150,14 @@ function groundGrid(size: number, cells: number, skip?: (x: number, z: number) =
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setIndex(index);
   geo.computeVertexNormals();
+  if (LEVEL === 'dunes') rippleAttribute(geo);
   return geo;
 }
 
 /** Build the toon-shaded ground mesh and its Rapier heightfield collider, plus walls at the edge. */
 export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
   const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
+  if (LEVEL === 'dunes') rippleSand(material);
   const inner = new THREE.Mesh(groundGrid(TERRAIN_SIZE, CELLS), material);
   const half = TERRAIN_SIZE / 2;
   const outer = new THREE.Mesh(
