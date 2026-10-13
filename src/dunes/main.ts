@@ -65,7 +65,7 @@ export async function dunes() {
   const hatchlings = await Hatchlings.load(lizardUrl, scene, world, bushes, obstacles);
   hatchlings.racers = racers;
   const colony = await Colony.load(lizardUrl, scene, world);
-  const markers = new Markers(scene);
+  const markers = new Markers(scene, { start: NEST, finish: COLONY, safe: SAFE_POINTS });
   const run = new DuneRun(player, visual, bushes, racers);
   preyList = [run.prey, ...hatchlings.prey];
   const cameraPusher = { x: 0, y: 0, z: 0, r: 0.03 };

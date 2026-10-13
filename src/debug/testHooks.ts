@@ -400,9 +400,84 @@ export interface DunesTestHooks
   };
 }
 
+export interface LagoonTestHooks
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'obstacles' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  /** Each lava heron: state, where it stands and faces, its bill tip (world m), what it sees, and counts. */
+  herons(): {
+    state: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    bill: { x: number; y: number; z: number };
+    sees: boolean;
+    strikes: number;
+    catches: number;
+    paused: boolean;
+  }[];
+  /** One heron as drawn: each bone's world position by name, and its feet (world m). */
+  heronBody(i: number): { bones: Record<string, { x: number; y: number; z: number }>; feet: { x: number; y: number; z: number }[] };
+  /** Stand heron `i` at (x, z) facing `yaw`, waiting there (its spot from now on). */
+  placeHeron(i: number, x: number, z: number, yaw: number): void;
+  /** Whether (x, z) is in a red mangrove's root tangle, and whether a heron could wade there. */
+  tangle(x: number, z: number): boolean;
+  /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */
+  pause(what: { herons?: boolean | number[]; swimmers?: boolean }): void;
+  /** The drift log: state, middle (world m), heading, drift speed, and counts. */
+  log(): {
+    state: string;
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+    speed: number;
+    inChannel: boolean;
+    pushes: number;
+    reachedChannel: number;
+    lost: number;
+    ridden: number;
+    rider: boolean;
+    ends: { x: number; y: number; z: number }[];
+  };
+  /** Put the log floating at (x, z) along `heading`. */
+  placeLog(x: number, z: number, heading: number): void;
+  /** Sharks and rays: kind, where each is. */
+  swimmers(): { kind: string; x: number; y: number; z: number }[];
+  /** The channel's middle and half-width at z, the current there (m/s), and water depth at (x, z). */
+  channel(z: number): { x: number; half: number };
+  current(x: number, z: number): { x: number; z: number };
+  depth(x: number, z: number): number;
+  /** The run, as the dunes'. */
+  run(): {
+    state: string;
+    time: number;
+    best: number | null;
+    attempts: number;
+    catches: number;
+    finishes: number;
+    checkpoint: number;
+    safe: boolean;
+    danger: string;
+    goals: { id: string; label: string; done: boolean }[];
+  };
+  restart(): void;
+  /** Red mangroves: where each stands and how far its roots reach. */
+  mangroves(): { name: string; x: number; z: number; reach: number; sapling: boolean }[];
+  /** Start, safe point, finish, the log's pool, the creek, and the narrows where the log jams. */
+  marks(): {
+    start: { x: number; z: number; yaw: number };
+    safe: { x: number; z: number; r: number; yaw: number }[];
+    finish: { x: number; z: number; r: number };
+    pool: { x: number; z: number; r: number };
+    creek: { z: number; half: number };
+    jam: { x: number; z: number };
+  };
+}
+
 declare global {
   interface Window {
     __game?: GameTestHooks;
     __dunes?: DunesTestHooks;
+    __lagoon?: LagoonTestHooks;
   }
 }

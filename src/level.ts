@@ -1,14 +1,20 @@
-/** Which level this page plays: the island (the default) or the nesting dunes (`?level=dunes`). */
-export type Level = 'island' | 'dunes';
+/**
+ * Which level this page plays: the island (the default), the nesting dunes (`?level=dunes`) or the
+ * mangrove lagoon (`?level=lagoon`).
+ */
+export type Level = 'island' | 'dunes' | 'lagoon';
+
+const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon'];
+const known = (name: string | null): Level => (LEVELS as readonly (string | null)[]).includes(name) ? (name as Level) : 'island';
 
 const KEY = 'lizard-level';
 
 function chosen(): Level {
   const param = new URLSearchParams(location.search).get('level');
-  if (param) return param === 'dunes' ? 'dunes' : 'island';
+  if (param) return known(param);
   // Where the URL can't carry it (an embedded preview), the stage picker remembers it for the tab.
   try {
-    return sessionStorage.getItem(KEY) === 'dunes' ? 'dunes' : 'island';
+    return known(sessionStorage.getItem(KEY));
   } catch {
     return 'island';
   }

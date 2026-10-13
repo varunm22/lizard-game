@@ -1,5 +1,5 @@
 /**
- * The dunes' screen: an intro card until the lizard first moves, the run's clock and how far the
+ * A run's screen (the dunes', and the lagoon's with its own words): an intro card until the lizard first moves, the run's clock and how far the
  * light is (with an arrow toward it) at the top, a warning while a snake is watching or after the
  * lizard, a big message when it's caught or makes it, and the controls row at the bottom.
  */
@@ -52,7 +52,27 @@ export function clock(t: number) {
   return `${m}:${s.toFixed(1).padStart(4, '0')}`;
 }
 
-export function createDunesHud(): DunesHud {
+/** A stage's own words: the intro card (HTML) and the warnings while watched and chased. */
+export interface HudText {
+  intro: string;
+  watched: string;
+  chased: string;
+}
+
+export const DUNES_TEXT: HudText = {
+  intro:
+    '<h2>Nesting dunes</h2>' +
+    'You have just hatched. Cross the dunes to the adult iguanas on the shore, under the <b>golden light</b>.' +
+    '<ul><li>Racer snakes hunt by <b>movement</b>. When one lifts its head at you, <b>freeze</b>.</li>' +
+    '<li>Duck into a <b>burrow</b> or under a <b>saltbush</b> to hide.</li>' +
+    '<li>A snake is quick off the mark but tires: run when it looks away.</li>' +
+    '<li>Teal lights mark <b>safe points</b>. Caught after reaching one, you start again from there.</li></ul>' +
+    '<span class="go">Move to start.</span>',
+  watched: 'A racer is watching you. Freeze!',
+  chased: 'Chased! Run for cover!',
+};
+
+export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -63,14 +83,7 @@ export function createDunesHud(): DunesHud {
 
   const intro = document.createElement('div');
   intro.className = 'dunes-intro';
-  intro.innerHTML =
-    '<h2>Nesting dunes</h2>' +
-    'You have just hatched. Cross the dunes to the adult iguanas on the shore, under the <b>golden light</b>.' +
-    '<ul><li>Racer snakes hunt by <b>movement</b>. When one lifts its head at you, <b>freeze</b>.</li>' +
-    '<li>Duck into a <b>burrow</b> or under a <b>saltbush</b> to hide.</li>' +
-    '<li>A snake is quick off the mark but tires: run when it looks away.</li>' +
-    '<li>Teal lights mark <b>safe points</b>. Caught after reaching one, you start again from there.</li></ul>' +
-    '<span class="go">Move to start.</span>';
+  intro.innerHTML = text.intro;
   document.body.appendChild(intro);
 
   const top = document.createElement('div');
@@ -131,7 +144,7 @@ export function createDunesHud(): DunesHud {
       lastDanger = level;
       danger.className = `dunes-danger ${level}`;
       edge.className = `dunes-edge ${level}`;
-      danger.textContent = level === 'watched' ? 'A racer is watching you. Freeze!' : level === 'chased' ? 'Chased! Run for cover!' : '';
+      danger.textContent = level === 'watched' ? text.watched : level === 'chased' ? text.chased : '';
     },
     message(title, detail) {
       message.classList.toggle('show', title !== null);
