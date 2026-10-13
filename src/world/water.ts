@@ -5,6 +5,7 @@ import { terrainHeight } from './terrain';
 import { LEVEL } from '../level';
 
 const LAGOON = LEVEL === 'lagoon';
+const TUNNELS = LEVEL === 'tunnels';
 
 /** Ripples alive at once; a new one replaces the oldest. */
 const MAX_RIPPLES = 16;
@@ -20,20 +21,31 @@ const RIPPLE_LIFE = { base: 1.4, perStrength: 1.2 };
  * The sheet runs from `west` (OCEAN_X0 off the island) out to the horizon (m east), and this far north and south. Its grid
  * is ~8 cm, enough for the swells; ripple rings and the shore wash are shaded per pixel.
  */
-const SHEET = LAGOON ? { west: -10, east: 10, halfWidth: 10, cell: 0.08 } : { west: OCEAN_X0, east: 12, halfWidth: 9, cell: 0.08 };
+const SHEET = TUNNELS
+  ? { west: -5, east: 5, halfWidth: 5, cell: 0.08 }
+  : LAGOON
+    ? { west: -10, east: 10, halfWidth: 10, cell: 0.08 }
+    : { west: OCEAN_X0, east: 12, halfWidth: 9, cell: 0.08 };
 /**
  * Water depth is read from a texture of the sea floor over this stretch (m), one texel every
  * DEPTH_TEXEL; past it the sea is open-water deep.
  */
-const DEPTH_MAP = LAGOON ? { x0: -6.5, x1: 6.5, z0: -6.5, z1: 6.5 } : { x0: OCEAN_X0, x1: 5, z0: -6, z1: 6 };
+const DEPTH_MAP = TUNNELS
+  ? { x0: -5, x1: 5, z0: -5, z1: 5 }
+  : LAGOON
+    ? { x0: -6.5, x1: 6.5, z0: -6.5, z1: 6.5 }
+    : { x0: OCEAN_X0, x1: 5, z0: -6, z1: 6 };
 /**
  * The water's tint over the shallows and the deep, how clear it is at its thinnest and thickest,
  * and how far the wash of foam runs up the shore (m): turquoise sea off the island and the dunes;
- * the lagoon's calm, tea-green water, darker over the mud, with barely a ripple at its edge.
+ * the lagoon's calm, tea-green water, darker over the mud, with barely a ripple at its edge; the
+ * tunnels' still, clear, dark seep water.
  */
-const LOOK = LAGOON
-  ? { shallow: '0.46, 0.72, 0.58', deep: '0.14, 0.38, 0.36', alpha: '0.3, 0.86', wash: 0.4 }
-  : { shallow: '0.42, 0.86, 0.82', deep: '0.16, 0.5, 0.66', alpha: '0.35, 0.82', wash: 1 };
+const LOOK = TUNNELS
+  ? { shallow: '0.3, 0.42, 0.4', deep: '0.08, 0.16, 0.18', alpha: '0.25, 0.8', wash: 0.2 }
+  : LAGOON
+    ? { shallow: '0.46, 0.72, 0.58', deep: '0.14, 0.38, 0.36', alpha: '0.3, 0.86', wash: 0.4 }
+    : { shallow: '0.42, 0.86, 0.82', deep: '0.16, 0.5, 0.66', alpha: '0.35, 0.82', wash: 1 };
 const DEPTH_TEXEL = 0.025;
 
 /** Sea-floor depth below the surface (m) at a world (x, z), from the depth texture. */

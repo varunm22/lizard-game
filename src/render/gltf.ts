@@ -10,6 +10,11 @@ export function loadGltf(url: string): Promise<GLTF> {
   return url.startsWith('data:') ? loader.parseAsync(dataUrlToBuffer(url), '') : loader.loadAsync(url);
 }
 
+/** Load a binary asset by URL, decoding it in place when the single-file preview inlined it as a data: URL. */
+export async function loadBinary(url: string): Promise<ArrayBuffer> {
+  return url.startsWith('data:') ? dataUrlToBuffer(url) : (await fetch(url)).arrayBuffer();
+}
+
 function dataUrlToBuffer(url: string): ArrayBuffer {
   const bytes = atob(url.slice(url.indexOf(',') + 1));
   const buf = new Uint8Array(bytes.length);

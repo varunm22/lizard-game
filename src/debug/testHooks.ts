@@ -474,10 +474,47 @@ export interface LagoonTestHooks
   };
 }
 
+export interface TunnelsTestHooks
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  /** The run: state, clock, falls through holes (by hole name), climbs, leaps, swim, skylights basked under, goals. */
+  run(): {
+    state: string;
+    time: number;
+    best: number | null;
+    attempts: number;
+    finishes: number;
+    drops: string[];
+    climbs: number;
+    leaps: number;
+    swam: boolean;
+    basked: boolean[];
+    goals: { id: string; label: string; done: boolean }[];
+  };
+  restart(): void;
+  /** The layout from `tunnels.json`: floors, start, finish, holes, rubble piles, skylights, the flooded dip. */
+  layout(): {
+    floors: number[];
+    top: number;
+    start: { x: number; z: number; yaw: number };
+    finish: { x: number; z: number; r: number };
+    holes: { kind: string; name: string; a: { x: number; z: number }; b: { x: number; z: number }; r: number }[];
+    ramps: { name: string; foot: { x: number; z: number }; top: { x: number; z: number } }[];
+    /** Each rubble pile's steps: how many, each riser's height and the treads' depth (m). */
+    steps: { count: number; riser: number; tread: number };
+    skylights: { name: string; x: number; z: number; r: number }[];
+    pools: { x: number; z: number; rx: number; rz: number; depth: number }[];
+  };
+  /** The baked light at a point: sun (open sky along the sun's slant) and glow, 0 to 1. */
+  light(x: number, y: number, z: number): { sun: number; glow: number };
+  /** The rock's surface straight down from (x, from, z), or null: the floor under a point on either floor. */
+  floorBelow(x: number, z: number, from: number): number | null;
+}
+
 declare global {
   interface Window {
     __game?: GameTestHooks;
     __dunes?: DunesTestHooks;
     __lagoon?: LagoonTestHooks;
+    __tunnels?: TunnelsTestHooks;
   }
 }

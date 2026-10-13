@@ -52,6 +52,7 @@ import { LEVEL } from './level';
 import { stageSelect } from './stageSelect';
 import { dunes } from './dunes/main';
 import { lagoon } from './lagoon/main';
+import { tunnels } from './tunnels/main';
 
 async function main() {
   // The wasm build loads with the module. The single-file preview build swaps in the compat package
@@ -317,4 +318,5 @@ async function main() {
 
 if (LEVEL === 'dunes') dunes();
 else if (LEVEL === 'lagoon') lagoon();
+else if (LEVEL === 'tunnels') tunnels();
 else main();

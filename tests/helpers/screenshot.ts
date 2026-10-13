@@ -7,6 +7,6 @@ import type { Page } from '@playwright/test';
  */
 export async function screenshot(page: Page, name: string) {
   if (!process.env.SCREENSHOTS) return;
-  await page.evaluate(() => (window.__game ?? window.__dunes ?? window.__lagoon)!.advance(0, true));
+  await page.evaluate(() => (window.__game ?? window.__dunes ?? window.__lagoon ?? window.__tunnels)!.advance(0, true));
   await page.screenshot({ path: `test-results/screenshots/${name}` });
 }

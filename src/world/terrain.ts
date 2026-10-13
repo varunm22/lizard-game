@@ -7,20 +7,21 @@ import { carveShore, lavaRelief, WATER_Y } from './shore';
 import { LEVEL } from '../level';
 import { duneColour, duneHeight } from '../dunes/layout';
 import { lagoonColour, lagoonHeight } from '../lagoon/layout';
+import { tunnelsColour, tunnelsHeight } from '../tunnels/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 
 /**
- * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes
- * and the mangrove lagoon are longer crossings than the island, on bigger squares.
+ * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes,
+ * the mangrove lagoon and the lava tunnels are longer crossings than the island, on bigger squares.
  */
-export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : LEVEL === 'lagoon' ? 12 : 8;
+export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : LEVEL === 'lagoon' ? 12 : LEVEL === 'tunnels' ? 10 : 8;
 /** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (the same on the bigger squares). */
-const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' ? 384 : 256;
+const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' ? 384 : LEVEL === 'tunnels' ? 320 : 256;
 /**
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : LEVEL === 'tunnels' ? 10 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -42,11 +43,12 @@ export const IGNORE_BODIES = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~PLAYER_
 export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP;
 
 /**
- * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`) or
- * the mangrove lagoon's (`lagoon/layout.ts`) on those levels. Everything that stands on or follows
- * the ground reads it from here.
+ * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`), the
+ * mangrove lagoon's (`lagoon/layout.ts`) or the lava tunnels' lower floor (`tunnels/layout.ts`) on
+ * those levels. Everything that stands on or follows the ground reads it from here.
  */
-export const terrainHeight: (x: number, z: number) => number = LEVEL === 'dunes' ? duneHeight : LEVEL === 'lagoon' ? lagoonHeight : islandHeight;
+export const terrainHeight: (x: number, z: number) => number =
+  LEVEL === 'dunes' ? duneHeight : LEVEL === 'lagoon' ? lagoonHeight : LEVEL === 'tunnels' ? tunnelsHeight : islandHeight;
 
 /**
  * The island's ground height (m). Layered noise, damped to almost flat in the middle of the
@@ -118,7 +120,7 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
   }
 }
 const tmp = new THREE.Color();
-const groundColour = LEVEL === 'dunes' ? duneColour : LEVEL === 'lagoon' ? lagoonColour : islandColour;
+const groundColour = LEVEL === 'dunes' ? duneColour : LEVEL === 'lagoon' ? lagoonColour : LEVEL === 'tunnels' ? tunnelsColour : islandColour;
 
 /** A grid of ground vertices `cells` across a square of side `size` centred on the origin; `skip(x, z)` drops a cell. */
 function groundGrid(size: number, cells: number, skip?: (x: number, z: number) => boolean) {
@@ -158,16 +160,19 @@ function groundGrid(size: number, cells: number, skip?: (x: number, z: number) =
 
 /** Build the toon-shaded ground mesh and its Rapier heightfield collider, plus walls at the edge. */
 export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
-  const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
-  if (LEVEL === 'dunes') rippleSand(material);
+  // Underground the light is baked into the ground's colours (`tunnels/layout.ts`); there's no world outside the square.
+  const material =
+    LEVEL === 'tunnels'
+      ? new THREE.MeshBasicMaterial({ vertexColors: true })
+      : new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
+  if (LEVEL === 'dunes') rippleSand(material as THREE.MeshToonMaterial);
   const inner = new THREE.Mesh(groundGrid(TERRAIN_SIZE, CELLS), material);
   const half = TERRAIN_SIZE / 2;
-  const outer = new THREE.Mesh(
-    groundGrid(VISUAL_SIZE, Math.round(VISUAL_SIZE / OUTER_CELL), (x, z) => Math.abs(x) < half && Math.abs(z) < half),
-    material,
-  );
+  const outer =
+    VISUAL_SIZE > TERRAIN_SIZE &&
+    new THREE.Mesh(groundGrid(VISUAL_SIZE, Math.round(VISUAL_SIZE / OUTER_CELL), (x, z) => Math.abs(x) < half && Math.abs(z) < half), material);
   const mesh = new THREE.Group();
-  for (const m of [inner, outer]) {
+  for (const m of outer ? [inner, outer] : [inner]) {
     m.receiveShadow = true;
     mesh.add(m);
   }

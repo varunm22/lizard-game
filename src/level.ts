@@ -1,10 +1,10 @@
 /**
- * Which level this page plays: the island (the default), the nesting dunes (`?level=dunes`) or the
- * mangrove lagoon (`?level=lagoon`).
+ * Which level this page plays: the island (the default), the nesting dunes (`?level=dunes`), the
+ * mangrove lagoon (`?level=lagoon`) or the lava tunnels (`?level=tunnels`).
  */
-export type Level = 'island' | 'dunes' | 'lagoon';
+export type Level = 'island' | 'dunes' | 'lagoon' | 'tunnels';
 
-const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon'];
+const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon', 'tunnels'];
 const known = (name: string | null): Level => (LEVELS as readonly (string | null)[]).includes(name) ? (name as Level) : 'island';
 
 const KEY = 'lizard-level';
