@@ -8,6 +8,9 @@ const MAX_CALLS = 400;
 const MAX_TRIANGLES = 1_350_000;
 
 test('the spawn view stays within its draw budget, and each creature is one mesh', async ({ page }) => {
+  // A shader that fails to compile (the cel outline pass, say) is only logged.
+  const consoleErrors: string[] = [];
+  page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
   const errors = await bootGame(page, { iguanas: true, crabs: true });
   const stats = await page.evaluate(() => {
     const g = window.__game!;
@@ -18,5 +21,5 @@ test('the spawn view stays within its draw budget, and each creature is one mesh
   expect(stats.triangles).toBeLessThan(MAX_TRIANGLES);
   // The lizard, 3 iguanas, 18 crabs, the tortoise and the hawk.
   expect(stats.skinned).toBe(24);
-  expect(errors).toEqual([]);
+  expect([...errors, ...consoleErrors]).toEqual([]);
 });

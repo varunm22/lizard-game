@@ -243,36 +243,37 @@ def paint_body():
     side = 1 - np.abs(c)
 
     img = np.broadcast_to(np.asarray(PALETTE['skin']), (rows, cols, 3)).copy()
-    tone = fbm(yy, aa, 1, 0.02, 2)
-    img = mix(img, PALETTE['dark'], np.clip(-tone, 0, 1) * 0.6)
-    img = mix(img, PALETTE['light'], np.clip(tone, 0, 1) * 0.4)
-    img = mix(img, PALETTE['dark'], smoothstep(0.75, 0.95, c) * 0.5)  # darker along the spine
-    img = mix(img, PALETTE['belly'], smoothstep(-0.25, -0.6, c))
+    # Flat tones in broad patches with crisp edges, not smooth gradients and fine detail: toon shading
+    # reads best in clear colour blocks, and fine detail averages to a muddy blur a short way off.
+    tone = fbm(yy, aa, 1, 0.03, 2)
+    img = mix(img, PALETTE['dark'], smoothstep(-0.30, -0.36, tone) * 0.6)
+    img = mix(img, PALETTE['light'], smoothstep(0.30, 0.36, tone) * 0.4)
+    img = mix(img, PALETTE['dark'], smoothstep(0.84, 0.88, c) * 0.5)  # darker along the spine
+    img = mix(img, PALETTE['belly'], smoothstep(-0.40, -0.46, c))
 
     # Breeding colours: rust-red flanks and legs, dull green over the shoulders and back, fading out
     # down the tail. Crisp edges keep them reading as toon colour blocks, just finer ones.
     body = smoothstep(-0.050, -0.040, yy) * smoothstep(0.060, 0.025, yy)
-    rust = fbm(yy, aa, 11, 0.012, 3) + side * 0.9 - 1.0 - smoothstep(-0.3, -0.6, c)
+    rust = fbm(yy, aa, 11, 0.02, 3) + side * 0.9 - 1.0 - smoothstep(-0.3, -0.6, c)
     img = mix(img, PALETTE['rust'], smoothstep(0.0, 0.08, rust) * body * 0.9)
-    moss = fbm(yy, aa, 21, 0.010, 3) + c * 0.4 - 0.85
+    moss = fbm(yy, aa, 21, 0.018, 3) + c * 0.4 - 0.85
     img = mix(img, PALETTE['moss'], smoothstep(0.0, 0.08, moss) * body * smoothstep(-0.1, 0.2, c) * 0.8)
 
     # Faint bands down the tail.
-    bands = smoothstep(0.2, 0.5, np.sin(yy * 2 * math.pi / 0.011 + fbm(yy, aa, 31, 0.02, 1) * 0.8))
+    bands = smoothstep(0.30, 0.38, np.sin(yy * 2 * math.pi / 0.016 + fbm(yy, aa, 31, 0.03, 1) * 0.8))
     img = mix(img, PALETTE['dark'], bands * smoothstep(0.02, 0.04, yy) * (c > -0.5) * 0.45)
 
     # Scales: fine granules on the body, big domed plates on the head, wide scutes under the belly.
+    # Only faint outlines and no shade per scale: up close they read as texture, and a short way off
+    # they fade out evenly instead of greying the colour blocks.
     head = smoothstep(-0.044, -0.048, yy)
-    fine_edge, fine_shade = scales(yy, aa, girth, 0.0010, 52, 41)
-    big_edge, big_shade = scales(yy, aa, girth, 0.0019, 26, 42)
+    fine_edge, _ = scales(yy, aa, girth, 0.0010, 52, 41)
+    big_edge, _ = scales(yy, aa, girth, 0.0019, 26, 42)
     edge = np.where(head > 0.5, big_edge, fine_edge)
-    shade = np.where(head > 0.5, big_shade, fine_shade)
-    img *= (1 - 0.30 * edge)[..., None]
-    img *= (1 + 0.07 * shade)[..., None]
+    img *= (1 - np.where(head > 0.5, 0.22, 0.10) * edge)[..., None]
 
     # Salt crust over the top of the snout and head, patchy and thickest at the front.
-    salt = (smoothstep(-0.050, -0.0625, yy) + c * 0.9 + fbm(yy, aa, 51, 0.004, 5) * 0.35
-            + waves(yy, aa, 52, 0.0012, 14) * 0.15 - 1.75)
+    salt = smoothstep(-0.050, -0.0625, yy) + c * 0.9 + fbm(yy, aa, 51, 0.004, 5) * 0.35 - 1.75
     salt *= smoothstep(-0.0652, -0.0638, yy)  # not on the very tip of the nose
     img = mix(img, PALETTE['salt'], smoothstep(0.0, 0.06, salt) * head * (c > 0.1))
 
@@ -296,12 +297,11 @@ def paint_limbs():
     aa = np.broadcast_to(a[:, None], (rows, cols))
     girth = np.full((rows, cols), 0.016)
     img = np.broadcast_to(np.asarray(PALETTE['skin']), (rows, cols, 3)).copy()
-    img = mix(img, PALETTE['dark'], np.clip(-fbm(yy, aa, 61, 0.012, 2), 0, 1) * 0.6)
+    img = mix(img, PALETTE['dark'], smoothstep(0.30, 0.36, -fbm(yy, aa, 61, 0.012, 2)) * 0.6)
     img = mix(img, PALETTE['rust'], smoothstep(0.0, 0.08, fbm(yy, aa, 62, 0.008, 2) - 0.45) * smoothstep(0.75, 0.5, t) * 0.8)
     img = mix(img, PALETTE['dark'], smoothstep(0.8, 0.95, t) * 0.5)  # darker toes
-    edge, shade = scales(yy, aa, girth, 0.0009, 16, 63)
-    img *= (1 - 0.30 * edge)[..., None]
-    img *= (1 + 0.07 * shade)[..., None]
+    edge, _ = scales(yy, aa, girth, 0.0009, 16, 63)
+    img *= (1 - 0.10 * edge)[..., None]
     return np.clip(img, 0, 1)
 
 

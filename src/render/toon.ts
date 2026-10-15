@@ -9,10 +9,14 @@ let gradient: THREE.DataTexture | undefined;
  */
 const POSE_REACH = 1.5;
 
-/** Three-band light ramp shared by every toon material: shadow, mid, lit. */
+/**
+ * Light ramp shared by every toon material, for the bold cel look (`cel.ts`): deep shadow below
+ * 0.6 of full light (14 of 24 texels), fully lit above.
+ */
 export function toonGradient(): THREE.DataTexture {
   if (!gradient) {
-    gradient = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
+    const ramp = Array.from({ length: 24 }, (_, i) => (i < 14 ? Math.round(0.22 * 255) : 255));
+    gradient = new THREE.DataTexture(new Uint8Array(ramp), 24, 1, THREE.RedFormat);
     gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
     gradient.needsUpdate = true;
   }

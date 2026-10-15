@@ -4,7 +4,8 @@ import { FIXED_DT, startLoop } from '../loop';
 import { createScene, PALETTE, SUN_OFFSET } from '../render/scene';
 import { loadBinary } from '../render/gltf';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP } from '../world/terrain';
-import { waterDepth } from '../world/shore';
+import { waterDepth, WATER_Y } from '../world/shore';
+import { CelRenderer } from '../render/cel';
 import { Water } from '../world/water';
 import { Splashes } from '../world/splashes';
 import { Input, type InputState } from '../input';
@@ -50,7 +51,9 @@ export async function tunnels() {
 
   // The light is baked: the ground's colours read it as the terrain is built.
   setLight(await loadBinary(lightUrl));
-  const { renderer, scene, camera, sun } = createScene(document.body);
+  const { renderer, scene, camera, sun, sky } = createScene(document.body);
+  const cel = new CelRenderer(renderer, sky, sun);
+  cel.waterY = WATER_Y;
   scene.fog = new THREE.Fog(CAVE_FOG.colour, CAVE_FOG.near, CAVE_FOG.far);
   const hemisphere = scene.children.find((o) => o instanceof THREE.HemisphereLight) as THREE.HemisphereLight;
   // Nothing underground casts a live shadow: the rock's shade is baked, and the lizard is lit by where it is.
@@ -200,7 +203,7 @@ export async function tunnels() {
     (scene.background as THREE.Color).set(under ? UNDERWATER_FOG.colour : PALETTE.sky);
   };
   const draw = () => {
-    renderer.render(scene, camera);
+    cel.render(scene, camera);
     hooks.ready = true;
   };
 

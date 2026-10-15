@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { ViewCheck } from './render/viewCheck';
+import { CelRenderer } from './render/cel';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
@@ -28,7 +29,7 @@ import { Wounds } from './player/wounds';
 import { Spines } from './player/spines';
 import { Vitals } from './player/vitals';
 import { ClimateSense } from './player/climate';
-import { waterDepth } from './world/shore';
+import { waterDepth, WATER_Y } from './world/shore';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine, movementFacts } from './player/state';
@@ -60,7 +61,8 @@ async function main() {
   await (RAPIER as { init?: () => Promise<void> }).init?.();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  const { renderer, scene, camera, sun } = createScene(document.body);
+  const { renderer, scene, camera, sun, sky } = createScene(document.body);
+  const cel = new CelRenderer(renderer, sky, sun);
   buildTerrain(scene, world);
   const landmarks = buildObstacles(scene, world);
   const props = await buildProps(propsUrl, scene, world, landmarks);
@@ -70,6 +72,7 @@ async function main() {
   const reefKit = await loadReefKit(reefUrl);
   const reef = new Reef(scene, reefKit.geometry, obstacles, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
   const water = new Water(scene);
+  cel.waterY = WATER_Y;
   const splashes = new Splashes(water);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
@@ -263,7 +266,7 @@ async function main() {
     followSun(sun, feet);
   };
   const draw = () => {
-    renderer.render(scene, camera);
+    cel.render(scene, camera);
     hooks.ready = true;
   };
 
