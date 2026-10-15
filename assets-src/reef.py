@@ -235,18 +235,23 @@ def fish(spec):
     L = spec['length']
     body = 0.8 * L  # snout to the base of the tail fin
     deep = spec['deep']
-    sides = 16
     rings = []
-    steps = 16
-    # u runs from the snout at -Y (+Z in glTF) back toward the tail.
+    # u runs from the snout at -Y (+Z in glTF) back toward the tail. Besides 16 even steps along the
+    # body and 16 round it, rings and seams sit a hair either side of each edge in the markings
+    # (`u_edges` along, `v_edges` round), so a bar or stripe ends sharply instead of fading across
+    # a whole face, which in toon shading reads as a blur.
+    gap = 1e-3
+    us = sorted({i / 16 for i in range(17)} | {e + s * gap for e in spec.get('u_edges', ()) for s in (-1, 1)})
+    seams = [math.acos(v) for v in spec.get('v_edges', ())]
+    angles = sorted({2 * math.pi * k / 16 for k in range(16)}
+                    | {a + s * gap for m in seams for a in (m, 2 * math.pi - m) for s in (-1, 1)})
+    sides = len(angles)
     y_of = lambda u: -L / 2 + u * body
-    for i in range(steps + 1):
-        u = i / steps
+    for u in us:
         h = table(BODY, u, 1) * L * deep
         w = table(BODY, u, 2) * L * spec.get('wide', 1.0)
         ring = []
-        for k in range(sides):
-            a = 2 * math.pi * k / sides
+        for a in angles:
             v = math.cos(a)  # 1 on the back, -1 on the belly
             co = Vector((math.sin(a) * w, y_of(u), v * h))
             ring.append(mb.vert(co, spec['colour'](u, v)))
@@ -360,24 +365,28 @@ def angel(u, v):
 
 SPECIES = {
     'fish_salema': dict(
+        v_edges=(0.76, 0.66, 0.05, -0.05),
         length=0.035, deep=0.7, wide=1.0, colour=salema, dorsal=(0.3, 0.75, 0.12), anal=(0.6, 0.8, 0.08),
         tail=0.2, fork=0.8,
         fin=lambda t, e: mix(srgb('#7c8a96'), srgb('#c8d0d6'), e), tail_colour=lambda t, e: srgb('#9aa6b0'),
         pectoral=lambda e: srgb('#c8d0d6'),
     ),
     'fish_sergeant': dict(
+        u_edges=tuple(c + s * 0.045 for c in (0.2, 0.36, 0.52, 0.68, 0.84) for s in (-1, 1)), v_edges=(-0.55,),
         length=0.04, deep=1.05, colour=sergeant, dorsal=(0.22, 0.85, 0.12), anal=(0.58, 0.88, 0.1),
         tail=0.22, fork=0.6,
         fin=lambda t, e: mix(srgb('#c9b44a'), srgb('#e9e0b0'), e), tail_colour=lambda t, e: mix(srgb('#c8c4a0'), srgb('#e6e2c6'), t),
         pectoral=lambda e: srgb('#e9e0b0'),
     ),
     'fish_surgeon': dict(
+        u_edges=(0.2, 0.84, 0.95), v_edges=(0.4, -0.4),
         length=0.075, deep=0.95, colour=surgeon, dorsal=(0.18, 0.92, 0.1), anal=(0.45, 0.92, 0.1),
         tail=0.26, fork=0.45,
         fin=lambda t, e: mix(srgb('#3a424c'), srgb('#56606c'), e), tail_colour=lambda t, e: mix(srgb('#e7b51a'), srgb('#ffd447'), t),
         pectoral=lambda e: srgb('#4c5662'),
     ),
     'fish_angel': dict(
+        u_edges=(0.285, 0.355),
         length=0.06, deep=1.45, colour=angel, dorsal=(0.3, 0.98, 0.26), anal=(0.45, 0.98, 0.24),
         tail=0.22, fork=0.0,
         fin=lambda t, e: mix(srgb('#1d2440'), srgb('#5aa0f0'), e ** 3), tail_colour=lambda t, e: mix(srgb('#f0b020'), srgb('#ffe070'), e),
