@@ -97,7 +97,10 @@ void main() {
   float lineFar = min(fogFar, LINE_FAR);
   if (outline > 0.0 && d < lineFar) {
     float away = smoothstep(min(LINE_NEAR, fogNear), lineFar, d);
-    vec2 o = vec2(mix(outline, 1.0, away)) / resolution;
+    // How heavy this surface's lines are, written in alpha by its material (lineWeight): 1 for
+    // creatures and rocks, lighter for plants, so a meadow isn't all ink.
+    float weight = texture2D(tColor, uv).a;
+    vec2 o = vec2(max(1.0, mix(outline, 1.0, away) * weight)) / resolution;
     // Inverse depth is linear across any flat surface on screen, so its Laplacian is ~0 on the ground
     // however steeply it is seen, and sharply negative on the near side of a silhouette.
     float inv = 1.0 / d;
@@ -109,7 +112,7 @@ void main() {
       float gy = luma(colourAt(uv + vec2(0.0, o.y))) - luma(colourAt(uv - vec2(0.0, o.y)));
       edge = max(edge, creases * smoothstep(0.12, 0.3, length(vec2(gx, gy))));
     }
-    edge *= mix(1.0, FAR_INK, away) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
+    edge *= weight * mix(1.0, FAR_INK, away) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
     vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, max(inkTint, away));
     c = mix(c, line, edge * ink);
   }
@@ -200,6 +203,7 @@ export class StyleRenderer {
     this.sky.intensity = this.base.sky * look.sky;
     this.sun.intensity = this.base.sun * look.sun;
     for (const m of this.translucent) m.depthWrite = !look.direct;
+    lineWeights.value = look.direct ? 0 : 1;
   }
 
   /**
@@ -245,6 +249,31 @@ export class StyleRenderer {
     u.pixel.value = Math.max(1, Math.round(look.pixel * dpr));
     r.render(this.quad, this.quadCamera);
   }
+}
+
+/**
+ * 1 while a style with a screen pass is on: only then do materials write their line weight in alpha.
+ * The canvas has an alpha channel the page shows through, so drawn straight to it (classic) they
+ * must keep alpha 1.
+ */
+const lineWeights = { value: 0 };
+
+/**
+ * Give a material lighter outlines (weight 0 to 1, 1 being a creature's or a rock's) in the outlined
+ * styles. It writes the weight into the alpha of what it draws, which the screen pass reads (in
+ * classic it leaves alpha alone). Keeps any shader patch the material had.
+ */
+export function lineWeight(material: THREE.Material, weight: number) {
+  const patch = material.onBeforeCompile;
+  const key = material.customProgramCacheKey;
+  material.onBeforeCompile = (shader, renderer) => {
+    patch.call(material, shader, renderer);
+    shader.uniforms.uLineWeights = lineWeights;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform float uLineWeights;\nvoid main() {')
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\ngl_FragColor.a = mix(gl_FragColor.a, ${weight.toFixed(3)}, uLineWeights);`);
+  };
+  material.customProgramCacheKey = () => `${key.call(material)}-line${weight}`;
 }
 
 /** The style named by `?style=`, or classic. */

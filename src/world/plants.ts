@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { loadGltf } from '../render/gltf';
 import { toonGradient } from '../render/toon';
 import { bendPlants, plantUniforms } from '../render/plantBend';
+import { lineWeight } from '../render/style';
 import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
 import { rng, smoothstep } from './noise';
@@ -138,6 +139,9 @@ interface KindDraw {
  */
 const TILE = 1;
 
+/** Plants' outline weight in the outlined render styles: thin, light lines, so a meadow isn't all ink. */
+const PLANT_LINES = 0.4;
+
 /**
  * Plants scattered over the meadow that give a little as the lizard pushes through, slow it down,
  * and creep back upright once it has passed. Mostly not physical: they don't block movement, the
@@ -191,6 +195,7 @@ export class Plants {
       for (const p of list) plants.add(p);
       const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
       bendPlants(material, height);
+      lineWeight(material, PLANT_LINES);
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
       bendPlants(depth, height);
       const tiles = new Map<string, Plant[]>();
