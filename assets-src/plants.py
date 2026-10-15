@@ -134,7 +134,7 @@ def dome(mb, centre, radius, height, col, sides=8, up=True):
 
 def grass(rng):
     """
-    A tuft of five broad, tapering leaves fanning out from one root, 5-8 cm tall. Few wide leaves
+    A tuft of five broad, tapering leaves fanning out from one root, 4-6 cm tall. Few wide leaves
     rather than many thin blades: in the outlined render styles a field of thin blades is nearly all
     outline, while a handful of broad shapes per tuft reads as grass with clean edges.
     """
@@ -147,9 +147,9 @@ def grass(rng):
         a = 2 * math.pi * (i + 0.6 * (next(draws) - 0.5)) / count
         d = (math.cos(a), math.sin(a))
         base = (d[0] * 0.003, d[1] * 0.003, 0.0)
-        h = 0.05 + 0.03 * next(draws)
+        h = 0.04 + 0.02 * next(draws)
         pts = curve(base, d, h, h * (0.3 + 0.25 * next(draws)), 4)
-        blade(mb, pts, 0.011 + 0.004 * next(draws), C['grass_base'], C['grass_tip'], (-d[1], d[0]))
+        blade(mb, pts, 0.008 + 0.003 * next(draws), C['grass_base'], C['grass_tip'], (-d[1], d[0]))
     for _ in draws:
         pass
     return mb

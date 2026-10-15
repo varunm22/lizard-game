@@ -103,7 +103,7 @@ export class Algae {
     const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
     this.sway(material);
     // Light outlines, like the plants on land.
-    lineWeight(material, 0.5);
+    lineWeight(material, 0.75);
     const key = (p: Placement) => `${p.kind},${Math.floor(p.position.x / TILE)},${Math.floor(p.position.z / TILE)}`;
     const groups = new Map<string, { first: Placement[]; spare: Placement[] }>();
     for (const [list, which] of [[first, 'first'], [spare, 'spare']] as const) {

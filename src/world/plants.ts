@@ -139,8 +139,8 @@ interface KindDraw {
  */
 const TILE = 1;
 
-/** Plants' outline weight in the outlined render styles: thin, light lines, so a meadow isn't all ink. */
-const PLANT_LINES = 0.4;
+/** Plants' outline weight in the outlined render styles: a little lighter than a creature's or a rock's. */
+const PLANT_LINES = 0.75;
 
 /**
  * Plants scattered over the meadow that give a little as the lizard pushes through, slow it down,
