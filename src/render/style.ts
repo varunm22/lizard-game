@@ -90,6 +90,12 @@ void main() {
   vec2 block = floor(gl_FragCoord.xy / pixel);
   vec2 uv = (block + 0.5) * pixel / resolution;
   vec3 c = colourAt(uv);
+  // The target holds half floats, which (unlike the canvas) can keep a NaN or infinity a shader let
+  // slip, and multisampling spreads one bad sample over its whole pixel: read the next pixel instead.
+  // Bit tests, since a GPU compiler may fold isnan() away. Then clamp, as the canvas would.
+  uvec3 bits = floatBitsToUint(c) & 0x7f800000u;
+  if (any(equal(bits, uvec3(0x7f800000u)))) c = colourAt(uv + vec2(1.0, 0.0) / resolution);
+  c = clamp(c, 0.0, 1.0);
 
   float d = viewDepth(uv);
   // Lines are for what's near. From LINE_NEAR out they thin to a pixel and fade, so a fish a couple
