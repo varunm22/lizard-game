@@ -86,6 +86,19 @@ float viewDepth(vec2 uv) {
 }
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 colourAt(vec2 uv) { return texture2D(tColor, uv).rgb; }
+// How strongly the pixel at uv (inverse depth inv) lies just inside a silhouette, from the
+// Laplacian of inverse depth on a circle of radius o. Inverse depth is linear across any flat
+// surface on screen, so this is ~0 on the ground however steeply it is seen, and sharply negative
+// on the near side of an edge. Eight taps on a circle rather than four on a cross: with a cross, a
+// line several pixels wide steps along diagonals in blocks as wide as itself.
+float silhouette(vec2 uv, float inv, vec2 o) {
+  vec2 q = o * 0.7071;
+  float lap = 0.5 * (1.0 / viewDepth(uv + vec2(o.x, 0.0)) + 1.0 / viewDepth(uv - vec2(o.x, 0.0))
+    + 1.0 / viewDepth(uv + vec2(0.0, o.y)) + 1.0 / viewDepth(uv - vec2(0.0, o.y))
+    + 1.0 / viewDepth(uv + q) + 1.0 / viewDepth(uv - q)
+    + 1.0 / viewDepth(uv + vec2(q.x, -q.y)) + 1.0 / viewDepth(uv - vec2(q.x, -q.y))) - 4.0 * inv;
+  return smoothstep(0.025, 0.09, -lap / inv);
+}
 
 void main() {
   // Big screen pixels: everything is read at the centre of the block this pixel falls in.
@@ -108,12 +121,12 @@ void main() {
     // So an object's lines keep their size relative to it as it (or the zoomed camera) comes and goes.
     float width = outline * weight * min(LINE_AT / d, LINE_MAX);
     vec2 o = vec2(max(width, 1.0)) / resolution;
-    // Inverse depth is linear across any flat surface on screen, so its Laplacian is ~0 on the ground
-    // however steeply it is seen, and sharply negative on the near side of a silhouette.
     float inv = 1.0 / d;
-    float lap = 1.0 / viewDepth(uv + vec2(o.x, 0.0)) + 1.0 / viewDepth(uv - vec2(o.x, 0.0))
-      + 1.0 / viewDepth(uv + vec2(0.0, o.y)) + 1.0 / viewDepth(uv - vec2(0.0, o.y)) - 4.0 * inv;
-    float edge = smoothstep(0.025, 0.09, -lap / inv);
+    // A line several pixels wide has two jagged sides, both crawling as blades sway. Reading it at
+    // two radii half a pixel either side softens the inner side to half-tone steps.
+    float edge = width > 1.0
+      ? 0.5 * (silhouette(uv, inv, o - 0.5 / resolution) + silhouette(uv, inv, o + 0.5 / resolution))
+      : silhouette(uv, inv, o);
     if (creases > 0.0) {
       float gx = luma(colourAt(uv + vec2(o.x, 0.0))) - luma(colourAt(uv - vec2(o.x, 0.0)));
       float gy = luma(colourAt(uv + vec2(0.0, o.y))) - luma(colourAt(uv - vec2(0.0, o.y)));
