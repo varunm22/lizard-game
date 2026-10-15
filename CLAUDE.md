@@ -36,5 +36,6 @@ In Claude cloud sessions Chromium is preinstalled; do not run `playwright instal
 - [Creature behavior and interactions](docs/creatures.md): tortoise riding, iguana navigation, crab grooming and hawk hunting.
 - [Nesting dunes level](docs/dunes.md): `?level=dunes`, racer snakes, hatchlings, the run and its tests (`window.__dunes`).
 - [Mangrove lagoon level](docs/lagoon.md): `?level=lagoon`, lava herons, the drift log gate, the channel current and its tests (`window.__lagoon`).
+- [Lava tunnels level](docs/tunnels.md): `?level=tunnels`, the two-floor tube maze generated in `assets-src/tunnels.py`, drop holes, rubble stairs, the gap, baked light and its tests (`window.__tunnels`).
 
 These guides retain the detailed behavior, regression constraints and test hooks; load only the ones relevant to the change.

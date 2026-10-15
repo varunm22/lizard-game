@@ -50,7 +50,7 @@ const SAFE_COLOUR = 0x7fe3d4;
 const SAFE_REACHED = 0xb6f0a0;
 
 /** A glowing ring lying on the ground round a spot, following its rise and fall. */
-function ring(x: number, z: number, radius: number, width: number, colour: THREE.ColorRepresentation) {
+function ring(x: number, z: number, radius: number, width: number, colour: THREE.ColorRepresentation, ground: (x: number, z: number) => number) {
   const segments = 96;
   const positions: number[] = [];
   const along: number[] = [];
@@ -60,7 +60,7 @@ function ring(x: number, z: number, radius: number, width: number, colour: THREE
     for (const [k, r] of [radius - width / 2, radius + width / 2].entries()) {
       const px = x + Math.sin(a) * r;
       const pz = z + Math.cos(a) * r;
-      positions.push(px, terrainHeight(px, pz) + 0.004, pz);
+      positions.push(px, ground(px, pz) + 0.004, pz);
       along.push(k);
     }
     if (i < segments) {
@@ -110,6 +110,8 @@ export interface Marks {
   start: { x: number; z: number };
   finish: { x: number; z: number; r: number };
   safe: readonly { x: number; z: number; r: number }[];
+  /** The ground the marks stand on, where that isn't the heightfield (the lava tunnels' upper floor). */
+  ground?: (x: number, z: number) => number;
 }
 
 export class Markers {
@@ -132,27 +134,28 @@ export class Markers {
       group.add(mesh);
       this.shaders.push(mesh.material as THREE.ShaderMaterial);
     };
-    const nestY = terrainHeight(NEST.x, NEST.z);
+    const ground = marks.ground ?? terrainHeight;
+    const nestY = ground(NEST.x, NEST.z);
     const startColumn = column(0.12, 0.22, 0xbfe6ff, 0.35);
     startColumn.position.set(NEST.x, nestY - 0.02, NEST.z);
     add(this.start, startColumn);
-    add(this.start, ring(NEST.x, NEST.z, 0.16, 0.014, 0xcfeeff));
+    add(this.start, ring(NEST.x, NEST.z, 0.16, 0.014, 0xcfeeff, ground));
     this.start.name = 'start-marker';
 
     const finishColumn = column(COLONY.r, 3.2, 0xffc94a, 0.75);
-    finishColumn.position.set(COLONY.x, terrainHeight(COLONY.x, COLONY.z) - 0.05, COLONY.z);
+    finishColumn.position.set(COLONY.x, ground(COLONY.x, COLONY.z) - 0.05, COLONY.z);
     add(this.finish, finishColumn);
     this.finishColumn = finishColumn.material as THREE.ShaderMaterial;
-    add(this.finish, ring(COLONY.x, COLONY.z, COLONY.r, 0.03, 0xffd35a));
+    add(this.finish, ring(COLONY.x, COLONY.z, COLONY.r, 0.03, 0xffd35a, ground));
     this.finish.name = 'finish-marker';
     scene.add(this.start, this.finish);
 
     for (const [i, p] of SAFE_POINTS.entries()) {
       const group = new THREE.Group();
       const c = column(p.r * 0.8, 1.4, SAFE_COLOUR, 0.55);
-      c.position.set(p.x, terrainHeight(p.x, p.z) - 0.03, p.z);
+      c.position.set(p.x, ground(p.x, p.z) - 0.03, p.z);
       add(group, c);
-      const r = ring(p.x, p.z, p.r, 0.016, SAFE_COLOUR);
+      const r = ring(p.x, p.z, p.r, 0.016, SAFE_COLOUR, ground);
       add(group, r);
       group.name = `safe-marker-${i}`;
       scene.add(group);

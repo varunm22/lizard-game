@@ -13,9 +13,10 @@ import { LEVEL } from '../level';
 export const WATER_Y = -0.045;
 /**
  * The water sheet starts this far west (m); everything west of it is dry land. In the mangrove
- * lagoon there is water everywhere, so the sheet covers the whole square.
+ * lagoon there is water everywhere, so the sheet covers the whole square; in the lava tunnels it
+ * shows only in the flooded dip of the lower floor.
  */
-export const OCEAN_X0 = LEVEL === 'lagoon' ? -12 : 1.0;
+export const OCEAN_X0 = LEVEL === 'lagoon' || LEVEL === 'tunnels' ? -12 : 1.0;
 /** Width of the sloping beach between the waterline and the land behind it (m). */
 export const BEACH_WIDTH = 0.9;
 /** Depth of the open sea floor (m below the surface). */
