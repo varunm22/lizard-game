@@ -1,3 +1,4 @@
+import type { StyleName } from '../render/style';
 import type { InputState } from '../input';
 
 /** State exposed on `window.__game` so Playwright tests can check the game without reading pixels. */
@@ -22,6 +23,8 @@ export interface GameTestHooks {
    * pass included, and how many skinned meshes are in the scene (one per creature).
    */
   renderStats: () => { calls: number; triangles: number; skinned: number };
+  /** Switch the render style (`src/render/style.ts`) if one is named, and say which is on. */
+  style: (name?: StyleName) => StyleName;
   /** The analytic terrain height the mesh and heightfield are built from. */
   terrainHeight: (x: number, z: number) => number;
   /**

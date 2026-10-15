@@ -74,6 +74,7 @@ export function createTestHooks({
     advance: () => {},
     frame: () => {},
     renderStats: () => ({ calls: 0, triangles: 0, skinned: 0 }),
+    style: () => 'classic',
     physicsSteps: 0,
     terrainHeight,
     obstacles: () =>

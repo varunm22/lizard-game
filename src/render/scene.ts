@@ -17,6 +17,7 @@ export interface SceneContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   sun: THREE.DirectionalLight;
+  sky: THREE.HemisphereLight;
 }
 
 /**
@@ -42,7 +43,8 @@ export function createScene(container: HTMLElement): SceneContext {
   // World units are metres; the lizard is ~0.19 m long, so the camera sits low and close.
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.005, 30);
 
-  scene.add(new THREE.HemisphereLight(0xdff2ff, 0x6b7d4a, 1.4));
+  const sky = new THREE.HemisphereLight(0xdff2ff, 0x6b7d4a, 1.4);
+  scene.add(sky);
   const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
   sun.position.copy(SUN_OFFSET);
   sun.castShadow = true;
@@ -62,7 +64,7 @@ export function createScene(container: HTMLElement): SceneContext {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { renderer, scene, camera, sun };
+  return { renderer, scene, camera, sun, sky };
 }
 
 /** Keep the sun's shadow box centred on `focus`, so shadows stay sharp near the player. */
