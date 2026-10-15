@@ -4,7 +4,8 @@ import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
 import { toonGradient } from '../render/toon';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from '../world/terrain';
-import { updateUnderwaterView } from '../world/shore';
+import { updateUnderwaterView, WATER_Y } from '../world/shore';
+import { CelRenderer } from '../render/cel';
 import { Water } from '../world/water';
 import { Splashes } from '../world/splashes';
 import { Input, type InputState } from '../input';
@@ -51,7 +52,9 @@ export async function lagoon() {
   await (RAPIER as { init?: () => Promise<void> }).init?.();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  const { renderer, scene, camera, sun } = createScene(document.body);
+  const { renderer, scene, camera, sun, sky } = createScene(document.body);
+  const cel = new CelRenderer(renderer, sky, sun);
+  cel.waterY = WATER_Y;
   buildTerrain(scene, world);
   const kit = await loadKit([propsUrl, lagoonUrl]);
   const { obstacles, mangroves } = buildLagoonProps(kit, scene, world);
@@ -204,7 +207,7 @@ export async function lagoon() {
     followSun(sun, feet);
   };
   const draw = () => {
-    renderer.render(scene, camera);
+    cel.render(scene, camera);
     hooks.ready = true;
   };
 

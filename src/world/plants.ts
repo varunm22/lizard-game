@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { loadGltf } from '../render/gltf';
 import { toonGradient } from '../render/toon';
 import { bendPlants, plantUniforms } from '../render/plantBend';
-import { lineWeight } from '../render/style';
+import { lineWeight } from '../render/cel';
 import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
 import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
 import { rng, smoothstep } from './noise';
@@ -139,7 +139,7 @@ interface KindDraw {
  */
 const TILE = 1;
 
-/** Plants' outline weight in the outlined render styles: a little lighter than a creature's or a rock's. */
+/** Plants' outline weight: a little lighter than a creature's or a rock's. */
 const PLANT_LINES = 0.75;
 
 /**

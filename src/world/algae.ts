@@ -5,7 +5,7 @@ import { shoreDistance } from './layout';
 import { algaeShare, rockyShore, WATER_Y } from './shore';
 import { terrainHeight } from './terrain';
 import type { Obstacle } from './obstacles';
-import { lineWeight } from '../render/style';
+import { lineWeight } from '../render/cel';
 
 /**
  * Seaweed on the rocky shore, the marine iguana's food: red turf on the lava at and just below the

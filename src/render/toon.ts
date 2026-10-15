@@ -9,66 +9,19 @@ let gradient: THREE.DataTexture | undefined;
  */
 const POSE_REACH = 1.5;
 
-/** Texels across the light ramp: enough to put a band edge where a render style wants it. */
-const RAMP = 24;
-
 /**
- * The shared ramp's texels, in red, for each direct-light level from facing away (0) to facing the
- * light (1). Green holds how far band edges are dithered (0 for hard edges) and blue the dither cell
- * in device pixels / 8; `render/style.ts` rewrites all three to change how every toon surface shades.
+ * Light ramp shared by every toon material, for the bold cel look (`cel.ts`): deep shadow below
+ * 0.6 of full light (14 of 24 texels), fully lit above.
  */
-export interface ToonRamp {
-  /** Light at each band, 0 to 1, darkest first, and where each band after the first starts (0 to 1). */
-  bands: { level: number; from: number }[];
-  /** How far a band edge spreads into a dither, as a fraction of the ramp (0 for hard edges). */
-  dither: number;
-  /** Dither cell size in device pixels. */
-  cell: number;
-}
-
-/** Three equal bands: shadow, mid, lit. */
-export const CLASSIC_RAMP: ToonRamp = {
-  bands: [{ level: 90 / 255, from: 0 }, { level: 170 / 255, from: 1 / 3 }, { level: 1, from: 2 / 3 }],
-  dither: 0,
-  cell: 1,
-};
-
-/** Light ramp shared by every toon material, three bands unless a render style sets another. */
 export function toonGradient(): THREE.DataTexture {
   if (!gradient) {
-    gradient = new THREE.DataTexture(new Uint8Array(RAMP * 4), RAMP, 1, THREE.RGBAFormat);
+    const ramp = Array.from({ length: 24 }, (_, i) => (i < 14 ? Math.round(0.22 * 255) : 255));
+    gradient = new THREE.DataTexture(new Uint8Array(ramp), 24, 1, THREE.RedFormat);
     gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
-    setToonRamp(CLASSIC_RAMP);
+    gradient.needsUpdate = true;
   }
   return gradient;
 }
-
-/** Rewrite the shared light ramp: every toon surface shades by it from the next frame drawn. */
-export function setToonRamp(ramp: ToonRamp) {
-  const tex = toonGradient();
-  const data = tex.image.data as Uint8Array;
-  for (let i = 0; i < RAMP; i++) {
-    const at = (i + 0.5) / RAMP;
-    let level = ramp.bands[0].level;
-    for (const b of ramp.bands) if (at >= b.from) level = b.level;
-    data.set([Math.round(level * 255), Math.round(ramp.dither * 255), Math.round(Math.min(ramp.cell / 8, 1) * 255), 255], i * 4);
-  }
-  tex.needsUpdate = true;
-}
-
-// Every toon material looks its light up in the ramp here. Dither the lookup by a 4x4 Bayer pattern
-// on screen, as far as the ramp's green says (none in the classic ramp), so band edges stipple.
-const RAMP_LOOKUP = 'return vec3( texture2D( gradientMap, coord ).r );';
-THREE.ShaderChunk.gradientmap_pars_fragment = THREE.ShaderChunk.gradientmap_pars_fragment.replace(
-  RAMP_LOOKUP,
-  `vec4 toonStyle = texture2D( gradientMap, vec2( 0.5, 0.5 ) );
-		if ( toonStyle.g > 0.0 ) {
-			ivec2 cell = ivec2( mod( floor( gl_FragCoord.xy / max( toonStyle.b * 8.0, 1.0 ) ), 4.0 ) );
-			int bayer[ 16 ] = int[ 16 ]( 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 );
-			coord.x += ( ( float( bayer[ cell.x + cell.y * 4 ] ) + 0.5 ) / 16.0 - 0.5 ) * toonStyle.g;
-		}
-		${RAMP_LOOKUP}`,
-);
 
 /**
  * Swap the standard materials a GLB arrives with for flat toon materials of the same colour. A

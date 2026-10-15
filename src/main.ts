@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { ViewCheck } from './render/viewCheck';
-import { StyleRenderer, styleButton, styleFromUrl, STYLES } from './render/style';
+import { CelRenderer } from './render/cel';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from './world/terrain';
 import { buildObstacles, covers } from './world/obstacles';
 import { buildProps } from './world/props';
@@ -62,8 +62,7 @@ async function main() {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
   const { renderer, scene, camera, sun, sky } = createScene(document.body);
-  const styles = new StyleRenderer(renderer, sky, sun, styleFromUrl());
-  const showStyle = styleButton(styles);
+  const cel = new CelRenderer(renderer, sky, sun);
   buildTerrain(scene, world);
   const landmarks = buildObstacles(scene, world);
   const props = await buildProps(propsUrl, scene, world, landmarks);
@@ -73,7 +72,7 @@ async function main() {
   const reefKit = await loadReefKit(reefUrl);
   const reef = new Reef(scene, reefKit.geometry, obstacles, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
   const water = new Water(scene);
-  styles.waterY = WATER_Y;
+  cel.waterY = WATER_Y;
   const splashes = new Splashes(water);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
@@ -267,7 +266,7 @@ async function main() {
     followSun(sun, feet);
   };
   const draw = () => {
-    styles.render(scene, camera);
+    cel.render(scene, camera);
     hooks.ready = true;
   };
 
@@ -308,11 +307,6 @@ async function main() {
     let skinned = 0;
     scene.traverse((o) => (skinned += (o as THREE.SkinnedMesh).isSkinnedMesh ? 1 : 0));
     return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, skinned };
-  };
-  hooks.style = (name) => {
-    if (name && STYLES.includes(name)) styles.set(name);
-    showStyle();
-    return styles.style;
   };
   let accumulator = 0;
   hooks.frame = (frameDt, drawFrame = false) => {
