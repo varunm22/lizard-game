@@ -90,12 +90,6 @@ void main() {
   vec2 block = floor(gl_FragCoord.xy / pixel);
   vec2 uv = (block + 0.5) * pixel / resolution;
   vec3 c = colourAt(uv);
-  // The target holds half floats, which (unlike the canvas) can keep a NaN or infinity a shader let
-  // slip, and multisampling spreads one bad sample over its whole pixel: read the next pixel instead.
-  // Bit tests, since a GPU compiler may fold isnan() away. Then clamp, as the canvas would.
-  uvec3 bits = floatBitsToUint(c) & 0x7f800000u;
-  if (any(equal(bits, uvec3(0x7f800000u)))) c = colourAt(uv + vec2(1.0, 0.0) / resolution);
-  c = clamp(c, 0.0, 1.0);
 
   float d = viewDepth(uv);
   // Lines are for what's near. From LINE_NEAR out they thin to a pixel and fade, so a fish a couple
@@ -165,7 +159,6 @@ export class StyleRenderer {
   ) {
     this.base = { sky: sky.intensity, sun: sun.intensity };
     this.target = new THREE.WebGLRenderTarget(1, 1, {
-      type: THREE.HalfFloatType,
       colorSpace: THREE.SRGBColorSpace,
       samples: 4,
       depthTexture: new THREE.DepthTexture(1, 1),
@@ -174,6 +167,11 @@ export class StyleRenderer {
     // light. three.js does that only for the canvas and XR targets, hence the flag. Otherwise the
     // translucent sea blends in linear light, washing out the reef under it compared with classic.
     (this.target as { isXRRenderTarget?: boolean }).isXRRenderTarget = true;
+    // Stored as plain 8-bit values, like the canvas: the values are already sRGB (an sRGB format
+    // would encode them twice), and every draw clamps to 0-1. A float target kept the out-of-range
+    // colours some shaders write for pixels under the sea, and blending the sea over them left
+    // black specks out on the water that the canvas never shows.
+    this.target.texture.internalFormat = 'RGBA8';
     this.pass = new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
