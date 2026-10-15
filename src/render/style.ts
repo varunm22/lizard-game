@@ -74,7 +74,8 @@ const FRAGMENT = /* glsl */ `
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 resolution;
-uniform float cameraNear, cameraFar, fogNear, fogFar;
+uniform float cameraNear, cameraFar, fogNear, fogFar, waterY, cameraUnder;
+uniform mat4 projectionInverse, cameraWorld;
 uniform float outline, ink, inkTint, creases, saturation, levels, pixel;
 varying vec2 vUv;
 
@@ -95,7 +96,11 @@ void main() {
   // of metres off keeps its colour rather than turning into a black blob, and past LINE_FAR (or the
   // fog, if nearer) there are none at all: the pass skips its neighbour reads there entirely.
   float lineFar = min(fogFar, LINE_FAR);
-  if (outline > 0.0 && d < lineFar) {
+  // Nothing seen through the sea's surface is outlined: the reef from the shore, or the shore from
+  // under water. (The sea writes no depth, so this tells it by the height of what's behind it.)
+  vec4 view = projectionInverse * vec4(uv * 2.0 - 1.0, texture2D(tDepth, uv).x * 2.0 - 1.0, 1.0);
+  float under = step((cameraWorld * vec4(view.xyz / view.w, 1.0)).y, waterY);
+  if (outline > 0.0 && d < lineFar && under == cameraUnder) {
     float away = smoothstep(min(LINE_NEAR, fogNear), lineFar, d);
     // How heavy this surface's lines are, written in alpha by its material (lineWeight): 1 for
     // creatures and rocks, lighter for plants, so a meadow isn't all ink.
@@ -143,7 +148,8 @@ export class StyleRenderer {
   private quadCamera = new THREE.Camera();
   private size = new THREE.Vector2();
   private base: { sky: number; sun: number };
-  private translucent: THREE.Material[] = [];
+  /** The sea's level (m), for keeping lines off what's seen through its surface; none by default. */
+  waterY = -Infinity;
 
   constructor(
     private renderer: THREE.WebGLRenderer,
@@ -171,6 +177,10 @@ export class StyleRenderer {
         resolution: { value: new THREE.Vector2() },
         cameraNear: { value: 0 },
         cameraFar: { value: 0 },
+        projectionInverse: { value: new THREE.Matrix4() },
+        cameraWorld: { value: new THREE.Matrix4() },
+        waterY: { value: 0 },
+        cameraUnder: { value: 0 },
         fogNear: { value: 0 },
         fogFar: { value: 0 },
         outline: { value: 0 },
@@ -202,17 +212,7 @@ export class StyleRenderer {
     setToonRamp(look.ramp);
     this.sky.intensity = this.base.sky * look.sky;
     this.sun.intensity = this.base.sun * look.sun;
-    for (const m of this.translucent) m.depthWrite = !look.direct;
     lineWeights.value = look.direct ? 0 : 1;
-  }
-
-  /**
-   * A see-through surface (the sea) that writes depth in the styles with outlines, so what lies
-   * under it isn't outlined through it. Classic leaves it as it was, not writing depth.
-   */
-  addTranslucent(material: THREE.Material) {
-    this.translucent.push(material);
-    material.depthWrite = !LOOKS[this.style].direct;
   }
 
   next() {
@@ -238,6 +238,10 @@ export class StyleRenderer {
     u.resolution.value.copy(this.size);
     u.cameraNear.value = camera.near;
     u.cameraFar.value = camera.far;
+    u.projectionInverse.value.copy(camera.projectionMatrixInverse);
+    u.cameraWorld.value.copy(camera.matrixWorld);
+    u.waterY.value = Math.max(this.waterY, -1e6);
+    u.cameraUnder.value = camera.position.y < this.waterY ? 1 : 0;
     u.fogNear.value = fog.near;
     u.fogFar.value = fog.far;
     u.outline.value = look.outline * dpr;

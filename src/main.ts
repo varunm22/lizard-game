@@ -29,7 +29,7 @@ import { Wounds } from './player/wounds';
 import { Spines } from './player/spines';
 import { Vitals } from './player/vitals';
 import { ClimateSense } from './player/climate';
-import { waterDepth } from './world/shore';
+import { waterDepth, WATER_Y } from './world/shore';
 import { Input, type InputState } from './input';
 import { PlayerController } from './player/controller';
 import { MovementStateMachine, movementFacts } from './player/state';
@@ -73,7 +73,7 @@ async function main() {
   const reefKit = await loadReefKit(reefUrl);
   const reef = new Reef(scene, reefKit.geometry, obstacles, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
   const water = new Water(scene);
-  styles.addTranslucent(water.mesh.material as THREE.Material);
+  styles.waterY = WATER_Y;
   const splashes = new Splashes(water);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
