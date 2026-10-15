@@ -67,10 +67,12 @@ void main() {
 
 const FRAGMENT = /* glsl */ `
 #include <packing>
-// Lines start thinning (m), and are gone past this; how dark they still are as they go.
-#define LINE_NEAR 0.5
+// Lines are a fixed width in the world: outline pixels at LINE_AT metres from the camera (about
+// where it sits behind the lizard), wider nearer, up to LINE_MAX times that, and narrower further
+// off. Under a pixel wide they fade instead, and past LINE_FAR there are none.
+#define LINE_AT 0.38
+#define LINE_MAX 3.0
 #define LINE_FAR 2.5
-#define FAR_INK 0.35
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 resolution;
@@ -92,20 +94,20 @@ void main() {
   vec3 c = colourAt(uv);
 
   float d = viewDepth(uv);
-  // Lines are for what's near. From LINE_NEAR out they thin to a pixel and fade, so a fish a couple
-  // of metres off keeps its colour rather than turning into a black blob, and past LINE_FAR (or the
-  // fog, if nearer) there are none at all: the pass skips its neighbour reads there entirely.
+  // Past LINE_FAR (or the fog, if nearer) there are no lines at all, and the pass skips its
+  // neighbour reads there entirely.
   float lineFar = min(fogFar, LINE_FAR);
   // Nothing seen through the sea's surface is outlined: the reef from the shore, or the shore from
   // under water. (The sea writes no depth, so this tells it by the height of what's behind it.)
   vec4 view = projectionInverse * vec4(uv * 2.0 - 1.0, texture2D(tDepth, uv).x * 2.0 - 1.0, 1.0);
   float under = step((cameraWorld * vec4(view.xyz / view.w, 1.0)).y, waterY);
   if (outline > 0.0 && d < lineFar && under == cameraUnder) {
-    float away = smoothstep(min(LINE_NEAR, fogNear), lineFar, d);
     // How heavy this surface's lines are, written in alpha by its material (lineWeight): 1 for
     // creatures and rocks, lighter for plants, so a meadow isn't all ink.
     float weight = texture2D(tColor, uv).a;
-    vec2 o = vec2(max(1.0, mix(outline, 1.0, away) * weight)) / resolution;
+    // So an object's lines keep their size relative to it as it (or the zoomed camera) comes and goes.
+    float width = outline * weight * min(LINE_AT / d, LINE_MAX);
+    vec2 o = vec2(max(width, 1.0)) / resolution;
     // Inverse depth is linear across any flat surface on screen, so its Laplacian is ~0 on the ground
     // however steeply it is seen, and sharply negative on the near side of a silhouette.
     float inv = 1.0 / d;
@@ -117,8 +119,8 @@ void main() {
       float gy = luma(colourAt(uv + vec2(0.0, o.y))) - luma(colourAt(uv - vec2(0.0, o.y)));
       edge = max(edge, creases * smoothstep(0.12, 0.3, length(vec2(gx, gy))));
     }
-    edge *= weight * mix(1.0, FAR_INK, away) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
-    vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, max(inkTint, away));
+    edge *= min(width, 1.0) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
+    vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, inkTint);
     c = mix(c, line, edge * ink);
   }
 
