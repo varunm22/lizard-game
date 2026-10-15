@@ -67,6 +67,10 @@ void main() {
 
 const FRAGMENT = /* glsl */ `
 #include <packing>
+// Lines start thinning (m), and are gone past this; how dark they still are as they go.
+#define LINE_NEAR 0.5
+#define LINE_FAR 2.5
+#define FAR_INK 0.35
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
 uniform vec2 resolution;
@@ -86,9 +90,14 @@ void main() {
   vec2 uv = (block + 0.5) * pixel / resolution;
   vec3 c = colourAt(uv);
 
-  if (outline > 0.0) {
-    vec2 o = vec2(outline) / resolution;
-    float d = viewDepth(uv);
+  float d = viewDepth(uv);
+  // Lines are for what's near. From LINE_NEAR out they thin to a pixel and fade, so a fish a couple
+  // of metres off keeps its colour rather than turning into a black blob, and past LINE_FAR (or the
+  // fog, if nearer) there are none at all: the pass skips its neighbour reads there entirely.
+  float lineFar = min(fogFar, LINE_FAR);
+  if (outline > 0.0 && d < lineFar) {
+    float away = smoothstep(min(LINE_NEAR, fogNear), lineFar, d);
+    vec2 o = vec2(mix(outline, 1.0, away)) / resolution;
     // Inverse depth is linear across any flat surface on screen, so its Laplacian is ~0 on the ground
     // however steeply it is seen, and sharply negative on the near side of a silhouette.
     float inv = 1.0 / d;
@@ -100,9 +109,8 @@ void main() {
       float gy = luma(colourAt(uv + vec2(0.0, o.y))) - luma(colourAt(uv - vec2(0.0, o.y)));
       edge = max(edge, creases * smoothstep(0.12, 0.3, length(vec2(gx, gy))));
     }
-    // Lines are for what's near: past a metre or so they thin out, or the grass beyond turns to scribble.
-    edge *= 1.0 - smoothstep(min(fogNear, 0.8), min(fogFar, 3.5), d);
-    vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, inkTint);
+    edge *= mix(1.0, FAR_INK, away) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
+    vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, max(inkTint, away));
     c = mix(c, line, edge * ink);
   }
 
