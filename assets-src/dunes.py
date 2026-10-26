@@ -30,12 +30,11 @@ import random
 import sys
 
 import bpy  # noqa: I001 (bpy has to load before bmesh and mathutils)
-import bmesh
 from mathutils import Vector, noise
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import srgb  # noqa: E402
-from props import MeshBuilder, clump, frames, leaves, make_object, mix, path, tube  # noqa: E402
+from props import MeshBuilder, clump, lava_cactus, leaves, make_object, mix, path, rock, tube  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'dunes.glb')
 
@@ -54,19 +53,13 @@ C = {
     'shell_white': srgb('#f2eee4'),
     'shell_pink': srgb('#e6b9a8'),
     'shell_grey': srgb('#b9b3a8'),
-    'cactus_base': srgb('#3e3833'),
-    'cactus_old': srgb('#6b6650'),
-    'cactus': srgb('#98974e'),
-    'cactus_tip': srgb('#e0c768'),
-    'cactus_rib': srgb('#5d5a36'),
     'drift': srgb('#b9b2a6'),
     'drift_light': srgb('#e2dccf'),
     'drift_crack': srgb('#7d7469'),
-    'basalt': srgb('#3a3633'),
-    'basalt_rust': srgb('#4b3c35'),
-    'basalt_light': srgb('#56514d'),
-    'sand_dust': srgb('#c9b48a'),
 }
+
+# Black basalt, with blown sand on the tops.
+BASALT = {'base': srgb('#3a3633'), 'rust': srgb('#4b3c35'), 'light': srgb('#56514d'), 'dust': srgb('#c9b48a')}
 
 
 def saltbush(rng, radius, height, rim):
@@ -200,58 +193,6 @@ def mangrove(rng):
     return mb, 0.06, trunk_h
 
 
-def lava_cactus(rng):
-    """Lava cactus (Brachycereus nesioticus), the first plant on bare flows: a clump of short ribbed
-    columns of every height, the outer ones leaning out and turning up, golden with spines at the
-    growing tips, browning to grey-black at the old base."""
-    mb = MeshBuilder()
-    ribs = 6
-    cx, cy = rng.uniform(-0.008, 0.008), rng.uniform(-0.008, 0.008)
-    cols = []
-    for i in range(rng.randint(13, 17)):
-        a = rng.uniform(0, 2 * math.pi)
-        d = 0.03 * math.sqrt(rng.random())
-        hh = 0.02 + 0.07 * rng.random() ** 1.4 * (1.3 - d / 0.03 * 0.7)
-        cols.append((cx + math.cos(a) * d, cy + math.sin(a) * d, a, d, hh, rng.uniform(0.007, 0.011)))
-    for x, y, a, d, hh, r in cols:
-        out = Vector((math.cos(a), math.sin(a), 0))
-        lean = d / 0.03 * rng.uniform(0.3, 0.8)
-        pts = path((x, y, -0.005), out * lean + Vector((0, 0, 1)), hh, 4, bend=-out * lean * 0.9, wobble=0.06, rng=rng)
-        # Some columns are old, grey to the tip; the young ones are golden with spines up top.
-        young = 1.0 if rng.random() < 0.7 else 0.3
-        rings = []
-        fr = frames(pts)
-        k_round = 3  # rings that round over the top
-        for i, (p, (t, u, v)) in enumerate(zip(pts, fr)):
-            s = i / (len(pts) - 1)
-            dome = 1.0 if i < len(pts) - 1 else 0.75
-            rings.append((p, t, u, v, r * (1 - 0.15 * s) * dome, s))
-        p, t, u, v, rr, _ = rings[-1]
-        for j in range(1, k_round):
-            q = j / k_round
-            rings.append((p + t * rr * 0.6 * math.sin(q * math.pi / 2), t, u, v, rr * math.cos(q * math.pi / 2), 1.0))
-        grid = []
-        for p, t, u, v, rr, s in rings:
-            row = []
-            for k in range(ribs * 2):
-                ang = math.pi * k / ribs
-                groove = k % 2
-                co = p + (u * math.cos(ang) + v * math.sin(ang)) * rr * (0.8 if groove else 1.0)
-                c = mix(C['cactus_base'], C['cactus_old'], min(1.0, s * 2.0))
-                c = mix(c, C['cactus'], (s - 0.6) * 2.5 * young)
-                c = mix(c, C['cactus_tip'], (s - 0.85) * 6 * young)
-                row.append(mb.vert(co, mix(c, C['cactus_rib'], 0.35) if groove else c))
-            grid.append(row)
-        n = ribs * 2
-        for ra, rb in zip(grid, grid[1:]):
-            for k in range(n):
-                mb.face(ra[k], ra[(k + 1) % n], rb[(k + 1) % n], rb[k])
-        top = mb.vert(rings[-1][0] + rings[-1][1] * rings[-1][4] * 0.5, C['cactus_tip'])
-        for k in range(n):
-            mb.face(grid[-1][k], grid[-1][(k + 1) % n], top)
-    return mb, 0.045, max(c[4] for c in cols)
-
-
 def driftwood(rng, r_base, r_tip, length):
     """A bleached trunk thrown up on the strand, lying along X with its underside on z = 0: thick at
     the root end (x < 0), where broken roots splay, tapering to a snapped tip, out of round and
@@ -309,49 +250,6 @@ def driftwood(rng, r_base, r_tip, length):
         c = Vector((x, sweep * math.sin(math.pi * s), r))
         pts = path(c + side * r * 0.6, side, r * rng.uniform(0.8, 2.2), 2, wobble=0.2, rng=rng)
         tube(mb, pts, lambda t, rr=r * rng.uniform(0.35, 0.5): rr * (1 - 0.35 * t), wood, sides=5, rough=0.15, seed=seed + 7 * i)
-    return mb
-
-
-def basalt(rng, squash):
-    """A basalt boulder: a lumpy weathered mass with flat fracture faces where pieces have split
-    off. Points on a noisy ellipsoid, the ones beyond a few random cutting planes pressed onto
-    them, then the convex hull (the game's collider is the hull of the mesh, so this is what you
-    stand on). Flat base at z = -0.55 * squash, like props.py's rocks; each face shaded by smooth
-    noise so the cut faces read as single planes and the weathered sides as a mottled skin."""
-    seed = Vector((rng.random() * 40, rng.random() * 40, 0))
-    stretch = (rng.uniform(0.85, 1.15), rng.uniform(0.75, 1.05))
-    cuts = []
-    for _ in range(rng.randint(3, 6)):
-        a = rng.uniform(0, 2 * math.pi)
-        n = Vector((math.cos(a), math.sin(a), rng.uniform(-0.2, 1.2))).normalized()
-        cuts.append((n, rng.uniform(0.55, 0.85)))
-    bm = bmesh.new()
-    count = 90
-    for i in range(count):
-        # A Fibonacci sphere, jittered: evenly spread but not on a lattice.
-        z = 1 - 2 * (i + 0.5) / count
-        ring = math.sqrt(1 - z * z)
-        a = i * 2.39996 + rng.uniform(-0.2, 0.2)
-        p = Vector((ring * math.cos(a), ring * math.sin(a), z))
-        p *= 1 + 0.2 * noise.noise(p * 1.4 + seed) + 0.06 * noise.noise(p * 4 + seed)
-        for nrm, d in cuts:
-            over = p.dot(nrm) - d
-            if over > 0:
-                p -= nrm * over
-        bm.verts.new(Vector((p.x * stretch[0], p.y * stretch[1], max(p.z, -0.55) * squash)))
-    bmesh.ops.convex_hull(bm, input=list(bm.verts))
-    for v in [v for v in bm.verts if not v.link_faces]:
-        bm.verts.remove(v)
-    mb = MeshBuilder()
-    for f in bm.faces:
-        c = f.calc_center_median()
-        n = noise.noise(c * 2.2 + seed) * 0.5 + 0.5
-        col = mix(C['basalt'], C['basalt_rust'], (n - 0.6) * 2.5)
-        col = mix(col, C['basalt_light'], max(0.0, f.normal.z - 0.6) * 0.4 + rng.uniform(-0.05, 0.08))
-        if f.normal.z > 0.85:
-            col = mix(col, C['sand_dust'], 0.08)
-        mb.face(*[mb.vert(v.co, col) for v in f.verts])
-    bm.free()
     return mb
 
 
@@ -428,7 +326,7 @@ def main():
     for i, (r0, r1, length) in enumerate(((0.05, 0.032, 0.9), (0.035, 0.024, 0.7), (0.085, 0.055, 1.4))):
         objects.append(make_object(f'driftwood_{i}', driftwood(nrng, r0, r1, length), mat, extras={'radius': r0, 'tip': r1, 'length': length}))
     for i, squash in enumerate((0.55, 0.7, 0.8, 0.6, 0.9, 0.5)):
-        objects.append(make_object(f'basalt_{i}', basalt(nrng, squash), mat, smooth=False, extras={'squash': squash}))
+        objects.append(make_object(f'basalt_{i}', rock(nrng, squash, BASALT), mat, smooth=False, extras={'squash': squash}))
     for i, col in enumerate(('shell_white', 'shell_pink', 'shell_grey', 'shell_white')):
         objects.append(make_object(f'shell_{i}', shell(rng, C[col]), mat, smooth=False))
     for i, obj in enumerate(objects):

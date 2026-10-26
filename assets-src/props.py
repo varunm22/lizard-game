@@ -63,9 +63,11 @@ C = {
     'log_grey': srgb('#9a9286'),
     'wood': srgb('#c9a77a'),
     'wood_ring': srgb('#9c7a52'),
-    'cactus': srgb('#b4a85e'),
-    'cactus_rib': srgb('#8a7f45'),
-    'cactus_base': srgb('#5e5040'),
+    'cactus_base': srgb('#3e3833'),
+    'cactus_old': srgb('#6b6650'),
+    'cactus': srgb('#98974e'),
+    'cactus_tip': srgb('#e0c768'),
+    'cactus_rib': srgb('#5d5a36'),
     'rock': srgb('#8e8984'),
     'rock_rust': srgb('#8e7466'),
     'ulva': srgb('#4fa832'),
@@ -73,6 +75,9 @@ C = {
     'turf': srgb('#6e2228'),
     'turf_tip': srgb('#c45a48'),
 }
+
+# Grey lava rock, tinted per place by the game (black by the sea, mossy in the forest).
+ROCK = {'base': srgb('#8e8984'), 'rust': srgb('#8e7466'), 'light': srgb('#a8a39d'), 'dust': srgb('#b9b49c')}
 
 
 class MeshBuilder:
@@ -240,58 +245,87 @@ def flare(base_r, top_r, flare_k=0.6, flare_h=0.1, height=1.0):
     return radius
 
 
-def scalesia(rng):
-    """Tree daisy of the highland forest: a straight mossy trunk and a flat umbrella of leaf clumps."""
+def scalesia(rng, r0):
+    """Tree daisy of the highland forest: a tall mossy trunk, not quite straight, that forks near the
+    top into limbs reaching up and out, each ending in a flat-topped spray of leaves, so the crown is
+    a broad, uneven umbrella with gaps between the sprays."""
     mb = MeshBuilder()
+    seed = rng.random() * 50
     h = rng.uniform(2.1, 2.6)
-    r0 = rng.uniform(0.075, 0.09)
-    trunk = path((0, 0, 0), (rng.uniform(-0.08, 0.08), rng.uniform(-0.08, 0.08), 1), h, 12, rng=rng, wobble=0.02)
-    col = bark(C['scalesia_bark'], [(C['moss'], 0.55, lambda co, s: max(0.0, 1 - co[2] / 1.2)), (C['lichen'], 0.25, lambda co, s: 1.0)], 6, rng.random() * 50)
-    tube(mb, trunk, flare(r0, r0 * 0.5, 0.7, 0.08, h), col, sides=10, cap=False)
-    top = trunk[-1]
-    n = rng.randint(4, 6)
+    lean = Vector((rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1), 1))
+    trunk = path((0, 0, 0), lean, h * 0.8, 12, bend=-lean * 0.1, rng=rng, wobble=0.04)
+    col = bark(C['scalesia_bark'], [(C['moss'], 0.55, lambda co, s: max(0.0, 1 - co[2] / 1.2)), (C['lichen'], 0.25, lambda co, s: 1.0)], 6, seed)
+    tube(mb, trunk, flare(r0, r0 * 0.55, 0.7, 0.08, h * 0.8), col, sides=10, rough=0.12, seed=seed)
+    tips = []
+
+    def grow(start, d, r, length, depth):
+        br = path(start, d, length, 5, bend=Vector((0, 0, 0.3)) - Vector((d.x, d.y, 0)) * 0.3, rng=rng, wobble=0.15)
+        tube(mb, br, lambda s: r * (1 - 0.45 * s), col, sides=7 if depth == 0 else 5, rough=0.12, seed=seed + depth)
+        if depth >= 1:
+            tips.append(br[-1])
+            return
+        for _ in range(rng.choice((2, 2, 3))):
+            a = rng.uniform(0, 2 * math.pi)
+            nd = (Vector(d) + Vector((math.cos(a), math.sin(a), rng.uniform(-0.2, 0.3))) * rng.uniform(0.5, 0.9)).normalized()
+            grow(br[rng.randint(3, 5)], nd, r * 0.6, length * rng.uniform(0.45, 0.7), depth + 1)
+    n = rng.randint(4, 5)
+    a0 = rng.uniform(0, 2 * math.pi)
     for i in range(n):
-        a = 2 * math.pi * (i + rng.uniform(-0.25, 0.25)) / n
-        start = trunk[int(len(trunk) * rng.uniform(0.72, 0.92))]
-        d = Vector((math.cos(a), math.sin(a), rng.uniform(0.6, 1.1)))
-        length = rng.uniform(0.5, 0.8)
-        br = path(start, d, length, 5, bend=Vector((0, 0, 0.6)), rng=rng, wobble=0.04)
-        tube(mb, br, lambda s: r0 * 0.4 * (1 - 0.6 * s), col, sides=6)
-        end = br[-1]
-        for j in range(rng.randint(2, 3)):
-            off = Vector((rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), rng.uniform(-0.03, 0.08)))
-            leaf = lambda c, r: mix(C['scalesia_leaf'], C['scalesia_leaf_light'], r * 0.5 + max(0.0, c[2] - end.z) * 3)
-            blob(mb, end + off, (rng.uniform(0.28, 0.4), rng.uniform(0.28, 0.4), rng.uniform(0.1, 0.16)), leaf, rng)
-    blob(mb, top + Vector((0, 0, 0.1)), (0.35, 0.35, 0.14), lambda c, r: mix(C['scalesia_leaf'], C['scalesia_leaf_light'], r * 0.6), rng)
+        a = a0 + 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / n
+        d = Vector((math.cos(a), math.sin(a), rng.uniform(0.7, 1.3)))
+        grow(trunk[rng.randint(8, 12)], d, r0 * rng.uniform(0.4, 0.5), rng.uniform(0.45, 0.75), 0)
+    crown = sum(tips, Vector()) / len(tips) - Vector((0, 0, 0.35))
+
+    def leaf(co, hz):
+        n = noise.noise(Vector(co) * 4 + Vector((seed, 1, 0))) * 0.5 + 0.5
+        dapple = noise.noise(Vector(co) * 25 + Vector((0, seed, 0)))
+        return mix(C['scalesia_leaf'], C['scalesia_leaf_light'], hz * 0.6 + (n - 0.5) * 0.5 + dapple * 0.25)
+    clumps = []
+    for p in tips:
+        for _ in range(rng.randint(1, 3)):
+            off = Vector((rng.uniform(-0.14, 0.14), rng.uniform(-0.14, 0.14), rng.uniform(-0.03, 0.06)))
+            sz = rng.uniform(0.16, 0.24)
+            size = (sz, sz * rng.uniform(0.8, 1.2), sz * rng.uniform(0.4, 0.55))
+            clump(mb, p + off, size, leaf, rng, detail=2, lump=0.3, crown=crown, crown_k=0.5)
+            clumps.append((p + off, size))
+    leaves(mb, clumps, 90, 0.09, lambda co, r: leaf(co, 0.3 + 0.7 * r), rng, crown=crown, lift=0.3)
     return mb, r0 * 1.25, 1.2
 
 
-def palo_santo(rng):
-    """Palo santo of the dry lowlands: silvery bark forking into many upswept, nearly bare branches."""
+def palo_santo(rng, r0):
+    """Palo santo of the dry lowlands: a short silvery trunk forking again and again into crooked,
+    upswept branches, nearly bare, with a few small tufts of leaves at the ends."""
     mb = MeshBuilder()
-    r0 = rng.uniform(0.055, 0.07)
+    seed = rng.random() * 50
     trunk_h = rng.uniform(0.7, 1.0)
-    col = bark(C['palo_bark'], [(C['palo_dark'], 0.4, lambda co, s: 1.0), (C['lichen'], 0.3, lambda co, s: 1.0)], 9, rng.random() * 50)
-    trunk = path((0, 0, 0), (rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), 1), trunk_h, 6, rng=rng, wobble=0.03)
-    tube(mb, trunk, flare(r0, r0 * 0.8, 0.5, 0.06, trunk_h), col, sides=9, cap=False)
+    col = bark(C['palo_bark'], [(C['palo_dark'], 0.4, lambda co, s: 1.0), (C['lichen'], 0.3, lambda co, s: 1.0)], 9, seed)
+    trunk = path((0, 0, 0), (rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), 1), trunk_h, 6, rng=rng, wobble=0.08)
+    tube(mb, trunk, flare(r0, r0 * 0.8, 0.5, 0.06, trunk_h), col, sides=9, rough=0.15, seed=seed)
+    tufts = []
 
     def grow(start, direction, radius, length, depth):
-        br = path(start, direction, length, 4, bend=Vector((0, 0, 0.5)), rng=rng, wobble=0.08)
-        tube(mb, br, lambda s: radius * (1 - 0.45 * s), col, sides=6 if depth < 2 else 4)
-        if depth >= 2:
-            if rng.random() < 0.6:
-                leaf = lambda c, r: mix(C['palo_leaf'], C['scalesia_leaf_light'], r)
-                blob(mb, br[-1], (rng.uniform(0.08, 0.14),) * 2 + (0.06,), leaf, rng, detail=1)
+        br = path(start, direction, length, 4, bend=Vector((0, 0, 0.5)), rng=rng, wobble=0.22)
+        tube(mb, br, lambda s: radius * (1 - 0.45 * s), col, sides=6 if depth < 1 else 4, rough=0.15, seed=seed + depth)
+        if depth >= 2 or (depth == 1 and rng.random() < 0.25):
+            if rng.random() < 0.55:
+                tufts.append(br[-1])
             return
-        for _ in range(rng.randint(2, 3)):
+        for _ in range(rng.choice((2, 2, 3))):
             a = rng.uniform(0, 2 * math.pi)
-            d = (Vector(direction).normalized() + Vector((math.cos(a), math.sin(a), 0)) * rng.uniform(0.5, 0.9)).normalized()
-            grow(br[-1], d, radius * 0.6, length * rng.uniform(0.65, 0.85), depth + 1)
+            d = (Vector(direction).normalized() + Vector((math.cos(a), math.sin(a), 0)) * rng.uniform(0.4, 1.0)).normalized()
+            grow(br[rng.randint(2, 4)], d, radius * 0.6, length * rng.uniform(0.55, 0.85), depth + 1)
 
     for i in range(rng.randint(2, 3)):
         a = rng.uniform(0, 2 * math.pi)
         d = Vector((math.cos(a) * 0.6, math.sin(a) * 0.6, 1))
-        grow(trunk[-1], d, r0 * 0.65, rng.uniform(0.55, 0.75), 0)
+        grow(trunk[rng.randint(4, 6)], d, r0 * 0.65, rng.uniform(0.5, 0.75), 0)
+    leaf = lambda c, r: mix(C['palo_leaf'], C['scalesia_leaf_light'], r * 0.6)
+    # Each tuft a loose spray of a few small bunches of leaflets, not one solid ball.
+    for p in tufts:
+        for _ in range(rng.randint(1, 3)):
+            sz = rng.uniform(0.035, 0.06)
+            off = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(0, 1))) * 0.045
+            clump(mb, p + off, (sz, sz * rng.uniform(0.7, 1.3), sz * 0.7), leaf, rng, detail=2, lump=0.4)
     return mb, r0 * 1.15, 1.0
 
 
@@ -302,6 +336,9 @@ def pad(mb, centre, normal_dir, along, size, rng):
     u = (u - n * u.dot(n)).normalized()
     v = n.cross(u)
     w, l, t = size
+    # Pads are lopsided, broader on one side and toward one end, never a perfect oval.
+    lop = rng.uniform(0.1, 0.3)
+    skew = rng.uniform(0, 2 * math.pi)
     rings = 6
     sides = 10
     prev = None
@@ -312,7 +349,7 @@ def pad(mb, centre, normal_dir, along, size, rng):
         ring = []
         for k in range(sides):
             a = 2 * math.pi * k / sides
-            rad = math.sqrt(max(0.0, 1 - y * y))
+            rad = math.sqrt(max(0.0, 1 - y * y)) * (1 + lop * math.sin(a + skew) * (0.5 - abs(y)))
             co = Vector(centre) + u * (y * l) + v * (math.cos(a) * w * rad) + n * (math.sin(a) * t * rad)
             dot = (k + i) % 3 == 0 and 0.15 < s < 0.85
             ring.append(mb.vert(co, C['spine'] if dot else mix(C['pad'], C['pad_light'], 0.5 + 0.5 * math.sin(a) + rng.uniform(-0.1, 0.1))))
@@ -331,21 +368,20 @@ def pad(mb, centre, normal_dir, along, size, rng):
     return Vector(centre) + u * l * 0.9, u, n
 
 
-def opuntia(rng):
+def opuntia(rng, r0):
     """Giant prickly pear: a scaly reddish trunk carrying a crown of jointed flat pads."""
     mb = MeshBuilder()
-    r0 = rng.uniform(0.06, 0.075)
     h = rng.uniform(0.9, 1.25)
     col = bark(C['opuntia_bark'], [(C['opuntia_plate'], 0.45, lambda co, s: 1.0), (C['palo_dark'], 0.2, lambda co, s: 1.0)], 22, rng.random() * 50)
     trunk = path((0, 0, 0), (rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1), 1), h, 8, rng=rng, wobble=0.03)
-    tube(mb, trunk, flare(r0, r0 * 0.8, 0.35, 0.05, h), col, sides=9, cap=False)
+    tube(mb, trunk, flare(r0, r0 * 0.8, 0.35, 0.05, h), col, sides=9, rough=0.12, seed=rng.random() * 50)
 
     def chain(base, up, depth):
         for _ in range(rng.randint(1, 2) if depth else rng.randint(4, 6)):
             a = rng.uniform(0, 2 * math.pi)
             along = (Vector(up) * 1.0 + Vector((math.cos(a), math.sin(a), 0)) * rng.uniform(0.4, 1.0)).normalized()
             normal = Vector((-math.sin(a), math.cos(a), rng.uniform(-0.3, 0.3)))
-            size = (rng.uniform(0.07, 0.1), rng.uniform(0.1, 0.14), 0.016)
+            size = (rng.uniform(0.06, 0.11), rng.uniform(0.09, 0.15), 0.016)
             centre = Vector(base) + along * size[1] * 0.9
             tip, u, _ = pad(mb, centre, normal, along, size, rng)
             if depth < 2:
@@ -355,33 +391,68 @@ def opuntia(rng):
     return mb, r0 * 1.15, 0.9
 
 
-def lava_cactus(rng):
-    """Lava cactus: a tight clump of short ribbed columns, yellow-green above, browning at the base."""
+def lava_cactus(rng, tallest=None):
+    """Lava cactus (Brachycereus nesioticus), the first plant on bare flows: a clump of short ribbed
+    columns of every height, the outer ones leaning out and turning up, golden with spines at the
+    growing tips, browning to grey-black at the old base."""
     mb = MeshBuilder()
+    ribs = 6
+    cx, cy = rng.uniform(-0.008, 0.008), rng.uniform(-0.008, 0.008)
     cols = []
-    for i in range(rng.randint(6, 9)):
+    for i in range(rng.randint(13, 17)):
         a = rng.uniform(0, 2 * math.pi)
-        d = rng.uniform(0, 0.03)
-        cols.append((math.cos(a) * d, math.sin(a) * d, rng.uniform(0.04, 0.09), rng.uniform(0.009, 0.013)))
-    for x, y, hh, r in cols:
-        lean = Vector((x, y, 0)) * 1.5
-        pts = path((x, y, 0), Vector((0, 0, 1)) + lean, hh, 5)
-        # Ribs: alternate vertices round each ring are set in and darker.
-        ribs = {'k': 0}
-
-        def colour(co, s):
-            ribs['k'] += 1
-            top = mix(C['cactus'], C['cactus_rib'], 0.7) if ribs['k'] % 2 else C['cactus']
-            return mix(C['cactus_base'], top, s * 2.2)
-        tube(mb, pts, lambda s: r * (1 - 0.25 * s * s), colour, sides=10)
-    return mb, 0.045, max(c[2] for c in cols)
+        d = 0.03 * math.sqrt(rng.random())
+        hh = 0.02 + 0.07 * rng.random() ** 1.4 * (1.3 - d / 0.03 * 0.7)
+        cols.append((cx + math.cos(a) * d, cy + math.sin(a) * d, a, d, hh, rng.uniform(0.007, 0.011)))
+    if tallest:
+        k = tallest / max(c[4] for c in cols)
+        cols = [(x, y, a, d, hh * k, r) for x, y, a, d, hh, r in cols]
+    for x, y, a, d, hh, r in cols:
+        out = Vector((math.cos(a), math.sin(a), 0))
+        lean = d / 0.03 * rng.uniform(0.3, 0.8)
+        pts = path((x, y, -0.005), out * lean + Vector((0, 0, 1)), hh, 4, bend=-out * lean * 0.9, wobble=0.06, rng=rng)
+        # Some columns are old, grey to the tip; the young ones are golden with spines up top.
+        young = 1.0 if rng.random() < 0.7 else 0.3
+        rings = []
+        fr = frames(pts)
+        k_round = 3  # rings that round over the top
+        for i, (p, (t, u, v)) in enumerate(zip(pts, fr)):
+            s = i / (len(pts) - 1)
+            dome = 1.0 if i < len(pts) - 1 else 0.75
+            rings.append((p, t, u, v, r * (1 - 0.15 * s) * dome, s))
+        p, t, u, v, rr, _ = rings[-1]
+        for j in range(1, k_round):
+            q = j / k_round
+            rings.append((p + t * rr * 0.6 * math.sin(q * math.pi / 2), t, u, v, rr * math.cos(q * math.pi / 2), 1.0))
+        grid = []
+        for p, t, u, v, rr, s in rings:
+            row = []
+            for k in range(ribs * 2):
+                ang = math.pi * k / ribs
+                groove = k % 2
+                co = p + (u * math.cos(ang) + v * math.sin(ang)) * rr * (0.8 if groove else 1.0)
+                c = mix(C['cactus_base'], C['cactus_old'], min(1.0, s * 2.0))
+                c = mix(c, C['cactus'], (s - 0.6) * 2.5 * young)
+                c = mix(c, C['cactus_tip'], (s - 0.85) * 6 * young)
+                row.append(mb.vert(co, mix(c, C['cactus_rib'], 0.35) if groove else c))
+            grid.append(row)
+        n = ribs * 2
+        for ra, rb in zip(grid, grid[1:]):
+            for k in range(n):
+                mb.face(ra[k], ra[(k + 1) % n], rb[(k + 1) % n], rb[k])
+        top = mb.vert(rings[-1][0] + rings[-1][1] * rings[-1][4] * 0.5, C['cactus_tip'])
+        for k in range(n):
+            mb.face(grid[-1][k], grid[-1][(k + 1) % n], top)
+    return mb, 0.045, max(c[4] for c in cols)
 
 
 def log(rng, radius, length):
-    """A fallen trunk along X: grey weathered bark mossy on top, pale broken wood at the ends."""
+    """A fallen trunk along X: out of round and split along the grain, grey weathered bark mossy on
+    top, a stub or two of broken branch, the ends snapped off ragged with pale wood showing. Its
+    surface stays within a few percent of `radius` so the game's 14-sided prism collider fits it."""
     mb = MeshBuilder()
     sides = 14
-    steps = max(6, int(length / 0.06))
+    steps = max(6, int(length / 0.05))
     seed = rng.random() * 50
     col = bark(C['log_bark'], [(C['log_grey'], 0.45, lambda co, s: 1.0), (C['moss'], 0.4, lambda co, s: max(0.0, co[2] / radius - 0.9) * 2)], 11, seed)
     rings = []
@@ -391,21 +462,21 @@ def log(rng, radius, length):
         for k in range(sides):
             # Angles from straight up, offset half a side so a flat face sits on top.
             a = 2 * math.pi * (k + 0.5) / sides
-            ridge = 1 + 0.03 * noise.noise(Vector((x * 9, k * 0.9, seed)))
-            co = (x, math.sin(a) * radius * ridge, radius + math.cos(a) * radius * ridge)
+            ridge = 1 + 0.05 * noise.noise(Vector((x * 4, math.cos(a) * 1.5, math.sin(a) * 1.5 + seed))) - 0.05 * max(0.0, noise.noise(Vector((x * 0.8, a * 2.2, seed))))
+            co = (x, math.sin(a) * radius * ridge, max(0.0, radius + math.cos(a) * radius * ridge))
             ring.append(mb.vert(co, col(co, i / steps)))
         rings.append(ring)
     for ra, rb in zip(rings, rings[1:]):
         for k in range(sides):
             mb.face(ra[k], rb[k], rb[(k + 1) % sides], ra[(k + 1) % sides])
-    # Broken ends: pale wood with a darker ring, jagged.
+    # Broken ends: pale wood with a darker ring, snapped to a ragged peak.
     for ring, sign in ((rings[0], -1), (rings[-1], 1)):
         inner = []
         for k in range(sides):
             a = 2 * math.pi * (k + 0.5) / sides
-            co = (sign * (length / 2 + rng.uniform(-0.004, 0.01)), math.sin(a) * radius * 0.8, radius + math.cos(a) * radius * 0.8)
+            co = (sign * (length / 2 + rng.uniform(-0.004, 0.012)), math.sin(a) * radius * 0.8, radius + math.cos(a) * radius * 0.8)
             inner.append(mb.vert(co, C['wood_ring']))
-        centre = mb.vert((sign * (length / 2 + rng.uniform(0.0, 0.02)), 0, radius), C['wood'])
+        centre = mb.vert((sign * (length / 2 + radius * rng.uniform(0.2, 0.7)), radius * rng.uniform(-0.3, 0.3), radius * rng.uniform(0.9, 1.3)), C['wood'])
         for k in range(sides):
             k2 = (k + 1) % sides
             if sign < 0:
@@ -414,31 +485,56 @@ def log(rng, radius, length):
             else:
                 mb.face(ring[k2], ring[k], inner[k], inner[k2])
                 mb.face(inner[k2], inner[k], centre)
+    # Stubs of branches, snapped short, out of the upper side and leaning toward the top end.
+    for i in range(rng.randint(1, 2)):
+        x = rng.uniform(-0.3, 0.35) * length
+        a = rng.choice((-1, 1)) * rng.uniform(0.5, 1.3)
+        side = Vector((rng.uniform(0.4, 1.0), math.sin(a), math.cos(a))).normalized()
+        c = Vector((x, 0, radius))
+        pts = path(c + side * radius * 0.6, side, radius * rng.uniform(0.8, 1.8), 2, wobble=0.2, rng=rng)
+        tube(mb, pts, lambda t, rr=radius * rng.uniform(0.3, 0.45): rr * (1 - 0.35 * t), col, sides=5, rough=0.15, seed=seed + 7 * i)
     return mb
 
 
-def rock(rng, squash):
-    """A lava boulder: the convex hull of jittered points on a squashed ellipsoid, flat-bottomed, each face its own tone."""
+def rock(rng, squash, pal=None):
+    """A lava boulder: a lumpy weathered mass with flat fracture faces where pieces have split
+    off. Points on a noisy ellipsoid, the ones beyond a few random cutting planes pressed onto
+    them, then the convex hull (the game's collider is the hull of the mesh, so this is what you
+    stand on). Flat base at z = -0.55 * squash, each face shaded by smooth
+    noise so the cut faces read as single planes and the weathered sides as a mottled skin."""
+    pal = pal or ROCK
+    seed = Vector((rng.random() * 40, rng.random() * 40, 0))
+    stretch = (rng.uniform(0.85, 1.15), rng.uniform(0.75, 1.05))
+    cuts = []
+    for _ in range(rng.randint(3, 6)):
+        a = rng.uniform(0, 2 * math.pi)
+        n = Vector((math.cos(a), math.sin(a), rng.uniform(-0.2, 1.2))).normalized()
+        cuts.append((n, rng.uniform(0.55, 0.85)))
     bm = bmesh.new()
-    pts = []
-    stretch = (rng.uniform(0.85, 1.15), rng.uniform(0.8, 1.1))
-    for _ in range(rng.randint(26, 40)):
-        while True:
-            p = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
-            if 0.2 < p.length <= 1:
-                break
-        p.normalize()
-        p *= rng.uniform(0.82, 1.0)
-        p = Vector((p.x * stretch[0], p.y * stretch[1], max(p.z, -0.55) * squash))
-        pts.append(bm.verts.new(p))
-    bmesh.ops.convex_hull(bm, input=pts)
+    count = 90
+    for i in range(count):
+        # A Fibonacci sphere, jittered: evenly spread but not on a lattice.
+        z = 1 - 2 * (i + 0.5) / count
+        ring = math.sqrt(1 - z * z)
+        a = i * 2.39996 + rng.uniform(-0.2, 0.2)
+        p = Vector((ring * math.cos(a), ring * math.sin(a), z))
+        p *= 1 + 0.2 * noise.noise(p * 1.4 + seed) + 0.06 * noise.noise(p * 4 + seed)
+        for nrm, d in cuts:
+            over = p.dot(nrm) - d
+            if over > 0:
+                p -= nrm * over
+        bm.verts.new(Vector((p.x * stretch[0], p.y * stretch[1], max(p.z, -0.55) * squash)))
+    bmesh.ops.convex_hull(bm, input=list(bm.verts))
     for v in [v for v in bm.verts if not v.link_faces]:
         bm.verts.remove(v)
     mb = MeshBuilder()
     for f in bm.faces:
-        tone = rng.uniform(0.75, 1.15)
-        c = mix(C['rock'], C['rock_rust'], rng.random() ** 3)
-        col = scale(c, tone)
+        c = f.calc_center_median()
+        n = noise.noise(c * 2.2 + seed) * 0.5 + 0.5
+        col = mix(pal['base'], pal['rust'], (n - 0.6) * 2.5)
+        col = mix(col, pal['light'], max(0.0, f.normal.z - 0.6) * 0.4 + rng.uniform(-0.05, 0.08))
+        if f.normal.z > 0.85:
+            col = mix(col, pal['dust'], 0.08)
         mb.face(*[mb.vert(v.co, col) for v in f.verts])
     bm.free()
     return mb
@@ -537,6 +633,16 @@ def make_object(name, mb, mat, smooth=True, extras=None):
     return obj
 
 
+# Trunk radii (m) and the cactus's height, kept from the first generation of these models: the game
+# spaces everything it scatters by the trunks' colliders, so the island keeps its layout.
+TRUNKS = {
+    'scalesia': (0.10023434668758852 / 1.25, 0.09943357562829055 / 1.25),
+    'palo_santo': (0.07073263624545541 / 1.15, 0.06534037291114314 / 1.15),
+    'opuntia': (0.07170845049924561 / 1.15, 0.07101276677988799 / 1.15),
+}
+CACTUS_HEIGHT = 0.08505426035743524
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rng = random.Random(29)
@@ -544,9 +650,9 @@ def main():
     objects = []
     for i in range(2):
         for name, fn in (('scalesia', scalesia), ('palo_santo', palo_santo), ('opuntia', opuntia)):
-            mb, r, h = fn(rng)
+            mb, r, h = fn(rng, TRUNKS[name][i])
             objects.append(make_object(f'{name}_{i}', mb, mat, extras={'trunk_radius': r, 'trunk_height': h}))
-    mb, r, h = lava_cactus(rng)
+    mb, r, h = lava_cactus(rng, CACTUS_HEIGHT)
     objects.append(make_object('lava_cactus', mb, mat, extras={'trunk_radius': r, 'trunk_height': h}))
     for i, (radius, length) in enumerate(((0.05, 0.9), (0.035, 0.7), (0.085, 1.4))):
         objects.append(make_object(f'log_{i}', log(rng, radius, length), mat, extras={'radius': radius, 'length': length}))
