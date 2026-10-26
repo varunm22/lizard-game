@@ -85,13 +85,17 @@ void main() {
     float edge = width > 1.0
       ? 0.5 * (silhouette(uv, inv, o - 0.5 / resolution) + silhouette(uv, inv, o + 0.5 / resolution))
       : silhouette(uv, inv, o);
-    // Colour jumps are read no wider than at LINE_AT. Four taps that far apart see a thin feature (a
-    // claw, a blade's edge, a band edge) from every pixel that far from it, so a wide reach drew
-    // ghost copies of it and a soft dark halo outside the silhouette when the camera zoomed in.
+    // Colour jumps, read no wider than at LINE_AT: four taps far apart see a thin feature (a claw, a
+    // band edge) from every pixel that far from it, so a wide reach drew ghost copies when the camera
+    // zoomed in. And none on the background just outside a silhouette (where a tap lands on something
+    // nearer: the Laplacian of inverse depth turns positive), or every outline got a faint second line.
     vec2 g = vec2(max(min(width, outline * weight), 1.0)) / resolution;
     float gx = luma(colourAt(uv + vec2(g.x, 0.0))) - luma(colourAt(uv - vec2(g.x, 0.0)));
     float gy = luma(colourAt(uv + vec2(0.0, g.y))) - luma(colourAt(uv - vec2(0.0, g.y)));
-    edge = max(edge, CREASES * smoothstep(0.12, 0.3, length(vec2(gx, gy))));
+    float nearer = 0.5 * (1.0 / viewDepth(uv + vec2(g.x, 0.0)) + 1.0 / viewDepth(uv - vec2(g.x, 0.0))
+      + 1.0 / viewDepth(uv + vec2(0.0, g.y)) + 1.0 / viewDepth(uv - vec2(0.0, g.y))) - 2.0 * inv;
+    float crease = smoothstep(0.12, 0.3, length(vec2(gx, gy))) * (1.0 - smoothstep(0.003, 0.012, nearer / inv));
+    edge = max(edge, CREASES * crease);
     edge *= min(width, 1.0) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
     vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, INK_TINT);
     c = mix(c, line, edge * INK);
