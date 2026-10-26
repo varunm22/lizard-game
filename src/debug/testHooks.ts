@@ -389,6 +389,12 @@ export interface DunesTestHooks
   };
   /** Start the run over (R). */
   restart(): void;
+  /** Go on from a won run (C): walk in among the adults as the screen fades. In tests nothing is loaded after; `arrival().left` says it would have been. */
+  leave(): void;
+  /** Walking in: whether it has begun, how far the screen has faded (0 to 1), and whether the next stage was asked for. */
+  arrival(): { walking: boolean; fade: number; left: boolean };
+  /** The colony at the finish: how many adults and crabs, and the adults' sneezes so far. */
+  colony(): { adults: number; crabs: number; sneezes: number };
   /** The saltbushes (and whether each is see-through now), and the burrow mouths. */
   bushes(): { name: string; x: number; y: number; z: number; radius: number; height: number; faded: boolean }[];
   burrows(): { x: number; z: number; yaw: number }[];

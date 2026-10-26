@@ -11,6 +11,8 @@ import type { Bushes } from '../dunes/bushes';
 import { coil, type Racers } from '../dunes/racers';
 import type { Hatchlings } from '../dunes/hatchlings';
 import type { DuneRun } from '../dunes/run';
+import type { Colony } from '../dunes/colony';
+import type { Arrival } from '../dunes/arrival';
 import { BURROWS, COLONY, NEST, SAFE_POINTS } from '../dunes/layout';
 import { coverAt } from '../dunes/prey';
 
@@ -26,13 +28,17 @@ interface DunesHookContext {
   racers: Racers;
   hatchlings: Hatchlings;
   run: DuneRun;
+  colony: Colony;
+  arrival: Arrival;
+  walkIntoColony: (then: () => void) => void;
   setInput: DunesTestHooks['setInput'];
   viewFrom: DunesTestHooks['viewFrom'];
 }
 
 /** The nesting dunes' test hooks (`window.__dunes`); the dunes' main owns input and view overrides. */
 export function createDunesHooks(ctx: DunesHookContext): DunesTestHooks {
-  const { world, obstacles, player, states, camera, followCam, fade, bushes, racers, hatchlings, run, setInput, viewFrom } = ctx;
+  const { world, obstacles, player, states, camera, followCam, fade, bushes, racers, hatchlings, run, colony, arrival, walkIntoColony, setInput, viewFrom } = ctx;
+  let left = false;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   const pick = (sel: boolean | number[] | undefined, i: number) => (sel === undefined ? null : Array.isArray(sel) ? !sel.includes(i) : sel);
   return {
@@ -150,6 +156,9 @@ export function createDunesHooks(ctx: DunesHookContext): DunesTestHooks {
       };
     },
     restart: () => run.restart(),
+    leave: () => walkIntoColony(() => (left = true)),
+    arrival: () => ({ walking: arrival.walking, fade: arrival.fade, left }),
+    colony: () => ({ adults: colony.adults.length, crabs: colony.crabs.length, sneezes: colony.sneezes }),
     bushes: () => {
       const faded = new Set(bushes.faded);
       return bushes.list.map((b) => ({ name: b.name, x: b.x, y: b.y, z: b.z, radius: b.radius, height: b.height, faded: faded.has(b.name) }));

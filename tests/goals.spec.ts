@@ -89,7 +89,7 @@ test('diving out of sight as the hawk stoops dodges it, and once it gives up the
 test("ticked goals are kept across visits, and the stage picker shows each stage's share of them", async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => localStorage.setItem('lizard-goals-dunes', JSON.stringify(['safe', 'shore'])));
+  await page.addInitScript(() => localStorage.setItem('lizard-goals-dunes', JSON.stringify(['freeze', 'shore'])));
   await page.goto('/?test&picker');
   await page.waitForFunction(() => window.__game?.ready === true);
   await page.evaluate(() => window.__game!.completeGoal('tortoise'));
@@ -100,7 +100,7 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   await expect(bar('island').locator('.seg.on')).toHaveCount(1);
   await expect(bar('island')).toHaveAttribute('aria-label', '1 of 6 goals done');
   await expect(bar('dunes').locator('.seg.on')).toHaveCount(2);
-  await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 7 goals done');
+  await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 4 goals done');
   await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 10 goals done');
   await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 7 goals done');
   // Once the picker has faded in.

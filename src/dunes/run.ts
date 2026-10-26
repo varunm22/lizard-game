@@ -5,15 +5,13 @@ import type { LizardVisual } from '../player/visual';
 import { terrainHeight } from '../world/terrain';
 import type { Bushes } from './bushes';
 import { COLONY, NEST, SAFE_POINTS } from './layout';
-import { BodyPrey, coverAt, safePointAt } from './prey';
+import { BodyPrey, safePointAt } from './prey';
 import type { Racers } from './racers';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
 
 /** Lying in the coils this long (s) before the lizard is back in its burrow. */
 export const CAUGHT_TIME = 2.5;
-/** A crossing this quick (s) counts for the fast goal. */
-export const FAST = 60;
 
 /**
  * One go at the crossing: from the nest burrow to the adults under the light. The clock starts as
@@ -54,7 +52,7 @@ export class DuneRun {
   constructor(
     private player: PlayerController,
     private visual: LizardVisual,
-    private bushes: Bushes,
+    bushes: Bushes,
     private racers: Racers,
   ) {
     this.prey = new BodyPrey('player', player, bushes, () => this.state === 'ready' || this.state === 'running', () => this.caught());
@@ -64,24 +62,15 @@ export class DuneRun {
     racers.onLeave = (_r, p) => {
       if (p === this.prey && p.speed() < 0.04) this.froze = true;
     };
+    // A few things worth doing, not a checklist of the level: getting there, the two ways to beat a
+    // racer that has spotted you, and the clean crossing.
     const specs: GoalSpec[] = [
-      { id: 'safe', label: 'Shelter in a safe point', met: () => this.checkpoint >= 0 },
-      { id: 'shore', label: 'Reach the adults on the shore', met: () => this.finishes > 0 },
-      { id: 'freeze', label: 'Freeze till a watching racer looks away', met: () => this.froze },
-      { id: 'hide', label: 'Hide from a racer in a burrow or bush', met: () => this.hidingFromHunter(), hold: 1 },
-      { id: 'outrun', label: 'Outrun a racer snake', met: () => this.outran },
-      { id: 'unseen', label: 'Cross without being chased', met: () => this.state === 'home' && !this.chasedThisRun },
-      { id: 'fast', label: `Cross in under ${FAST} seconds`, met: () => this.state === 'home' && this.time < FAST },
+      { id: 'shore', label: 'Reach the colony', met: () => this.finishes > 0 },
+      { id: 'freeze', label: 'Freeze out a racer', met: () => this.froze },
+      { id: 'outrun', label: 'Outrun a racer', met: () => this.outran },
+      { id: 'unseen', label: 'Cross without a chase', met: () => this.state === 'home' && !this.chasedThisRun },
     ];
     this.goals = new Goals(specs);
-  }
-
-  /** Whether some racer is chasing or nosing after the lizard as it lies hidden. */
-  private hidingFromHunter() {
-    if (this.state !== 'running' && this.state !== 'ready') return false;
-    this.player.feetAt(1, this.feet);
-    if (!coverAt(this.bushes, this.feet.x, this.feet.z)) return false;
-    return this.racers.list.some((r) => r.prey === this.prey && (r.state === 'chase' || r.state === 'search'));
   }
 
   /** How much danger the lizard's in: a snake watching it, or after it. */

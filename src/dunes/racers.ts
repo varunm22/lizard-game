@@ -63,22 +63,34 @@ export const RACER = {
   /** Coiled round a catch, then lying up digesting it. */
   feedTime: 3,
   restTime: 14,
-  /** Lateral undulation: one wave of the body per this much crawled, swinging this far either side. */
-  wave: 0.21,
-  sway: 0.5,
+  /**
+   * Lateral undulation: one wave of the body per this much crawled, the head's track swinging this
+   * far (radians) either side of the course. A racer's body shows two or three waves along its length,
+   * each about a tenth of it across.
+   */
+  wave: 0.34,
+  sway: 0.8,
   /** How fast the course turns toward where it's going (radians per second), crawling and chasing. */
   turn: 3,
   chaseTurn: 6,
+  /** The course bends no tighter than this (radians per m crawled), so a turn spreads along the body as a curve. */
+  bend: 7,
 };
 
-export type RacerState = 'lurk' | 'alert' | 'chase' | 'strike' | 'search' | 'feed' | 'rest' | 'return';
+export type RacerState = 'lurk' | 'prowl' | 'alert' | 'chase' | 'strike' | 'search' | 'feed' | 'rest' | 'return';
 
 /** Lift of the neck off the ground in each state (m): head up to look about when alert. */
-const LIFT: Record<RacerState, number> = { lurk: 0.012, alert: 0.065, chase: 0.018, strike: 0.03, search: 0.014, feed: 0.01, rest: 0.004, return: 0.01 };
+const LIFT: Record<RacerState, number> = { lurk: 0.012, prowl: 0.012, alert: 0.065, chase: 0.018, strike: 0.03, search: 0.014, feed: 0.01, rest: 0.004, return: 0.01 };
 /** Where the obstacle check looks ahead (m), and the clearance it keeps from rocks. */
 const LOOK = 0.16;
 const MARGIN = 0.02;
 const STEER_EVERY = 4;
+/**
+ * Lying up, a racer now and then crawls a little way about its home and lies up again where it
+ * stops: after `wait` to `wait + waitMore` s, to a spot `near` to `far` m from home, at `speed`,
+ * giving up after `time` s.
+ */
+const PROWL = { wait: 8, waitMore: 14, near: 0.15, far: 0.4, speed: 0.1, time: 8 };
 
 /** One racer: where it lies up, what it's doing, and its body. */
 export class Racer {
@@ -114,6 +126,9 @@ export class Racer {
   nextFlick: number;
   lookYaw = 0;
   nextLook = 0;
+  /** Seconds left lying up before it next prowls about home, and where that prowl is going. */
+  prowlIn: number;
+  readonly prowlTo = new THREE.Vector3();
 
   constructor(
     readonly index: number,
@@ -125,6 +140,7 @@ export class Racer {
     this.steered = home.yaw;
     this.steerTick = index % STEER_EVERY;
     this.nextFlick = 1 + rand() * 3;
+    this.prowlIn = PROWL.wait + rand() * PROWL.waitMore;
   }
 
   /** The tip of its snout, as last posed. */
@@ -212,6 +228,12 @@ export class Racers {
     if ((was === 'alert' || was === 'search') && (state === 'lurk' || state === 'return') && r.prey && r.prey.huntable()) this.onLeave?.(r, r.prey);
     r.state = state;
     r.timer = 0;
+    if (state === 'lurk') r.prowlIn = PROWL.wait + r.rand() * PROWL.waitMore;
+    if (state === 'prowl') {
+      const a = r.rand() * Math.PI * 2;
+      const d = PROWL.near + r.rand() * (PROWL.far - PROWL.near);
+      r.prowlTo.set(r.home.x + Math.sin(a) * d, 0, r.home.z + Math.cos(a) * d);
+    }
     if (state === 'chase' && was !== 'strike') {
       r.chases++;
       r.lost = 0;
@@ -245,9 +267,11 @@ export class Racers {
     }
     switch (r.state) {
       case 'lurk':
+      case 'prowl':
       case 'alert':
       case 'return': {
         if (r.state === 'return' && r.timer < 1) break;
+        if (r.state === 'lurk' && r.timer > r.prowlIn) this.to(r, 'prowl');
         // Watch for movement: whatever is moving nearest in plain sight.
         let best: Prey | null = null;
         let bestDist = Infinity;
@@ -381,6 +405,12 @@ export class Racers {
           speed = RACER.search;
         }
         break;
+      case 'prowl':
+        if (r.timer < PROWL.time && Math.hypot(r.prowlTo.x - r.neck.x, r.prowlTo.z - r.neck.z) > 0.05) {
+          goal = r.prowlTo;
+          speed = PROWL.speed;
+        } else this.to(r, 'lurk');
+        break;
       case 'return':
         if (Math.hypot(r.home.x - r.neck.x, r.home.z - r.neck.z) > 0.08) {
           goal = r.home;
@@ -406,12 +436,14 @@ export class Racers {
       }
       want = r.steered;
     }
-    const rate = r.state === 'strike' ? 30 : r.state === 'chase' ? RACER.chaseTurn : RACER.turn;
+    const rate = r.state === 'strike' ? 30 : Math.min(r.state === 'chase' ? RACER.chaseTurn : RACER.turn, RACER.bend * r.speed);
     const dy = wrapAngle(want - r.course);
     r.course += Math.sign(dy) * Math.min(Math.abs(dy), rate * dt);
-    const stepLen = r.speed * dt;
-    r.phase += (2 * Math.PI * stepLen) / RACER.wave;
     const sway = r.state === 'strike' ? 0 : RACER.sway;
+    // Swinging side to side, the neck covers more ground than it gains: crawl that much further, so
+    // the speeds above stay speeds along the course (1 / J0(sway), near enough).
+    const stepLen = (r.speed * dt) / (1 - (sway * sway) / 4 + sway ** 4 / 64);
+    r.phase += (2 * Math.PI * stepLen) / RACER.wave;
     const heading = r.course + sway * Math.sin(r.phase);
     const x = r.neck.x + Math.sin(heading) * stepLen;
     const z = r.neck.z + Math.cos(heading) * stepLen;

@@ -77,11 +77,19 @@ const SNEEZE_GAP = [9, 22] as const;
 const SNEEZE_GAP_FED = [3, 7] as const;
 const FED_SNEEZING = 30;
 /** A sneeze: the snout rises, jerks down as the spray comes out, and settles (s, radians). */
-const SNEEZE_TIME = 0.75;
+export const SNEEZE_TIME = 0.75;
 const SNEEZE_WINDUP = 0.36;
-const SNEEZE_BLOW = 0.42;
+export const SNEEZE_BLOW = 0.42;
 const SNEEZE_UP = 0.24;
 const SNEEZE_DOWN = -0.14;
+
+/** The head's nod `t` s into a sneeze (radians, positive snout up). */
+export function sneezeNod(t: number): number {
+  const smooth = (x: number) => x * x * (3 - 2 * x);
+  if (t < SNEEZE_WINDUP) return SNEEZE_UP * smooth(t / SNEEZE_WINDUP);
+  if (t < SNEEZE_BLOW) return SNEEZE_UP + (SNEEZE_DOWN - SNEEZE_UP) * smooth((t - SNEEZE_WINDUP) / (SNEEZE_BLOW - SNEEZE_WINDUP));
+  return SNEEZE_DOWN * (1 - smooth((t - SNEEZE_BLOW) / (SNEEZE_TIME - SNEEZE_BLOW)));
+}
 /** Then it noses in until its drawn snout touches the fronds: within this of a point this far above the holdfast (m). */
 const TOUCH = 0.012;
 const FROND = 0.006;
@@ -512,14 +520,7 @@ class Iguana {
 
   /** The head's nod for the sneeze under way (radians, positive snout up). */
   private nod(): number {
-    const smooth = (x: number) => x * x * (3 - 2 * x);
-    const t = this.sneezeT;
-    if (t >= 0) {
-      if (t < SNEEZE_WINDUP) return SNEEZE_UP * smooth(t / SNEEZE_WINDUP);
-      if (t < SNEEZE_BLOW) return SNEEZE_UP + (SNEEZE_DOWN - SNEEZE_UP) * smooth((t - SNEEZE_WINDUP) / (SNEEZE_BLOW - SNEEZE_WINDUP));
-      return SNEEZE_DOWN * (1 - smooth((t - SNEEZE_BLOW) / (SNEEZE_TIME - SNEEZE_BLOW)));
-    }
-    return 0;
+    return this.sneezeT >= 0 ? sneezeNod(this.sneezeT) : 0;
   }
 
   update(alpha: number, dt: number, spray: SaltSpray) {

@@ -39,8 +39,13 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   and tongue; two colour forms (spotted, striped) side by side in one texture, picked by `map.offset`.
 - Body: follow-the-leader. The neck's path is recorded (`crawlTo`), each bone is placed its own arc
   back along it, so the body slides along its own track. Lateral undulation is a heading sway that
-  advances with distance crawled. Bones are flat (unparented) and the mesh is never frustum-culled.
-- Behaviour: lurk coiled, lift the head and watch (`alert`) when something moves in plain sight,
+  advances with distance crawled (`wave` 0.34 m, `sway` 0.8 rad: two or three waves along the body,
+  each about a tenth of it across; the step is scaled by 1/J0(sway) so speeds stay speeds along the
+  course). The course bends no tighter than `bend` rad/m, so a turn spreads along the body as a
+  curve instead of a kink. With a small sway the body read as straight with one sharp bend. Bones
+  are flat (unparented) and the mesh is never frustum-culled.
+- Behaviour: lurk coiled, now and then `prowl` a little way about home (8 to 22 s after lying up,
+  0.15 to 0.4 m out) and lie up where it stops, lift the head and watch (`alert`) when something moves in plain sight,
   `chase` after a second of watched movement (sooner the closer; at once within `pounce` or smell),
   dash then chase speed, `strike` within a head's length, coil round a catch (`feed`), lie up
   (`rest`), `return` home. A chase is given up after `chaseTime`, beyond `leash`, or when the quarry
@@ -53,17 +58,29 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
 - `hatchlings.ts`: four nest-mates on the lizard's own controller and drawing, never solid to it.
   They come up from burrows round the nest, dash and freeze toward the colony, freeze while watched,
   dive for a bush when chased, and are replaced after being caught or getting home.
-- `colony.ts`: five adults (the lizard model ×3.4, tinted), idle, solid (a ball per spine joint).
+- `colony.ts`: meant to look like the island's colony, where the hatchling is headed. Nine adults
+  (the lizard model ×3.4, tinted) heaped either side of an open lane (`COLONY_LANE`), one across its
+  seaward end, on a flat of black lava (`COLONY_FLAT` in `layout.ts`) ringed by big boulders
+  (`COLONY_ROCKS`, placed last in `props.ts` so nothing before them moves); they turn their heads and
+  sneeze salt (`SaltSpray`, `sneezeNod` from `iguana.ts`). Four Sally Lightfoot crabs (`crab.glb`,
+  idle and graze clips only). Adults and crabs animate only within 4 m of the camera. Adults are
+  solid (a ball per spine joint) until the walk-in.
+- `arrival.ts`: C on a won run (`runKeys`' `onContinue`) walks the hatchling in among the adults:
+  it steers itself through the player's input (round outside the heaps first when it came in from
+  the north or south), the adults stop being solid, the camera eases up behind it, and after
+  `WALK_IN` s (on the lane's last stretch, at most 4.5 s) the screen fades to black over a second
+  (`hud.fade`), then the next stage loads. Hooks `leave()`, `arrival()` and `colony()`.
 - `run.ts`: ready → running (first movement) → caught (2.5 s in the coils) or home. Reaching a safe
   point sets the checkpoint: inside it no snake hunts the lizard (`BodyPrey.huntable`), and a later
   catch puts the lizard back there with the clock still running; caught before the first, it starts
   over at the nest. R restarts; once the run is won, C goes on to the next stage (`runKeys` and
   `endKeys` in `hud.ts`, shared with the lagoon and the tunnels; after the tunnels, back to the
-  island). Goals: shelter in a safe point, reach the colony, freeze until a
-  watching snake looks away, hide from a hunting snake, outrun one, cross without being chased,
-  cross in under 60 s.
-- `markers.ts`: a pale ring at the nest; a teal column and ring at each safe point (pale green once
-  reached); a golden light column (unfogged, additive, fades as the
+  island). Goals are few and short, things worth doing rather than a checklist of the level: reach
+  the colony, freeze until a watching racer looks away, outrun one, cross without being chased.
+  The warnings are one word ("Freeze!" while watched, "Run!" while chased) and the intro card three
+  lines.
+- `markers.ts`: a pale ring at the nest; only a faint teal ring on the ground at each safe point
+  (paler green once reached), so they're found rather than steered by; a golden light column (unfogged, additive, fades as the
   camera comes in) and ring at the colony. `hud.ts`: intro card, clock and best, distance and arrow
   to the light, danger warning, messages, controls.
 

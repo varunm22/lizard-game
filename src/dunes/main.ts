@@ -21,6 +21,7 @@ import { ViewCheck } from '../render/viewCheck';
 import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
 import snakeUrl from '../assets/snake.glb?url';
+import crabUrl from '../assets/crab.glb?url';
 import propsUrl from '../assets/props.glb?url';
 import dunesUrl from '../assets/dunes.glb?url';
 import { loadSnakeKit } from './snakeBody';
@@ -36,6 +37,7 @@ import { Colony } from './colony';
 import { Markers } from './markers';
 import { DuneRun } from './run';
 import { clock, createDunesHud, endKeys, runKeys } from './hud';
+import { Arrival } from './arrival';
 
 /** The nesting dunes level (`?level=dunes`): hatch, and run for the shore past the racer snakes. */
 export async function dunes() {
@@ -67,7 +69,7 @@ export async function dunes() {
   const racers = new Racers(kit, scene, ground, obstacles, () => preyList, (from, to) => bushes.blocks(from, to), RACER_HOMES);
   const hatchlings = await Hatchlings.load(lizardUrl, scene, world, bushes, obstacles);
   hatchlings.racers = racers;
-  const colony = await Colony.load(lizardUrl, scene, world);
+  const colony = await Colony.load(lizardUrl, crabUrl, scene, world);
   const markers = new Markers(scene, { start: NEST, finish: COLONY, safe: SAFE_POINTS });
   const run = new DuneRun(player, visual, bushes, racers);
   preyList = [run.prey, ...hatchlings.prey];
@@ -93,11 +95,11 @@ export async function dunes() {
   };
   run.onCaught = () => {
     messageLeft = null;
-    hud.message('Caught by a racer snake!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to your burrow...');
+    hud.message('Caught!', run.checkpoint >= 0 ? 'Back to the safe point' : 'Back to the burrow');
   };
   run.onSafe = (i) => {
     markers.reached(i, true);
-    flashMessage(`Safe point ${i + 1} of ${SAFE_POINTS.length}`, 'No snake reaches in here. Caught later, you start again from here.');
+    flashMessage('Safe point', `${i + 1} of ${SAFE_POINTS.length}`);
   };
   run.onRespawn = () => {
     hud.message(null);
@@ -112,7 +114,14 @@ export async function dunes() {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`You made it! ${clock(run.time)}`, best, endKeys('dunes'));
   };
-  runKeys('dunes', run);
+  // Going on (C), the hatchling walks in among the adults as the screen fades, then it's the next stage.
+  const arrival = new Arrival(player);
+  const walkIntoColony = (then: () => void) => {
+    hud.message(null);
+    colony.solid = false;
+    arrival.start(then);
+  };
+  runKeys('dunes', run, (go) => walkIntoColony(go));
 
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
@@ -125,7 +134,7 @@ export async function dunes() {
   const groundedFeet = new THREE.Vector3();
 
   const hooks = createDunesHooks({
-    world, obstacles, player, states, camera, followCam, fade, bushes, racers, hatchlings, run,
+    world, obstacles, player, states, camera, followCam, fade, bushes, racers, hatchlings, run, colony, arrival, walkIntoColony,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -141,6 +150,8 @@ export async function dunes() {
   const tick = (dt: number) => {
     let input = forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
     if (run.held) input = { ...input, ...still };
+    const walkIn = arrival.step(dt);
+    if (walkIn) input = { ...input, ...walkIn };
     run.step(dt, input.move.x !== 0 || input.move.y !== 0);
     racers.step(dt);
     hatchlings.step(dt);
@@ -169,13 +180,14 @@ export async function dunes() {
       camera.position.copy(at).add(viewOffset);
       camera.lookAt(at);
     }
+    arrival.view(camera, feet, player.yawAt(alpha), frameDt);
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     bushes.fade(camera.position, followCam.target, frameDt);
     lizard.updateBodySpheres();
     racers.update(frameDt);
     view.update(camera);
     hatchlings.update(alpha, frameDt, view);
-    colony.update(frameDt);
+    colony.update(frameDt, camera.position);
     Object.assign(cameraPusher, { x: camera.position.x, y: camera.position.y, z: camera.position.z });
     plants.update(pushers, frameDt);
     markers.update(frameDt, camera.position);
@@ -192,6 +204,7 @@ export async function dunes() {
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
     hud.danger(run.danger);
+    hud.fade(arrival.fade);
     water.update(frameDt);
     updateUnderwaterView(scene, camera);
     followSun(sun, feet);
