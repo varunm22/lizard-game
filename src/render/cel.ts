@@ -122,6 +122,7 @@ export class CelRenderer {
   ) {
     sky.intensity *= SKY;
     sun.intensity *= SUN;
+    hardenSunShadows();
     this.target = new THREE.WebGLRenderTarget(1, 1, {
       colorSpace: THREE.SRGBColorSpace,
       samples: 4,
@@ -184,6 +185,22 @@ export class CelRenderer {
     u.outline.value = OUTLINE * r.getPixelRatio();
     r.render(this.quad, this.quadCamera);
   }
+}
+
+/**
+ * Cut the sun's shadow edges sharp, like the two shading bands. three.js softens them over a few
+ * shadow-map texels with a noisy rotated sample disk; the shadow box is 2 m across, so zoomed in
+ * that spread covers dozens of screen pixels and reads as a speckled blur round the lizard and the
+ * plants. A steep ramp on the filtered value keeps the edge where it was but a pixel or two wide.
+ * Patches the shared shader chunk, so every lit material takes it; idempotent.
+ */
+function hardenSunShadows() {
+  const chunk = THREE.ShaderChunk.lights_fragment_begin;
+  const call = '? getShadow( directionalShadowMap[ i ]';
+  if (!chunk.includes(call)) return;
+  THREE.ShaderChunk.lights_fragment_begin = chunk
+    .replace(call, '? smoothstep( 0.35, 0.65, getShadow( directionalShadowMap[ i ]')
+    .replace('vDirectionalShadowCoord[ i ] ) : 1.0;', 'vDirectionalShadowCoord[ i ] ) ) : 1.0;');
 }
 
 /**
