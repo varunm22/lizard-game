@@ -1,6 +1,6 @@
 # Nesting dunes (`?level=dunes`)
 
-A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
+The first stage and the default load (the island is `?level=island`), also opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
 the goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
 also holds each stage's goal count, `GOAL_COUNT`, checked under `?test`), so a stage reloads with its
 goals as they were left. The picker is off in tests unless the URL has `picker`. The lizard hatches in a
@@ -83,8 +83,9 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   the colony, freeze until a watching racer looks away, outrun one, cross without being chased.
   The warnings are one word ("Freeze!" while watched, "Run!" while chased) and the intro card three
   lines.
-- `markers.ts`: a pale ring at the nest; only a faint teal ring on the ground at each safe point
-  (paler green once reached), so they're found rather than steered by; a golden light column (unfogged, additive, fades as the
+- `markers.ts`: a pale ring at the nest; a faint teal ring on the ground at each safe point
+  (paler green once reached) under a faint 0.6 m column that only fades in as the camera comes
+  within about 3.5 m (`SAFE_COLUMN`), so they're found rather than steered by; a golden light column (unfogged, additive, fades as the
   camera comes in) and ring at the colony. `hud.ts`: intro card, clock and best, distance and arrow
   to the light, danger warning, messages, controls.
 

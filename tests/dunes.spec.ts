@@ -178,7 +178,7 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   // The end screen offers another go or the next stage. C walks the hatchling on in among the adults
   // as the screen fades, then goes on to it.
   await expect(page.locator('.dunes-message')).toHaveClass(/show/);
-  await expect(page.locator('.dunes-message .keys')).toHaveText(/R\s*play again\s*C\s*next: Mangrove lagoon/);
+  await expect(page.locator('.dunes-message .keys')).toHaveText(/R\s*play again\s*C\s*next: Galápagos island/);
   await screenshot(page, 'dunes-end.png');
   await page.keyboard.press('KeyC');
   const walk = await page.evaluate(() => {
@@ -196,7 +196,7 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   expect(walk.deep).toBeLessThan(Math.min(walk.from, 0.2));
   await screenshot(page, 'dunes-walk-in.png');
   await page.evaluate(() => window.__dunes!.advance(100));
-  await page.waitForURL(/level=lagoon/, { waitUntil: 'commit' });
+  await page.waitForURL(/level=island/, { waitUntil: 'commit' });
 });
 
 test('the other hatchlings come up from their burrows and make for the shore', async ({ page }) => {
