@@ -80,6 +80,8 @@ class MeshBuilder:
 
     def __init__(self):
         self.verts, self.cols, self.faces = [], [], []
+        # Shading normals set by hand, by vertex index; the rest are worked out from the faces.
+        self.normals = {}
 
     def vert(self, co, col):
         self.verts.append(tuple(co))
@@ -106,8 +108,10 @@ def frames(pts):
     return out
 
 
-def tube(mb, pts, radius, colour, sides=8, cap=True, phase=0.0):
-    """A ring of `sides` vertices at each point of `pts`, radius(t) and colour(world point, t) per vertex."""
+def tube(mb, pts, radius, colour, sides=8, cap=True, phase=0.0, rough=0.0, seed=0.0):
+    """A ring of `sides` vertices at each point of `pts`, radius(t) and colour(world point, t) per vertex.
+    `rough` pushes each vertex in or out by up to that fraction of the radius, by noise over the
+    surface, so a limb is knobbly and out of round rather than a lathed cylinder."""
     pts = [Vector(p) for p in pts]
     rings = []
     n = len(pts) - 1
@@ -117,7 +121,10 @@ def tube(mb, pts, radius, colour, sides=8, cap=True, phase=0.0):
         ring = []
         for k in range(sides):
             ang = 2 * math.pi * (k + phase) / sides
-            co = p + (a * math.cos(ang) + b * math.sin(ang)) * r
+            off = a * math.cos(ang) + b * math.sin(ang)
+            if rough:
+                off *= 1 + rough * noise.noise((p + off * r) * (1.2 / max(r, 1e-4)) + Vector((seed, 0, 0)))
+            co = p + off * r
             ring.append(mb.vert(co, colour(co, s)))
         rings.append(ring)
     for ra, rb in zip(rings, rings[1:]):
@@ -143,6 +150,63 @@ def blob(mb, centre, size, colour, rng, detail=1):
         ids = [mb.vert(v.co, col) for v in f.verts]
         mb.face(*ids)
     bm.free()
+
+
+def clump(mb, centre, size, colour, rng, detail=1, lump=0.3, crown=None, crown_k=0.7):
+    """A soft, lumpy clump of foliage: an icosphere pushed in and out by noise, its vertices shared
+    so it shades smooth. colour(point, height 0..1 within the clump) per vertex. With `crown` (a
+    point inside the whole canopy) the shading normals lean that much (`crown_k`) toward pointing
+    out from it, so a canopy of many clumps lights as one rounded mass with a single clean shadow
+    edge under the two-band toon ramp, and the clumps show by their lumpy outline, not as a heap of
+    separately lit balls."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=detail, radius=1.0)
+    seed = Vector((rng.random() * 40, rng.random() * 40, rng.random() * 40))
+    ids = {}
+    for v in bm.verts:
+        d = 1 + lump * noise.noise(v.co * 1.3 + seed) + lump * 0.5 * noise.noise(v.co * 2.9 + seed)
+        co = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2])) * d + Vector(centre)
+        ids[v.index] = mb.vert(co, colour(co, v.co.z * 0.5 + 0.5))
+        if crown is not None:
+            local = Vector((v.co.x / size[0], v.co.y / size[1], v.co.z / size[2])).normalized()
+            mb.normals[ids[v.index]] = local.lerp((co - Vector(crown)).normalized(), crown_k).normalized()
+    for f in bm.faces:
+        mb.face(*[ids[v.index] for v in f.verts])
+    bm.free()
+
+
+def leaves(mb, clumps, count, length, colour, rng, crown=None, lift=0.5):
+    """Single leaves set into the surface of foliage clumps ((centre, size) pairs), lying along it
+    like shingles with their tips lifted out by `lift`, so a canopy's skin and edge break up into
+    leaves instead of ending smooth: each an oval of six points, `length` long, two-sided (a face
+    each way). Shading normals point out from `crown` like the clumps' so they light with the
+    mass. colour(point, rand) per leaf."""
+    for _ in range(count):
+        centre, size = rng.choice(clumps)
+        centre = Vector(centre)
+        d = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.3, 1))).normalized()
+        base = centre + Vector((d.x * size[0], d.y * size[1], d.z * size[2])) * rng.uniform(0.9, 1.05)
+        out = (base - Vector(crown if crown is not None else centre)).normalized()
+        along = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+        along = (along - out * along.dot(out))
+        if along.length < 1e-3:
+            continue
+        axis = (along.normalized() + out * lift).normalized()
+        side = axis.cross(out).normalized()
+        flat = side.cross(axis)
+        L = length * rng.uniform(0.75, 1.25)
+        W = L * 0.32
+        col = colour(base + axis * L * 0.5, rng.random())
+        cup = flat * L * 0.06
+        pts = (base, base + axis * L * 0.3 + side * W + cup, base + axis * L * 0.7 + side * W * 0.8 + cup,
+               base + axis * L, base + axis * L * 0.7 - side * W * 0.8 + cup, base + axis * L * 0.3 - side * W + cup)
+        nrm = out.lerp(Vector((0, 0, 1)), 0.3).normalized()
+        for order in (range(6), range(5, -1, -1)):
+            ids = [mb.vert(pts[k], col) for k in order]
+            for i in ids:
+                mb.normals[i] = nrm
+            for k in range(1, 5):
+                mb.face(ids[0], ids[k], ids[k + 1])
 
 
 def path(start, direction, length, steps, bend=Vector((0, 0, 0)), wobble=0.0, rng=None):
@@ -463,6 +527,8 @@ def make_object(name, mb, mat, smooth=True, extras=None):
     mesh.color_attributes.active_color = attr
     for poly in mesh.polygons:
         poly.use_smooth = smooth
+    if mb.normals:
+        mesh.normals_split_custom_set_from_vertices([mb.normals.get(i, v.normal) for i, v in enumerate(mesh.vertices)])
     mesh.materials.append(mat)
     obj = bpy.data.objects.new(name, mesh)
     for k, v in (extras or {}).items():

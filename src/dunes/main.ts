@@ -22,7 +22,6 @@ import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
 import snakeUrl from '../assets/snake.glb?url';
 import crabUrl from '../assets/crab.glb?url';
-import propsUrl from '../assets/props.glb?url';
 import dunesUrl from '../assets/dunes.glb?url';
 import { loadSnakeKit } from './snakeBody';
 import { buildDuneProps } from './props';
@@ -48,7 +47,7 @@ export async function dunes() {
   const cel = new CelRenderer(renderer, sky, sun);
   cel.waterY = WATER_Y;
   buildTerrain(scene, world);
-  const { obstacles, bushes } = await buildDuneProps(propsUrl, dunesUrl, scene, world);
+  const { obstacles, bushes } = await buildDuneProps(dunesUrl, scene, world);
   // Plants grow anywhere a rock, log, tree or a bush's woody base isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, NEST, dunePlants);
