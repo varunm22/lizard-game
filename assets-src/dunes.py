@@ -62,9 +62,9 @@ C = {
     'drift': srgb('#b9b2a6'),
     'drift_light': srgb('#e2dccf'),
     'drift_crack': srgb('#7d7469'),
-    'basalt': srgb('#4b4744'),
-    'basalt_rust': srgb('#5f4c43'),
-    'basalt_light': srgb('#6e6964'),
+    'basalt': srgb('#3a3633'),
+    'basalt_rust': srgb('#4b3c35'),
+    'basalt_light': srgb('#56514d'),
     'sand_dust': srgb('#c9b48a'),
 }
 
@@ -347,9 +347,9 @@ def basalt(rng, squash):
         c = f.calc_center_median()
         n = noise.noise(c * 2.2 + seed) * 0.5 + 0.5
         col = mix(C['basalt'], C['basalt_rust'], (n - 0.6) * 2.5)
-        col = mix(col, C['basalt_light'], max(0.0, f.normal.z - 0.6) * 0.8 + rng.uniform(-0.05, 0.08))
+        col = mix(col, C['basalt_light'], max(0.0, f.normal.z - 0.6) * 0.4 + rng.uniform(-0.05, 0.08))
         if f.normal.z > 0.85:
-            col = mix(col, C['sand_dust'], 0.18)
+            col = mix(col, C['sand_dust'], 0.08)
         mb.face(*[mb.vert(v.co, col) for v in f.verts])
     bm.free()
     return mb
