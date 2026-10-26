@@ -42,7 +42,11 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   advances with distance crawled (`wave` 0.34 m, `sway` 0.8 rad: two or three waves along the body,
   each about a tenth of it across; the step is scaled by 1/J0(sway) so speeds stay speeds along the
   course). The course bends no tighter than `bend` rad/m, so a turn spreads along the body as a
-  curve instead of a kink. With a small sway the body read as straight with one sharp bend. Bones
+  curve instead of a kink. With a small sway the body read as straight with one sharp bend. Held still, a
+  racer looks round by curving its forebody (`turn`, spread over `turnReach` with an eased share
+  so there's no corner; most of the look goes there, the rest at the head), and lifts the front
+  over `liftReach` 0.26 m. The strike's lunge turns no quicker than a chase. Turning the head alone
+  at one joint, and the old 30 rad/s strike turn, left sharp corners in the body. Bones
   are flat (unparented) and the mesh is never frustum-culled.
 - Behaviour: lurk coiled, now and then `prowl` a little way about home (8 to 22 s after lying up,
   0.15 to 0.4 m out) and lie up where it stops, lift the head and watch (`alert`) when something moves in plain sight,

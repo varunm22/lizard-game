@@ -436,10 +436,11 @@ export class Racers {
       }
       want = r.steered;
     }
-    const rate = r.state === 'strike' ? 30 : Math.min(r.state === 'chase' ? RACER.chaseTurn : RACER.turn, RACER.bend * r.speed);
+    // The lunge turns no quicker than a chase, so it doesn't leave a corner in the track.
+    const rate = r.state === 'strike' ? RACER.chaseTurn : Math.min(r.state === 'chase' ? RACER.chaseTurn : RACER.turn, RACER.bend * r.speed);
     const dy = wrapAngle(want - r.course);
     r.course += Math.sign(dy) * Math.min(Math.abs(dy), rate * dt);
-    const sway = r.state === 'strike' ? 0 : RACER.sway;
+    const sway = r.state === 'strike' ? RACER.sway * 0.3 : RACER.sway;
     // Swinging side to side, the neck covers more ground than it gains: crawl that much further, so
     // the speeds above stay speeds along the course (1 / J0(sway), near enough).
     const stepLen = (r.speed * dt) / (1 - (sway * sway) / 4 + sway ** 4 / 64);
@@ -467,10 +468,13 @@ export class Racers {
       }
       yaw = r.course + r.lookYaw;
     }
-    // The head turns no further than the neck can bend from where the body points.
+    // Held still, it turns to look by curving its forebody round, most of the turn spread along the
+    // neck and the rest at the head; crawling, the body keeps to its track and only the head turns.
     b.along(0.03, this.v);
     const bodyYaw = Math.atan2(r.neck.x - this.v.x, r.neck.z - this.v.z);
-    const off = THREE.MathUtils.clamp(wrapAngle(yaw - bodyYaw), -1.1, 1.1);
+    const still = r.state === 'feed' ? 0 : THREE.MathUtils.clamp(1 - r.speed / 0.05, 0, 1);
+    const off = THREE.MathUtils.clamp(wrapAngle(yaw - bodyYaw), -1.1 - 0.9 * still, 1.1 + 0.9 * still);
+    b.turn += (off * 0.7 * still - b.turn) * Math.min(1, dt * 5);
     const target = bodyYaw + off;
     b.headYaw += wrapAngle(target - b.headYaw) * Math.min(1, dt * 10);
     const pitch = r.state === 'alert' ? -0.12 : r.state === 'strike' ? -0.2 : -0.06;
@@ -517,6 +521,7 @@ export class Racers {
       pts.push({ x, y: this.ground.at(x, z), z });
     }
     r.body.layAlong(pts);
+    r.body.turn = 0;
     r.neck.set(pts[0].x, pts[0].y, pts[0].z);
     r.body.headYaw = Math.atan2(this.feet.x - pts[0].x, this.feet.z - pts[0].z);
   }
@@ -544,5 +549,6 @@ export function coil(r: Racer, x: number, z: number, yaw: number) {
   r.body.layAlong(pts);
   r.neck.set(pts[0].x, pts[0].y, pts[0].z);
   r.course = yaw;
+  r.body.turn = 0;
   r.body.headYaw = yaw;
 }
