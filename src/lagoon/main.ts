@@ -20,7 +20,7 @@ import { createGoalsPanel } from '../goalsPanel';
 import { stageSelect } from '../stageSelect';
 import { GroundProbe } from '../dunes/ground';
 import { Markers } from '../dunes/markers';
-import { clock, createDunesHud, type HudText } from '../dunes/hud';
+import { clock, createDunesHud, endKeys, runKeys, type HudText } from '../dunes/hud';
 import lizardUrl from '../assets/lizard.glb?url';
 import propsUrl from '../assets/props.glb?url';
 import lagoonUrl from '../assets/lagoon.glb?url';
@@ -114,13 +114,11 @@ export async function lagoon() {
   };
   run.onHome = () => {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
-    hud.message(`Across! ${clock(run.time)}`, `${best} Press R to go again.`);
+    hud.message(`Across! ${clock(run.time)}`, best, endKeys('lagoon'));
   };
   log.onJammed = () => flashMessage('The log has jammed across the channel', 'A bridge to the lava field.');
   log.onLost = () => flashMessage('The log drifted out to sea', 'Another has washed into the pool.');
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyR' && !e.repeat) run.restart();
-  });
+  runKeys('lagoon', run);
 
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;

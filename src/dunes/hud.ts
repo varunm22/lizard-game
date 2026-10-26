@@ -1,3 +1,5 @@
+import { goToLevel, LEVEL_NAMES, nextLevel, type Level } from '../level';
+
 /**
  * A run's screen (the dunes', and the lagoon's with its own words): an intro card until the lizard first moves, the run's clock and how far the
  * light is (with an arrow toward it) at the top, a warning while a snake is watching or after the
@@ -11,7 +13,8 @@ export interface DunesHud {
   status(time: number, best: number | null, distance: number, bearing: number): void;
   /** 'watched' while a snake has its head up at the lizard, 'chased' while one is after it. */
   danger(level: 'none' | 'watched' | 'chased'): void;
-  message(title: string | null, detail?: string): void;
+  /** A big message, its line of detail, and keys to press with what each does (the end screen's). */
+  message(title: string | null, detail?: string, keys?: [string, string][]): void;
 }
 
 const CSS = `
@@ -36,6 +39,9 @@ const CSS = `
   text-align:center;font:700 24px system-ui,sans-serif;color:#3a3326;box-shadow:0 6px 24px #0003;pointer-events:none;opacity:0;transition:opacity .3s}
 .dunes-message small{display:block;margin-top:4px;font:500 14px system-ui,sans-serif;color:#6a5a40}
 .dunes-message.show{opacity:1}
+.dunes-message .keys{display:flex;justify-content:center;gap:16px;margin-top:10px;font:500 14px system-ui,sans-serif;color:#3a3326}
+.dunes-message kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:2px 6px;border-radius:6px;border:1px solid #c8b890;
+  border-bottom-width:3px;background:#fff;font:700 13px system-ui,sans-serif;color:#3a3326;text-align:center}
 `;
 
 const CONTROLS: [string, string][] = [
@@ -57,6 +63,32 @@ export interface HudText {
   intro: string;
   watched: string;
   chased: string;
+}
+
+/** The keys on the end screen: R for another go, C on to the next stage. */
+export const endKeys = (level: Level): [string, string][] => [
+  ['R', 'play again'],
+  ['C', `next: ${LEVEL_NAMES[nextLevel(level)]}`],
+];
+
+/** Load the stage after `level`. */
+export const nextStage = (level: Level) => goToLevel(nextLevel(level));
+
+/**
+ * R starts the run over at any time; C, once it's won, goes on to the next stage. A stage can play
+ * something first with `onContinue`, calling `go` when it's done; C is ignored while it plays.
+ */
+export function runKeys(level: Level, run: { state: string; restart(): void }, onContinue?: (go: () => void) => void) {
+  let leaving = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat || leaving) return;
+    if (e.code === 'KeyR') run.restart();
+    else if (e.code === 'KeyC' && run.state === 'home') {
+      leaving = true;
+      if (onContinue) onContinue(() => nextStage(level));
+      else nextStage(level);
+    }
+  });
 }
 
 export const DUNES_TEXT: HudText = {
@@ -146,7 +178,7 @@ export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
       edge.className = `dunes-edge ${level}`;
       danger.textContent = level === 'watched' ? text.watched : level === 'chased' ? text.chased : '';
     },
-    message(title, detail) {
+    message(title, detail, keys) {
       message.classList.toggle('show', title !== null);
       if (title === null) return;
       message.textContent = title;
@@ -154,6 +186,18 @@ export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
         const small = document.createElement('small');
         small.textContent = detail;
         message.append(small);
+      }
+      if (keys) {
+        const row = document.createElement('div');
+        row.className = 'keys';
+        for (const [key, does] of keys) {
+          const item = document.createElement('span');
+          const k = document.createElement('kbd');
+          k.textContent = key;
+          item.append(k, does);
+          row.append(item);
+        }
+        message.append(row);
       }
     },
   };

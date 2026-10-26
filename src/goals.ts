@@ -1,3 +1,6 @@
+import { LEVEL } from './level';
+import { GOAL_COUNT, goalsDone, saveGoalsDone } from './progress';
+
 /** One thing to do on the island, met once `met` has held for `hold` seconds. */
 export interface GoalSpec {
   id: string;
@@ -14,8 +17,9 @@ export interface Goal {
 }
 
 /**
- * The goals list: one per creature (and the algae), each ticked off for good the first time it's
- * met. They start over each time the page loads.
+ * The stage's goals list, each ticked off for good the first time it's met. What's been ticked is
+ * kept in the browser (`progress.ts`), so a stage comes back with its goals as they were left and
+ * the stage picker can show how far along each is.
  */
 export class Goals {
   readonly list: Goal[];
@@ -26,6 +30,10 @@ export class Goals {
   constructor(private specs: GoalSpec[]) {
     this.list = specs.map((s) => ({ id: s.id, label: s.label, done: false }));
     this.held = specs.map(() => 0);
+    // Tests catch the picker's count going stale.
+    if (specs.length !== GOAL_COUNT[LEVEL] && new URLSearchParams(location.search).has('test')) throw new Error(`${LEVEL} has ${specs.length} goals, GOAL_COUNT says ${GOAL_COUNT[LEVEL]}`);
+    const done = goalsDone();
+    for (const goal of this.list) goal.done = done.includes(goal.id);
   }
 
   step(dt: number) {
@@ -41,6 +49,7 @@ export class Goals {
   complete(goal: Goal) {
     if (goal.done) return;
     goal.done = true;
+    saveGoalsDone(this.list.filter((g) => g.done).map((g) => g.id));
     this.onDone?.(goal);
   }
 }

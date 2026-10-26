@@ -115,7 +115,7 @@ async function main() {
   const input = new Input(renderer.domElement);
   const hud = createHud();
   stageSelect();
-  // One goal per creature, the algae and the fish. They start over each time the page loads.
+  // One goal per creature, the algae and the fish.
   let basking = false;
   let canEat = false;
   const goals = new Goals([

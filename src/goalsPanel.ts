@@ -68,7 +68,7 @@ export function createGoalsPanel(parent: HTMLElement, goals: readonly Goal[]): {
   const rows = new Map<string, HTMLElement>();
   for (const g of goals) {
     const row = document.createElement('div');
-    row.className = 'goal';
+    row.className = g.done ? 'goal done' : 'goal';
     row.dataset.goal = g.id;
     const box = document.createElement('span');
     box.className = 'box';

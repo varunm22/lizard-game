@@ -176,6 +176,12 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   expect(s.best).toBeGreaterThan(0);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
   expect(done).toMatchObject({ shore: true, unseen: true, fast: true, outrun: false });
+  // The end screen offers another go or the next stage, and C goes on to it.
+  await expect(page.locator('.dunes-message')).toHaveClass(/show/);
+  await expect(page.locator('.dunes-message .keys')).toHaveText(/R\s*play again\s*C\s*next: Mangrove lagoon/);
+  await screenshot(page, 'dunes-end.png');
+  await page.keyboard.press('KeyC');
+  await page.waitForURL(/level=lagoon/, { waitUntil: 'commit' });
 });
 
 test('the other hatchlings come up from their burrows and make for the shore', async ({ page }) => {

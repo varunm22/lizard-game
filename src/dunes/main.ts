@@ -35,7 +35,7 @@ import { Hatchlings } from './hatchlings';
 import { Colony } from './colony';
 import { Markers } from './markers';
 import { DuneRun } from './run';
-import { clock, createDunesHud } from './hud';
+import { clock, createDunesHud, endKeys, runKeys } from './hud';
 
 /** The nesting dunes level (`?level=dunes`): hatch, and run for the shore past the racer snakes. */
 export async function dunes() {
@@ -110,11 +110,9 @@ export async function dunes() {
   };
   run.onHome = () => {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
-    hud.message(`You made it! ${clock(run.time)}`, `${best} Press R to go again.`);
+    hud.message(`You made it! ${clock(run.time)}`, best, endKeys('dunes'));
   };
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyR' && !e.repeat) run.restart();
-  });
+  runKeys('dunes', run);
 
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
