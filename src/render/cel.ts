@@ -46,19 +46,21 @@ float viewDepth(vec2 uv) {
 }
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 colourAt(vec2 uv) { return texture2D(tColor, uv).rgb; }
-// How strongly the pixel at uv (inverse depth inv) lies just inside a silhouette, from the
-// Laplacian of inverse depth on a circle of radius o. Inverse depth is linear across any flat
-// surface on screen, so this is ~0 on the ground however steeply it is seen, and sharply negative
-// on the near side of an edge. Eight taps on a circle rather than four on a cross: with a cross, a
-// line several pixels wide steps along diagonals in blocks as wide as itself.
-float silhouette(vec2 uv, float inv, vec2 o) {
+// How the surface round uv (inverse depth inv) bends towards or away from the camera, from the
+// Laplacian of inverse depth on a circle of radius o, relative to inv. Inverse depth is linear across
+// any flat surface on screen, so this is ~0 on the ground however steeply it is seen, sharply negative
+// just inside a silhouette and positive on the background just outside one. Eight taps on a circle
+// rather than four on a cross: with a cross, a line several pixels wide steps along diagonals in
+// blocks as wide as itself.
+float depthBend(vec2 uv, float inv, vec2 o) {
   vec2 q = o * 0.7071;
   float lap = 0.5 * (1.0 / viewDepth(uv + vec2(o.x, 0.0)) + 1.0 / viewDepth(uv - vec2(o.x, 0.0))
     + 1.0 / viewDepth(uv + vec2(0.0, o.y)) + 1.0 / viewDepth(uv - vec2(0.0, o.y))
     + 1.0 / viewDepth(uv + q) + 1.0 / viewDepth(uv - q)
     + 1.0 / viewDepth(uv + vec2(q.x, -q.y)) + 1.0 / viewDepth(uv - vec2(q.x, -q.y))) - 4.0 * inv;
-  return smoothstep(0.025, 0.09, -lap / inv);
+  return lap / inv;
 }
+float silhouette(vec2 uv, float inv, vec2 o) { return smoothstep(0.025, 0.09, -depthBend(uv, inv, o)); }
 
 void main() {
   vec2 uv = vUv;
@@ -85,17 +87,15 @@ void main() {
     float edge = width > 1.0
       ? 0.5 * (silhouette(uv, inv, o - 0.5 / resolution) + silhouette(uv, inv, o + 0.5 / resolution))
       : silhouette(uv, inv, o);
-    // Colour jumps, read no wider than at LINE_AT: four taps far apart see a thin feature (a claw, a
-    // band edge) from every pixel that far from it, so a wide reach drew ghost copies when the camera
-    // zoomed in. And none on the background just outside a silhouette (where a tap lands on something
-    // nearer: the Laplacian of inverse depth turns positive), or every outline got a faint second line.
-    vec2 g = vec2(max(min(width, outline * weight), 1.0)) / resolution;
+    // Lighter lines where the colour jumps. Read no wider than at LINE_AT: taps far apart see a thin
+    // feature (a claw, a band edge) from every pixel that far from it, drawing ghost copies when
+    // zoomed in. And none on the background just outside a silhouette, or every outline gets a faint
+    // second line beside it.
+    vec2 g = min(o, vec2(outline * weight) / resolution);
     float gx = luma(colourAt(uv + vec2(g.x, 0.0))) - luma(colourAt(uv - vec2(g.x, 0.0)));
     float gy = luma(colourAt(uv + vec2(0.0, g.y))) - luma(colourAt(uv - vec2(0.0, g.y)));
-    float nearer = 0.5 * (1.0 / viewDepth(uv + vec2(g.x, 0.0)) + 1.0 / viewDepth(uv - vec2(g.x, 0.0))
-      + 1.0 / viewDepth(uv + vec2(0.0, g.y)) + 1.0 / viewDepth(uv - vec2(0.0, g.y))) - 2.0 * inv;
-    float crease = smoothstep(0.12, 0.3, length(vec2(gx, gy))) * (1.0 - smoothstep(0.003, 0.012, nearer / inv));
-    edge = max(edge, CREASES * crease);
+    float outside = smoothstep(0.003, 0.012, depthBend(uv, inv, g));
+    edge = max(edge, CREASES * smoothstep(0.12, 0.3, length(vec2(gx, gy))) * (1.0 - outside));
     edge *= min(width, 1.0) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
     vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, INK_TINT);
     c = mix(c, line, edge * INK);
