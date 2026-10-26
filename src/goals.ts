@@ -34,6 +34,9 @@ export class Goals {
     if (specs.length !== GOAL_COUNT[LEVEL] && new URLSearchParams(location.search).has('test')) throw new Error(`${LEVEL} has ${specs.length} goals, GOAL_COUNT says ${GOAL_COUNT[LEVEL]}`);
     const done = goalsDone();
     for (const goal of this.list) goal.done = done.includes(goal.id);
+    // Goals a stage no longer has don't count toward its bar in the picker.
+    const kept = this.list.filter((g) => g.done).map((g) => g.id);
+    if (kept.length !== done.length) saveGoalsDone(kept);
   }
 
   step(dt: number) {

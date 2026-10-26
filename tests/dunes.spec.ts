@@ -152,7 +152,6 @@ test('a safe point keeps the lizard out of reach, and a catch after it sends the
     return { inside, watched, caught, after: g.run(), before, player: g.player(), p };
   }, RACER);
   expect(s.inside).toMatchObject({ checkpoint: 0, safe: true, state: 'running' });
-  expect(s.inside.goals.find((g) => g.id === 'safe')!.done).toBe(true);
   expect(s.watched.chases).toBe(0);
   expect(s.caught.state).toBe('caught');
   expect(s.after).toMatchObject({ state: 'running', checkpoint: 0, attempts: 1 });
@@ -175,12 +174,28 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   expect(s.finishes).toBe(1);
   expect(s.best).toBeGreaterThan(0);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ shore: true, unseen: true, fast: true, outrun: false });
-  // The end screen offers another go or the next stage, and C goes on to it.
+  expect(done).toMatchObject({ shore: true, unseen: true, outrun: false });
+  // The end screen offers another go or the next stage. C walks the hatchling on in among the adults
+  // as the screen fades, then goes on to it.
   await expect(page.locator('.dunes-message')).toHaveClass(/show/);
   await expect(page.locator('.dunes-message .keys')).toHaveText(/R\s*play again\s*C\s*next: Mangrove lagoon/);
   await screenshot(page, 'dunes-end.png');
   await page.keyboard.press('KeyC');
+  const walk = await page.evaluate(() => {
+    const g = window.__dunes!;
+    const f = g.marks().finish;
+    const from = g.player();
+    g.advance(120);
+    const mid = { ...g.arrival(), ...g.player() };
+    return { colony: g.colony(), from: Math.hypot(from.x - f.x, from.z - f.z), mid, deep: Math.hypot(mid.x - f.x, mid.z - f.z) };
+  });
+  expect(walk.colony.adults).toBeGreaterThan(6);
+  expect(walk.colony.crabs).toBeGreaterThan(0);
+  expect(walk.mid.walking).toBe(true);
+  expect(walk.mid.fade).toBe(0);
+  expect(walk.deep).toBeLessThan(Math.min(walk.from, 0.2));
+  await screenshot(page, 'dunes-walk-in.png');
+  await page.evaluate(() => window.__dunes!.advance(100));
   await page.waitForURL(/level=lagoon/, { waitUntil: 'commit' });
 });
 

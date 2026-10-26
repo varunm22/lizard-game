@@ -41,7 +41,7 @@ const TEXT: HudText = {
     '<li>No heron reaches in among the <b>mangrove roots</b>, or sees you swimming low over <b>deep water</b>.</li>' +
     '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies in a pool by its bank: ' +
     'swim into it to push it, out into the current.</li>' +
-    '<li>The teal light marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
+    '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
     '<span class="go">Move to start.</span>',
   watched: 'A heron is stalking you. Keep moving!',
   chased: 'It is about to strike!',

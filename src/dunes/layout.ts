@@ -51,6 +51,8 @@ export const NEST = { x: NEST_BURROW.x + 0.035, z: NEST_BURROW.z, yaw: Math.PI /
  * is over once the lizard's feet are within `r` of its middle, at the edge of the adults lying there.
  */
 export const COLONY = { x: duneShoreX(-0.6) - 0.45, z: -0.6, r: 0.6 };
+/** The bare lava round the colony reaches this far from its middle (m). */
+const COLONY_FLAT = 1.05;
 
 /**
  * The safe points: a crevice at the foot of a lava knoll, part way across. Within `r` the lizard is
@@ -195,6 +197,8 @@ function lavaShape(x: number, z: number): number {
   // The whole coast is lava but for the cove.
   const s = x - duneShoreX(z) + valueNoise(x / 0.3 - 4, z / 0.3, 53) * 0.18;
   inside = Math.max(inside, (s + 0.95) * (1 - cove(z)) - 0.02);
+  // A broad flat of it round the colony, so the adults bask on black rock as on the island.
+  inside = Math.max(inside, COLONY_FLAT - Math.hypot(x - COLONY.x, z - COLONY.z));
   return smoothstep(-0.01, 0.03, inside + ragged);
 }
 

@@ -26,7 +26,7 @@ const DRIFTWOOD = 0xd9d4cc;
 const BUSH_BASE = { radius: 0.03, height: 0.08 };
 
 /** Kept clear of props (m): round the nest, the finish, each snake's coil and each burrow mouth. */
-const CLEAR = { nest: 0.45, colony: 0.1, racer: 0.22, burrow: 0.13, safe: 0.3 };
+const CLEAR = { nest: 0.45, colony: 0.75, racer: 0.22, burrow: 0.13, safe: 0.3 };
 const EDGE = DUNES_EDGE;
 
 interface Kit {
@@ -97,8 +97,9 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   const rockVariants = [...kit.geometry.keys()].filter((n) => n.startsWith('rock_'));
   /** Rocks being placed for a safe point's crevice, which may stand by it. */
   const safeRocks: [number, number][] = [];
-  const rock = (x: number, z: number, r: number, sink = 0.15) => {
-    const crevice = safeRocks.some(([sx, sz]) => sx === x && sz === z);
+  /** A boulder at (x, z) of radius r, if there's room; `placed` puts it there even against others (a crevice, a pile). */
+  const rock = (x: number, z: number, r: number, sink = 0.15, placed = false) => {
+    const crevice = placed || safeRocks.some(([sx, sz]) => sx === x && sz === z);
     if (!inside(x, z, r) || (!crevice && !free(x, z, r * 0.8, 0.01))) return false;
     const geometry = need(pick(rockVariants));
     const box = geometry.boundingBox!;
@@ -305,7 +306,27 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
     scene.add(mesh);
   });
 
+  // Round the colony, an outcrop of big boulders piled against the lesser ones, north, south and out
+  // into the water, open to the west where the hatchling comes in: the island's shore, where it's going.
+  // (Last, so nothing placed before moves.)
+  for (const [x, z, r] of COLONY_ROCKS) rock(COLONY.x + x, COLONY.z + z, r, 0.2, true);
+
   return { obstacles, bushes };
 }
+
+/** The colony's outcrop: each boulder's place off the colony's middle and its radius (m). */
+const COLONY_ROCKS: [number, number, number][] = [
+  [-0.32, 0.78, 0.14],
+  [0.08, 0.84, 0.17],
+  [0.46, 0.74, 0.13],
+  [0.76, 0.46, 0.16],
+  [-0.3, -0.8, 0.15],
+  [0.12, -0.86, 0.18],
+  [0.5, -0.74, 0.14],
+  [0.78, -0.42, 0.15],
+  [0.84, 0.04, 0.2],
+  [1.04, -0.22, 0.15],
+  [1.0, 0.3, 0.13],
+];
 
 const Y = new THREE.Vector3(0, 1, 0);

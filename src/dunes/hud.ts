@@ -15,6 +15,8 @@ export interface DunesHud {
   danger(level: 'none' | 'watched' | 'chased'): void;
   /** A big message, its line of detail, and keys to press with what each does (the end screen's). */
   message(title: string | null, detail?: string, keys?: [string, string][]): void;
+  /** Black over the whole screen, from 0 (none) to 1 (all), as a stage is left. */
+  fade(amount: number): void;
 }
 
 const CSS = `
@@ -42,6 +44,7 @@ const CSS = `
 .dunes-message .keys{display:flex;justify-content:center;gap:16px;margin-top:10px;font:500 14px system-ui,sans-serif;color:#3a3326}
 .dunes-message kbd{display:inline-block;min-width:1.4em;margin-right:6px;padding:2px 6px;border-radius:6px;border:1px solid #c8b890;
   border-bottom-width:3px;background:#fff;font:700 13px system-ui,sans-serif;color:#3a3326;text-align:center}
+.dunes-fade{position:fixed;inset:0;z-index:30;background:#000;opacity:0;pointer-events:none}
 `;
 
 const CONTROLS: [string, string][] = [
@@ -94,14 +97,12 @@ export function runKeys(level: Level, run: { state: string; restart(): void }, o
 export const DUNES_TEXT: HudText = {
   intro:
     '<h2>Nesting dunes</h2>' +
-    'You have just hatched. Cross the dunes to the adult iguanas on the shore, under the <b>golden light</b>.' +
-    '<ul><li>Racer snakes hunt by <b>movement</b>. When one lifts its head at you, <b>freeze</b>.</li>' +
-    '<li>Duck into a <b>burrow</b> or under a <b>saltbush</b> to hide.</li>' +
-    '<li>A snake is quick off the mark but tires: run when it looks away.</li>' +
-    '<li>Teal lights mark <b>safe points</b>. Caught after reaching one, you start again from there.</li></ul>' +
+    'Reach the adults under the <b>golden light</b>.' +
+    '<ul><li>Racers see <b>movement</b>: freeze when one looks up.</li>' +
+    '<li>Hide in <b>burrows</b> and under <b>saltbushes</b>.</li></ul>' +
     '<span class="go">Move to start.</span>',
-  watched: 'A racer is watching you. Freeze!',
-  chased: 'Chased! Run for cover!',
+  watched: 'Freeze!',
+  chased: 'Run!',
 };
 
 export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
@@ -143,6 +144,10 @@ export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
   message.className = 'dunes-message';
   document.body.appendChild(message);
 
+  const fade = document.createElement('div');
+  fade.className = 'dunes-fade';
+  document.body.appendChild(fade);
+
   const controls = document.createElement('div');
   controls.style.cssText =
     'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:#fffc;' +
@@ -177,6 +182,9 @@ export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
       danger.className = `dunes-danger ${level}`;
       edge.className = `dunes-edge ${level}`;
       danger.textContent = level === 'watched' ? text.watched : level === 'chased' ? text.chased : '';
+    },
+    fade(amount) {
+      fade.style.opacity = amount.toFixed(3);
     },
     message(title, detail, keys) {
       message.classList.toggle('show', title !== null);

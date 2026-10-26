@@ -37,6 +37,8 @@ interface TrailPoint {
 const TRAIL_STEP = 0.004;
 /** Each bone's direction is taken across this much of the body either side of it (m). */
 const TANGENT_SPAN = 0.012;
+/** The bent front of the body is laid out in steps this long (m). */
+const BEND_STEP = 0.004;
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -61,7 +63,17 @@ export class SnakeBody {
   private trail: TrailPoint[] = [];
   /** How far up the neck is lifted (m), and how far back along the body the lift reaches. */
   lift = 0;
-  liftReach = 0.15;
+  liftReach = 0.26;
+  /**
+   * How far the front of the body curves off its track (radians, as yaw: positive to the left), and
+   * how far back the curve reaches (m). A racer turning to look at something bends its neck and
+   * forebody round in one smooth curve, rather than kinking at the head.
+   */
+  turn = 0;
+  turnReach = 0.24;
+  /** The front of the body as last bent: points from the neck (index 0) back to `turnReach`, every BEND_STEP. */
+  private front: THREE.Vector3[] = [];
+  private bent = false;
   /** Which way the head points: yaw as the lizard's (0 looks along +Z), and pitch (positive up). */
   headYaw = 0;
   headPitch = 0;
@@ -184,6 +196,41 @@ export class SnakeBody {
     return out.set(a.x - ((b.x - a.x) / len) * over, a.y, a.z - ((b.z - a.z) / len) * over);
   }
 
+  /**
+   * Lay out the bent front of the body: from `turnReach` back, where it leaves its track, walk
+   * forward along the track's own wiggles with the heading turned by a growing share of `turn`
+   * (none at the root, all of it at the neck, easing in and out so the curve has no corner).
+   */
+  private bend() {
+    this.bent = Math.abs(this.turn) > 1e-3;
+    if (!this.bent) return;
+    const n = Math.ceil(this.turnReach / BEND_STEP);
+    while (this.front.length <= n) this.front.push(new THREE.Vector3());
+    const p = this.along(this.turnReach, this.front[n]);
+    let px = p.x;
+    let pz = p.z;
+    for (let i = n - 1; i >= 0; i--) {
+      const back = i * BEND_STEP;
+      this.along(back + BEND_STEP, this.a);
+      this.along(back, this.b);
+      const t = 1 - back / this.turnReach;
+      const share = t * t * (3 - 2 * t);
+      const yaw = Math.atan2(this.b.x - this.a.x, this.b.z - this.a.z) + this.turn * share;
+      const len = Math.hypot(this.b.x - this.a.x, this.b.z - this.a.z);
+      px += Math.sin(yaw) * len;
+      pz += Math.cos(yaw) * len;
+      this.front[i].set(px, this.b.y, pz);
+    }
+  }
+
+  /** The point `back` m behind the neck along the body as bent, on the ground, into `out`. */
+  private bentAlong(back: number, out: THREE.Vector3): THREE.Vector3 {
+    if (!this.bent || back >= this.turnReach) return this.along(back, out);
+    const f = back / BEND_STEP;
+    const i = Math.floor(f);
+    return out.copy(this.front[i]).lerp(this.front[i + 1], f - i);
+  }
+
   /** Where the body is lifted at `back` m behind the neck (m above the path). */
   private liftAt(back: number) {
     if (this.lift <= 0) return 0;
@@ -193,7 +240,7 @@ export class SnakeBody {
 
   /** The body's centre line at `back` m behind the neck, with the lift: into `out`. */
   point(back: number, out: THREE.Vector3): THREE.Vector3 {
-    this.along(Math.max(0, back), out);
+    this.bentAlong(Math.max(0, back), out);
     if (back < 0) {
       // Ahead of the neck: along the head's own direction.
       const c = Math.cos(this.headPitch);
@@ -207,6 +254,7 @@ export class SnakeBody {
 
   /** Place every bone along the path, and the tongue. */
   pose() {
+    this.bend();
     for (let i = 0; i < this.bones.length; i++) {
       const back = this.arcs[i];
       this.point(back, this.p);

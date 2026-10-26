@@ -1,37 +1,89 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { LizardModel } from '../player/lizardModel';
+import { loadGltf } from '../render/gltf';
+import { toonify } from '../render/toon';
+import { createAnimationActions } from '../render/animationActions';
+import { SaltSpray } from '../creatures/saltSpray';
+import { SNEEZE_BLOW, SNEEZE_TIME, sneezeNod } from '../creatures/iguana';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import { COLONY } from './layout';
 
 /** Adults are this many times the hatchling's size (about 0.65 m, a Fernandina adult's length). */
 const SCALE = 3.4;
-/** Where each lies round the colony's middle (m, x and z off it) and which way it faces. */
+/**
+ * Where each lies round the colony's middle (m, x and z off it), which way it faces and its size: two
+ * heaps basking side by side toward the sea, either side of an open lane (along z = 0), one across
+ * the lane's seaward end, and open rock on the landward side where the hatchlings come in.
+ */
 const SPOTS = [
-  { x: 0.16, z: 0.05, yaw: -2.0, s: 1.0 },
-  { x: -0.06, z: 0.28, yaw: 2.6, s: 0.92 },
-  { x: 0.3, z: -0.26, yaw: -0.9, s: 1.06 },
-  { x: -0.02, z: -0.34, yaw: 0.4, s: 0.88 },
-  { x: 0.24, z: 0.36, yaw: -2.9, s: 0.96 },
+  // North of the lane.
+  { x: -0.08, z: 0.27, yaw: 1.5, s: 0.95 },
+  { x: 0.22, z: 0.3, yaw: 1.8, s: 1.0 },
+  { x: 0.05, z: 0.45, yaw: 1.25, s: 1.05 },
+  { x: 0.3, z: 0.5, yaw: 2.3, s: 0.9 },
+  // South of it.
+  { x: -0.06, z: -0.27, yaw: 1.7, s: 1.0 },
+  { x: 0.24, z: -0.29, yaw: 1.4, s: 0.95 },
+  { x: 0.08, z: -0.46, yaw: 1.95, s: 1.08 },
+  { x: 0.32, z: -0.5, yaw: 1.0, s: 0.92 },
+  // Across its end, by the water.
+  { x: 0.38, z: 0.0, yaw: 0.1, s: 0.9 },
 ];
+/** The way in among them, from the lane's mouth to the open spot at its end (m off the middle). */
+export const COLONY_LANE = [
+  { x: -0.45, z: 0 },
+  { x: 0.12, z: 0 },
+];
+/** Sally Lightfoot crabs picking over the lava between them (m off the middle), at this size. */
+const CRABS = [
+  { x: 0.24, z: 0.1 },
+  { x: 0.4, z: -0.24 },
+  { x: -0.25, z: -0.5 },
+  { x: -0.1, z: 0.62 },
+];
+const CRAB_SCALE = 1.8;
 /** Their darker, browner skin than a hatchling's. */
 const TINT = new THREE.Color(0.62, 0.58, 0.56);
+/** Animals further than this from the camera (m) aren't animated: all that shows from out on the dunes is the heap. */
+const ANIMATE_WITHIN = 4;
+
+interface Adult {
+  model: LizardModel;
+  yaw: number;
+  look: number;
+  next: number;
+  /** Time into a sneeze, or -1; and the wait for the next. */
+  sneeze: number;
+  nextSneeze: number;
+}
 
 /**
  * The adult marine iguanas on the shore rocks at the end of the run, where the hatchlings are safe:
- * the racers don't go among them. They lie piled about the colony's middle, now and then turning
- * their heads. Each body is solid (a ball per spine joint), so they block the snakes' view too.
+ * the racers don't go among them. It's meant to look like the island's colony, where the hatchling is
+ * headed: black lava, adults heaped together basking, now and then turning their heads or sneezing
+ * out salt, and red crabs picking over the rock among them. Each body is solid (a ball per spine
+ * joint), so they block the snakes' view too.
  */
 export class Colony {
-  readonly adults: { model: LizardModel; yaw: number; look: number; next: number }[] = [];
+  readonly adults: Adult[] = [];
+  readonly crabs: { root: THREE.Object3D; mixer: THREE.AnimationMixer; actions: Record<string, THREE.AnimationAction>; clip: string; next: number }[] = [];
+  readonly spray: SaltSpray;
+  sneezes = 0;
+  private colliders: RAPIER.Collider[] = [];
 
   private rand = rng(500);
+  private v = new THREE.Vector3();
+  private dir = new THREE.Vector3();
 
-  private constructor() {}
+  private constructor(scene: THREE.Scene) {
+    this.spray = new SaltSpray(scene);
+  }
 
-  static async load(url: string, scene: THREE.Scene, world: RAPIER.World) {
-    const colony = new Colony();
+  static async load(url: string, crabUrl: string, scene: THREE.Scene, world: RAPIER.World) {
+    const colony = new Colony(scene);
     for (const [i, spot] of SPOTS.entries()) {
       const model = await LizardModel.load(url);
       model.root.traverse((o) => {
@@ -55,23 +107,83 @@ export class Colony {
       model.update(0.5 + i * 0.7);
       model.updateBodySpheres();
       for (const s of model.bodySpheres) {
-        world.createCollider(RAPIER.ColliderDesc.ball(s.r * sc).setTranslation(s.x, s.y, s.z));
+        colony.colliders.push(world.createCollider(RAPIER.ColliderDesc.ball(s.r * sc).setTranslation(s.x, s.y, s.z)));
       }
       scene.add(model.root);
-      colony.adults.push({ model, yaw: spot.yaw, look: 0, next: 2 + i * 1.3 });
+      colony.adults.push({ model, yaw: spot.yaw, look: 0, next: 2 + i * 1.3, sneeze: -1, nextSneeze: 3 + i * 1.7 });
+    }
+
+    const gltf = await loadGltf(crabUrl);
+    toonify(gltf.scene);
+    for (const c of CRABS) {
+      const root = clone(gltf.scene);
+      const x = COLONY.x + c.x;
+      const z = COLONY.z + c.z;
+      root.position.set(x, terrainHeight(x, z), z);
+      root.rotation.y = colony.rand() * Math.PI * 2;
+      root.scale.setScalar(CRAB_SCALE);
+      const mixer = new THREE.AnimationMixer(root);
+      const actions = createAnimationActions(mixer, gltf.animations, []);
+      actions.idle.play();
+      mixer.update(colony.rand() * 2);
+      scene.add(root);
+      colony.crabs.push({ root, mixer, actions, clip: 'idle', next: 2 + colony.rand() * 4 });
     }
     return colony;
   }
 
-  update(dt: number) {
+  /** Whether the adults' bodies are solid. Walking in at the end, the hatchling slips between them rather than getting stuck on a tail. */
+  set solid(yes: boolean) {
+    for (const c of this.colliders) c.setEnabled(yes);
+  }
+
+  /** Each frame, with the camera's position: heads turn, now and then one sneezes; the crabs graze. */
+  update(dt: number, camera: THREE.Vector3) {
+    this.spray.update(dt);
+    const near = Math.hypot(camera.x - COLONY.x, camera.z - COLONY.z) < ANIMATE_WITHIN;
     for (const a of this.adults) {
       a.next -= dt;
       if (a.next <= 0) {
         a.look = (this.rand() - 0.5) * 1.2;
         a.next = 3 + this.rand() * 5;
       }
+      a.nextSneeze -= dt;
+      if (a.sneeze < 0 && a.nextSneeze <= 0) {
+        a.sneeze = 0;
+        a.nextSneeze = 5 + this.rand() * 9;
+      }
+      if (a.sneeze >= 0) {
+        const before = a.sneeze;
+        a.sneeze += dt;
+        if (before < SNEEZE_BLOW && a.sneeze >= SNEEZE_BLOW && near) this.blow(a);
+        if (a.sneeze >= SNEEZE_TIME) a.sneeze = -1;
+      }
+      if (!near) continue;
       a.model.headTurn += (a.look - a.model.headTurn) * Math.min(1, dt * 2);
+      a.model.nod = a.sneeze >= 0 ? sneezeNod(a.sneeze) : 0;
       a.model.update(dt);
     }
+    if (!near) return;
+    for (const c of this.crabs) {
+      c.next -= dt;
+      if (c.next <= 0) {
+        const clip = c.clip === 'idle' ? 'graze' : 'idle';
+        c.actions[clip].reset().fadeIn(0.3).play();
+        c.actions[c.clip].fadeOut(0.3);
+        c.clip = clip;
+        c.next = 2 + this.rand() * 5;
+      }
+      c.mixer.update(dt);
+    }
+  }
+
+  /** A puff of salt from an adult's nostrils, out along its snout. */
+  private blow(a: Adult) {
+    a.model.updateBodySpheres();
+    const [snout, head] = a.model.bodySpheres;
+    this.dir.set(snout.x - head.x, snout.y - head.y, snout.z - head.z).normalize();
+    this.spray.sneeze(this.v.set(snout.x, snout.y, snout.z), this.dir);
+    this.spray.sneeze(this.v, this.dir);
+    this.sneezes++;
   }
 }
