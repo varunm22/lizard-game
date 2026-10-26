@@ -98,11 +98,13 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   const bar = (stage: string) => page.locator(`.stage-tile[data-stage="${stage}"] .stage-progress`);
   await expect(bar('island').locator('.seg')).toHaveCount(6);
   await expect(bar('island').locator('.seg.on')).toHaveCount(1);
-  await expect(bar('island')).toContainText('1/6');
+  await expect(bar('island')).toHaveAttribute('aria-label', '1 of 6 goals done');
   await expect(bar('dunes').locator('.seg.on')).toHaveCount(2);
-  await expect(bar('dunes')).toContainText('2/7');
-  await expect(bar('lagoon')).toContainText('0/10');
-  await expect(bar('tunnels')).toContainText('0/7');
+  await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 7 goals done');
+  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 10 goals done');
+  await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 7 goals done');
+  // Once the picker has faded in.
+  await page.waitForTimeout(300);
   await screenshot(page, 'stage-progress.png');
 
   // Back on the island, the tortoise goal is still ticked, without the tick animation.

@@ -1,6 +1,6 @@
 # Nesting dunes (`?level=dunes`)
 
-A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a segmented bar along the foot of its still, filled for
+A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
 the goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
 also holds each stage's goal count, `GOAL_COUNT`, checked under `?test`), so a stage reloads with its
 goals as they were left. The picker is off in tests unless the URL has `picker`. The lizard hatches in a

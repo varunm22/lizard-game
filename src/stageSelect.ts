@@ -34,13 +34,9 @@ const CSS = `
 .stage-tile.current{border-color:#4aa84a}
 .stage-tile .thumb{position:relative}
 .stage-tile img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}
-.stage-progress{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:7px;
-  background:#1d241ab8;font:600 12px system-ui,sans-serif;color:#fff}
-.stage-progress .segs{flex:1;display:flex;gap:3px}
-.stage-progress .seg{flex:1;height:6px;border-radius:3px;background:#ffffff40}
-.stage-progress .seg.on{background:#f2c641}
-.stage-progress.all .seg.on{background:#6fcf5f}
-.stage-progress .of{flex:none;font-variant-numeric:tabular-nums}
+.stage-progress{position:absolute;left:0;right:0;bottom:0;display:flex;gap:1px;background:#1d241a66}
+.stage-progress .seg{flex:1;height:5px;background:#ffffff38}
+.stage-progress .seg.on{background:#8fd4f2}
 .stage-tile .info{padding:10px 12px 12px}
 .stage-tile .name{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 16px system-ui,sans-serif;color:#2f3a2a}
 .stage-tile .badge{font:600 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:#4aa84a;
@@ -50,7 +46,7 @@ const CSS = `
 
 /**
  * The "Select stage" button in the top-right corner and the picker it opens: a tile per stage with
- * a still from it with a bar along its foot, a segment per goal, filled for those ticked off. The
+ * a still from it with a thin bar along its foot, a segment per goal, filled for those ticked off. The
  * one being played is marked. Picking another loads it; Escape, the close button or a click outside
  * the panel shuts it. Not in tests unless asked for (`?test&picker`).
  */
@@ -127,19 +123,14 @@ export function stageSelect() {
     for (const [level, bar] of bars) {
       const total = GOAL_COUNT[level];
       const done = Math.min(goalsDone(level).length, total);
-      bar.classList.toggle('all', done === total);
       bar.setAttribute('aria-label', `${done} of ${total} goals done`);
-      const segs = document.createElement('div');
-      segs.className = 'segs';
+      const segs = [];
       for (let i = 0; i < total; i++) {
         const seg = document.createElement('span');
         seg.className = i < done ? 'seg on' : 'seg';
-        segs.append(seg);
+        segs.push(seg);
       }
-      const of = document.createElement('span');
-      of.className = 'of';
-      of.textContent = `${done}/${total}`;
-      bar.replaceChildren(segs, of);
+      bar.replaceChildren(...segs);
     }
   };
 
