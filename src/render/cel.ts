@@ -85,8 +85,12 @@ void main() {
     float edge = width > 1.0
       ? 0.5 * (silhouette(uv, inv, o - 0.5 / resolution) + silhouette(uv, inv, o + 0.5 / resolution))
       : silhouette(uv, inv, o);
-    float gx = luma(colourAt(uv + vec2(o.x, 0.0))) - luma(colourAt(uv - vec2(o.x, 0.0)));
-    float gy = luma(colourAt(uv + vec2(0.0, o.y))) - luma(colourAt(uv - vec2(0.0, o.y)));
+    // Colour jumps are read no wider than at LINE_AT. Four taps that far apart see a thin feature (a
+    // claw, a blade's edge, a band edge) from every pixel that far from it, so a wide reach drew
+    // ghost copies of it and a soft dark halo outside the silhouette when the camera zoomed in.
+    vec2 g = vec2(max(min(width, outline * weight), 1.0)) / resolution;
+    float gx = luma(colourAt(uv + vec2(g.x, 0.0))) - luma(colourAt(uv - vec2(g.x, 0.0)));
+    float gy = luma(colourAt(uv + vec2(0.0, g.y))) - luma(colourAt(uv - vec2(0.0, g.y)));
     edge = max(edge, CREASES * smoothstep(0.12, 0.3, length(vec2(gx, gy))));
     edge *= min(width, 1.0) * (1.0 - smoothstep(0.75 * lineFar, lineFar, d));
     vec3 line = mix(vec3(0.07, 0.06, 0.05), c * 0.3, INK_TINT);
