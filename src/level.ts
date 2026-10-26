@@ -4,7 +4,19 @@
  */
 export type Level = 'island' | 'dunes' | 'lagoon' | 'tunnels';
 
-const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon', 'tunnels'];
+/** The stages, in the order they're played. */
+export const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon', 'tunnels'];
+
+export const LEVEL_NAMES: Record<Level, string> = {
+  island: 'Galápagos island',
+  dunes: 'Nesting dunes',
+  lagoon: 'Mangrove lagoon',
+  tunnels: 'Lava tunnels',
+};
+
+/** The stage after `level`; after the last, back to the first. */
+export const nextLevel = (level: Level): Level => LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length];
+
 const known = (name: string | null): Level => (LEVELS as readonly (string | null)[]).includes(name) ? (name as Level) : 'island';
 
 const KEY = 'lizard-level';

@@ -1,4 +1,5 @@
-import { goToLevel, LEVEL, type Level } from './level';
+import { goToLevel, LEVEL, LEVEL_NAMES, type Level } from './level';
+import { GOAL_COUNT, goalsDone } from './progress';
 import islandTile from './assets/stages/island.jpg';
 import dunesTile from './assets/stages/dunes.jpg';
 import lagoonTile from './assets/stages/lagoon.jpg';
@@ -6,10 +7,10 @@ import tunnelsTile from './assets/stages/tunnels.jpg';
 
 /** The stages, in the order the picker shows them, each with a still from the game. */
 const STAGES: { id: Level; name: string; blurb: string; image: string }[] = [
-  { id: 'island', name: 'Galápagos island', blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
-  { id: 'dunes', name: 'Nesting dunes', blurb: 'Hatch, then cross the dunes to the colony past the racer snakes.', image: dunesTile },
-  { id: 'lagoon', name: 'Mangrove lagoon', blurb: 'Slip past the lava herons and float a log across the channel.', image: lagoonTile },
-  { id: 'tunnels', name: 'Lava tunnels', blurb: 'Find the way through two floors of lava tubes: drop through holes, climb the rubble.', image: tunnelsTile },
+  { id: 'island', name: LEVEL_NAMES.island, blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
+  { id: 'dunes', name: LEVEL_NAMES.dunes, blurb: 'Hatch, then cross the dunes to the colony past the racer snakes.', image: dunesTile },
+  { id: 'lagoon', name: LEVEL_NAMES.lagoon, blurb: 'Slip past the lava herons and float a log across the channel.', image: lagoonTile },
+  { id: 'tunnels', name: LEVEL_NAMES.tunnels, blurb: 'Find the way through two floors of lava tubes: drop through holes, climb the rubble.', image: tunnelsTile },
 ];
 
 const CSS = `
@@ -31,7 +32,15 @@ const CSS = `
   background:#fff;cursor:pointer;text-align:left;font:inherit;color:inherit;box-shadow:0 2px 10px #0001;transition:transform .15s,box-shadow .15s,border-color .15s}
 .stage-tile:hover,.stage-tile:focus-visible{transform:translateY(-2px);box-shadow:0 6px 18px #0002;border-color:#c8901a;outline:none}
 .stage-tile.current{border-color:#4aa84a}
+.stage-tile .thumb{position:relative}
 .stage-tile img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}
+.stage-progress{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:7px;
+  background:#1d241ab8;font:600 12px system-ui,sans-serif;color:#fff}
+.stage-progress .segs{flex:1;display:flex;gap:3px}
+.stage-progress .seg{flex:1;height:6px;border-radius:3px;background:#ffffff40}
+.stage-progress .seg.on{background:#f2c641}
+.stage-progress.all .seg.on{background:#6fcf5f}
+.stage-progress .of{flex:none;font-variant-numeric:tabular-nums}
 .stage-tile .info{padding:10px 12px 12px}
 .stage-tile .name{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 16px system-ui,sans-serif;color:#2f3a2a}
 .stage-tile .badge{font:600 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:#4aa84a;
@@ -41,11 +50,13 @@ const CSS = `
 
 /**
  * The "Select stage" button in the top-right corner and the picker it opens: a tile per stage with
- * a still from it, the one being played marked. Picking another loads it; Escape, the close button
- * or a click outside the panel shuts it. Not in tests.
+ * a still from it with a bar along its foot, a segment per goal, filled for those ticked off. The
+ * one being played is marked. Picking another loads it; Escape, the close button or a click outside
+ * the panel shuts it. Not in tests unless asked for (`?test&picker`).
  */
 export function stageSelect() {
-  if (new URLSearchParams(location.search).has('test')) return;
+  const params = new URLSearchParams(location.search);
+  if (params.has('test') && !params.has('picker')) return;
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -70,6 +81,7 @@ export function stageSelect() {
   close.textContent = '×';
   const grid = document.createElement('div');
   grid.className = 'stage-grid';
+  const bars = new Map<Level, HTMLElement>();
   for (const stage of STAGES) {
     const tile = document.createElement('button');
     tile.className = 'stage-tile';
@@ -77,6 +89,12 @@ export function stageSelect() {
     const img = document.createElement('img');
     img.src = stage.image;
     img.alt = '';
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    const bar = document.createElement('div');
+    bar.className = 'stage-progress';
+    bars.set(stage.id, bar);
+    thumb.append(img, bar);
     const info = document.createElement('div');
     info.className = 'info';
     const name = document.createElement('div');
@@ -93,7 +111,7 @@ export function stageSelect() {
     blurb.className = 'blurb';
     blurb.textContent = stage.blurb;
     info.append(name, blurb);
-    tile.append(img, info);
+    tile.append(thumb, info);
     tile.addEventListener('click', () => {
       if (stage.id === LEVEL) setOpen(false);
       else goToLevel(stage.id);
@@ -104,7 +122,29 @@ export function stageSelect() {
   modal.append(panel);
   document.body.appendChild(modal);
 
+  // Filled in each time it opens, to count goals ticked off since the page loaded.
+  const showProgress = () => {
+    for (const [level, bar] of bars) {
+      const total = GOAL_COUNT[level];
+      const done = Math.min(goalsDone(level).length, total);
+      bar.classList.toggle('all', done === total);
+      bar.setAttribute('aria-label', `${done} of ${total} goals done`);
+      const segs = document.createElement('div');
+      segs.className = 'segs';
+      for (let i = 0; i < total; i++) {
+        const seg = document.createElement('span');
+        seg.className = i < done ? 'seg on' : 'seg';
+        segs.append(seg);
+      }
+      const of = document.createElement('span');
+      of.className = 'of';
+      of.textContent = `${done}/${total}`;
+      bar.replaceChildren(segs, of);
+    }
+  };
+
   const setOpen = (open: boolean) => {
+    if (open) showProgress();
     modal.classList.toggle('open', open);
     // Focus off the button (Space jumps), onto the current tile while open, and off the tiles once shut.
     if (open) (grid.querySelector('.current') as HTMLElement | null)?.focus();

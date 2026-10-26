@@ -1,6 +1,9 @@
 # Nesting dunes (`?level=dunes`)
 
-A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). The lizard hatches in a
+A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a segmented bar along the foot of its still, filled for
+the goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
+also holds each stage's goal count, `GOAL_COUNT`, checked under `?test`), so a stage reloads with its
+goals as they were left. The picker is off in tests unless the URL has `picker`. The lizard hatches in a
 burrow on the western nesting flat and has to cross the dunes to the adult colony on the shore
 rocks in the east, past racer snakes (*Pseudalsophis occidentalis*), as Fernandina hatchlings do
 each May and June. Everything lives in `src/dunes/`; shared systems (controller, camera, water,
@@ -54,7 +57,9 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
 - `run.ts`: ready → running (first movement) → caught (2.5 s in the coils) or home. Reaching a safe
   point sets the checkpoint: inside it no snake hunts the lizard (`BodyPrey.huntable`), and a later
   catch puts the lizard back there with the clock still running; caught before the first, it starts
-  over at the nest. R restarts. Goals: shelter in a safe point, reach the colony, freeze until a
+  over at the nest. R restarts; once the run is won, C goes on to the next stage (`runKeys` and
+  `endKeys` in `hud.ts`, shared with the lagoon and the tunnels; after the tunnels, back to the
+  island). Goals: shelter in a safe point, reach the colony, freeze until a
   watching snake looks away, hide from a hunting snake, outrun one, cross without being chased,
   cross in under 60 s.
 - `markers.ts`: a pale ring at the nest; a teal column and ring at each safe point (pale green once

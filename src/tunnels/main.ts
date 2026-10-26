@@ -19,7 +19,7 @@ import { createTunnelsHooks } from '../debug/createTunnelsHooks';
 import { createGoalsPanel } from '../goalsPanel';
 import { stageSelect } from '../stageSelect';
 import { Markers } from '../dunes/markers';
-import { clock, createDunesHud, type HudText } from '../dunes/hud';
+import { clock, createDunesHud, endKeys, runKeys, type HudText } from '../dunes/hud';
 import lizardUrl from '../assets/lizard.glb?url';
 import rockUrl from '../assets/tunnels.glb?url';
 import lightUrl from '../assets/tunnels-light.bin?url';
@@ -110,11 +110,9 @@ export async function tunnels() {
   run.onHome = () => {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     messageLeft = null;
-    hud.message(`Out into the jameo! ${clock(run.time)}`, `${best} Press R to go again.`);
+    hud.message(`Out into the jameo! ${clock(run.time)}`, best, endKeys('tunnels'));
   };
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyR' && !e.repeat) run.restart();
-  });
+  runKeys('tunnels', run);
 
   let forcedInput: Partial<InputState> | null = null;
   let forcedSteps = 0;
