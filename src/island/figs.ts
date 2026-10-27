@@ -15,8 +15,10 @@ const CROWN = { y: 0.66, radius: 0.42 };
 const DROP_RING = [0.2, 0.36] as const;
 /** A fig's radius (m). */
 export const FIG_R = 0.02;
-/** Ripe purple. */
-const FIG_COLOUR = 0x8a3a78;
+/** Ripe yellow, with a brown stem at one end and a dark eye at the other. */
+const FIG_COLOUR = 0xe0c03a;
+const STEM_COLOUR = 0x6a4a2a;
+const EYE_COLOUR = 0x5a4020;
 /** Figs lying under the tree at the start; a new one ripens and drops every so often (s, from-to) while fewer than MAX are about. */
 const START_FIGS = 2;
 const RIPEN = [25, 40] as const;
@@ -43,6 +45,8 @@ export interface Fig {
   state: 'falling' | 'lying' | 'lost' | 'eaten';
   /** Times the lizard has pushed it (steps). */
   pushed: number;
+  /** How it's turned: it rolls as it goes, so its stem comes round. */
+  turn: THREE.Quaternion;
 }
 
 /**
@@ -67,8 +71,8 @@ export class Figs {
     private obstacles: () => readonly Obstacle[],
   ) {
     this.tree = buildTree(scene, world, at);
-    const geometry = new THREE.IcosahedronGeometry(FIG_R, 1).scale(1, 1.15, 1);
-    const material = new THREE.MeshToonMaterial({ color: FIG_COLOUR, gradientMap: toonGradient() });
+    const geometry = figGeometry();
+    const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
     this.mesh = new THREE.InstancedMesh(geometry, material, 16);
     this.mesh.name = 'figs';
     this.mesh.count = 0;
@@ -95,7 +99,9 @@ export class Figs {
     const x = this.tree.position.x + Math.cos(a) * d;
     const z = this.tree.position.z + Math.sin(a) * d;
     const ground = terrainHeight(x, z) + FIG_R;
-    const fig: Fig = { x, y: lying ? ground : this.tree.position.y + CROWN.y, z, vx: 0, vy: 0, vz: 0, state: lying ? 'lying' : 'falling', pushed: 0 };
+    // Lying on its side, the stem pointing some way along the ground.
+    const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, this.rand() * 2 * Math.PI, 0, 'YXZ'));
+    const fig: Fig = { x, y: lying ? ground : this.tree.position.y + CROWN.y, z, vx: 0, vy: 0, vz: 0, state: lying ? 'lying' : 'falling', pushed: 0, turn };
     this.list.push(fig);
     return fig;
   }
@@ -195,6 +201,11 @@ export class Figs {
         return;
       }
     }
+    // Rolling, not sliding: it turns about the level axis across its travel, a radian per radius gone.
+    const dx = nx - f.x;
+    const dz = nz - f.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 1e-7) f.turn.premultiply(ROLL.setFromAxisAngle(AXIS.set(dz / d, 0, -dx / d), d / FIG_R));
     f.x = nx;
     f.z = nz;
     f.y = terrainHeight(f.x, f.z) + FIG_R;
@@ -207,7 +218,7 @@ export class Figs {
     let n = 0;
     for (const f of this.list) {
       if (f.state === 'eaten') continue;
-      this.matrix.compose(POS.set(f.x, f.y, f.z), STILL, ONE);
+      this.matrix.compose(POS.set(f.x, f.y, f.z), f.turn, ONE);
       this.mesh.setMatrixAt(n++, this.matrix);
     }
     this.mesh.count = n;
@@ -215,9 +226,34 @@ export class Figs {
   }
 }
 
-const STILL = new THREE.Quaternion();
+const ROLL = new THREE.Quaternion();
+const AXIS = new THREE.Vector3();
 const POS = new THREE.Vector3();
 const ONE = new THREE.Vector3(1, 1, 1);
+
+/** A fig: a round fruit, a little pointed toward its short stem (+Y), with a dark eye at the other end. One mesh, coloured by vertex. */
+function figGeometry(): THREE.BufferGeometry {
+  const body = new THREE.SphereGeometry(FIG_R, 12, 8);
+  const pos = body.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    // Narrowing toward the stem end, like a fig.
+    const y = pos.getY(i) / FIG_R;
+    const k = y > 0 ? 1 - 0.3 * y * y : 1;
+    pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * (y > 0 ? 1.15 : 1), pos.getZ(i) * k);
+  }
+  body.computeVertexNormals();
+  const stem = new THREE.CylinderGeometry(FIG_R * 0.12, FIG_R * 0.2, FIG_R * 0.6, 6).translate(0, FIG_R * 1.35, 0);
+  const eye = new THREE.CylinderGeometry(FIG_R * 0.28, FIG_R * 0.28, FIG_R * 0.1, 8).translate(0, -FIG_R * 0.97, 0);
+  const coloured = (g: THREE.BufferGeometry, color: number) => {
+    const geo = g.toNonIndexed();
+    geo.deleteAttribute('uv');
+    const c = new THREE.Color(color);
+    const n = geo.getAttribute('position').count;
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(Array.from({ length: n }, () => [c.r, c.g, c.b]).flat()), 3));
+    return geo;
+  };
+  return mergeGeometries([coloured(body, FIG_COLOUR), coloured(stem, STEM_COLOUR), coloured(eye, EYE_COLOUR)])!;
+}
 
 /** The fig tree: a short, stout trunk under a broad, low crown of glossy leaves with figs among them. One mesh; solid at the trunk. */
 function buildTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }): Obstacle {
