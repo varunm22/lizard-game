@@ -402,24 +402,26 @@ export class PlayerController {
 
   /**
    * Turn by `input` (-1..1, right +) if `allowed`. The body is long, so a turn that would swing it
-   * into a rock or log is refused.
+   * into a rock or log is refused, unless it is already touching one where it faces now (sunk onto a
+   * sharp edge, say): refusing every turn then would leave it wedged for good.
    */
   private turn(dt: number, input: number, allowed: boolean) {
     this.turning = input;
     this.bodyTurning = false;
     if (input !== 0 && allowed) {
       const yaw = wrapAngle(this.yaw - input * M.turnRate * dt);
-      const blocked = this.world.intersectionWithShape(
-        this.position,
-        this.bodyRotation(yaw),
-        this.collider.shape,
-        undefined,
-        IGNORE_STEMS,
-        undefined,
-        this.body,
-        this.turnBlocker,
-      );
-      if (!blocked) {
+      const overlaps = (at: number) =>
+        this.world.intersectionWithShape(
+          this.position,
+          this.bodyRotation(at),
+          this.collider.shape,
+          undefined,
+          IGNORE_STEMS,
+          undefined,
+          this.body,
+          this.turnBlocker,
+        );
+      if (!overlaps(yaw) || overlaps(this.yaw)) {
         this.yaw = yaw;
         this.bodyTurning = true;
       }

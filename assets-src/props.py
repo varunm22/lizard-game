@@ -23,7 +23,6 @@ object so the game can fade each placed prop on its own. Objects:
   stacks them into piles that can be climbed step by step.
 """
 
-import json
 import math
 import os
 import random
@@ -541,41 +540,6 @@ def rock(rng, squash, pal=None):
     return mb
 
 
-def hull_rock(rng, squash):
-    """The island's lava boulders: the convex hull of jittered points on a squashed ellipsoid,
-    flat-bottomed. Their shapes are kept exactly (the iguanas' routes over the shore, the crabs'
-    and the hawk's hunts are tuned to them), drawn from the generator state saved in
-    rock_rng_state.json; they are shaded by smooth noise and facing, as the fractured rocks are,
-    rather than each face its own random tone (the random numbers are still drawn)."""
-    bm = bmesh.new()
-    pts = []
-    stretch = (rng.uniform(0.85, 1.15), rng.uniform(0.8, 1.1))
-    for _ in range(rng.randint(26, 40)):
-        while True:
-            p = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
-            if 0.2 < p.length <= 1:
-                break
-        p.normalize()
-        p *= rng.uniform(0.82, 1.0)
-        p = Vector((p.x * stretch[0], p.y * stretch[1], max(p.z, -0.55) * squash))
-        pts.append(bm.verts.new(p))
-    bmesh.ops.convex_hull(bm, input=pts)
-    for v in [v for v in bm.verts if not v.link_faces]:
-        bm.verts.remove(v)
-    mb = MeshBuilder()
-    seed = Vector((squash * 37, 0, 0))
-    for f in bm.faces:
-        rng.uniform(0.75, 1.15), rng.random()
-        c = f.calc_center_median()
-        n = noise.noise(c * 2.2 + seed) * 0.5 + 0.5
-        col = mix(ROCK['base'], ROCK['rust'], (n - 0.6) * 2.5)
-        col = mix(col, ROCK['light'], max(0.0, f.normal.z - 0.6) * 0.4 + (n - 0.5) * 0.2)
-        mb.face(*[mb.vert(v.co, col) for v in f.verts])
-    bm.free()
-    return mb
-
-
-
 def slab(rng, top):
     """A lava slab: the hull of jittered points on a boxy superellipse, cut flat (a touch tilted) at
     the top and the base, so a piled stack of them gives level footing at each step."""
@@ -692,12 +656,8 @@ def main():
     objects.append(make_object('lava_cactus', mb, mat, extras={'trunk_radius': r, 'trunk_height': h}))
     for i, (radius, length) in enumerate(((0.05, 0.9), (0.035, 0.7), (0.085, 1.4))):
         objects.append(make_object(f'log_{i}', log(rng, radius, length), mat, extras={'radius': radius, 'length': length}))
-    lrng = random.Random()
-    with open(os.path.join(os.path.dirname(__file__), 'rock_rng_state.json')) as f:
-        saved = json.load(f)
-    lrng.setstate((saved['version'], tuple(saved['state']), None))
     for i, squash in enumerate((0.55, 0.7, 0.8, 0.6, 0.9, 0.5)):
-        objects.append(make_object(f'rock_{i}', hull_rock(lrng, squash), mat, smooth=False, extras={'squash': squash}))
+        objects.append(make_object(f'rock_{i}', rock(rng, squash), mat, smooth=False, extras={'squash': squash}))
     objects.append(make_object('algae_green', ulva(rng), mat))
     objects.append(make_object('algae_red', turf(rng), mat))
     # Slabs draw from their own generator so adding them left every other prop as it was.
