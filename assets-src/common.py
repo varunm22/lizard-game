@@ -93,3 +93,124 @@ def make_materials(colors, make_texture):
             bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
         mats[name] = m
     return mats
+
+
+class MeshBuilder:
+    """Vertices with bone weights and faces with material names, built piece by piece; each piece
+    is closed and turned outward when it ends (inside-out pieces render see-through in the game)."""
+
+    def __init__(self):
+        self.verts, self.weights, self.faces, self.face_mats = [], [], [], []
+        self.mark = 0
+
+    def vert(self, co, weights):
+        from mathutils import Vector
+        self.verts.append(Vector(co))
+        self.weights.append(weights)
+        return len(self.verts) - 1
+
+    def face(self, idx, mat):
+        self.faces.append(list(idx))
+        self.face_mats.append(mat)
+
+    def begin(self):
+        self.mark = len(self.faces)
+
+    def end(self):
+        vol = 0.0
+        for f in self.faces[self.mark:]:
+            vs = [self.verts[i] for i in f]
+            for i in range(1, len(vs) - 1):
+                vol += vs[0].dot(vs[i].cross(vs[i + 1])) / 6
+        if vol < 0:
+            for i in range(self.mark, len(self.faces)):
+                self.faces[i].reverse()
+
+    def ring_loft(self, rings, mat_at, cap_start=True, cap_end=True):
+        """Join rings of vertex indices (each the same length) into a closed tube; mat_at(i, k) names
+        the material of the quad between ring i and i + 1 at side k."""
+        n = len(rings[0])
+        for i in range(len(rings) - 1):
+            for k in range(n):
+                k2 = (k + 1) % n
+                self.face([rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]], mat_at(i, k))
+        for ring, rev in ((rings[0], True), (rings[-1], False)):
+            if (rev and not cap_start) or (not rev and not cap_end):
+                continue
+            c = sum((self.verts[v] for v in ring), self.verts[ring[0]] * 0) / n
+            ci = self.vert(c, self.weights[ring[0]])
+            for k in range(n):
+                k2 = (k + 1) % n
+                self.face([ring[k2], ring[k], ci] if rev else [ring[k], ring[k2], ci], mat_at(0 if rev else len(rings) - 2, k))
+
+
+def build_skinned(name, rig, mb, colors, mats):
+    """A mesh object from a MeshBuilder, skinned to `rig` by the builder's weights."""
+    import bpy
+    me = bpy.data.meshes.new(name + 'Mesh')
+    me.from_pydata([tuple(v) for v in mb.verts], [], mb.faces)
+    names = list(colors)
+    for n in names:
+        me.materials.append(mats[n])
+    for poly, mat in zip(me.polygons, mb.face_mats):
+        poly.material_index = names.index(mat)
+        poly.use_smooth = True
+    me.validate()
+    me.update()
+    check_winding(me)
+    obj = bpy.data.objects.new(name + 'Body', me)
+    bpy.context.collection.objects.link(obj)
+    obj.parent = rig
+    groups = {b.name: obj.vertex_groups.new(name=b.name) for b in rig.data.bones}
+    for i, ws in enumerate(mb.weights):
+        for bone, w in ws.items():
+            if w > 1e-4:
+                groups[bone].add([i], w, 'REPLACE')
+    obj.modifiers.new('Armature', 'ARMATURE').object = rig
+    return obj
+
+
+def build_free_rig(name, joints):
+    """An armature of unparented bones, one at each joint (Blender space), all pointing up: the game
+    places every bone itself, from the joints written on the armature (see `gltf_point`)."""
+    import bpy
+    from mathutils import Vector
+    data = bpy.data.armatures.new(name + 'Rig')
+    rig = bpy.data.objects.new(name, data)
+    bpy.context.collection.objects.link(rig)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='EDIT')
+    for bone, p in joints.items():
+        b = data.edit_bones.new(bone)
+        b.head = p
+        b.tail = Vector(p) + Vector((0, 0, 0.01))
+        b.roll = 0.0
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return rig
+
+
+def flat_materials(colors, roughness=0.8):
+    import bpy
+    mats = {}
+    for name, rgb in colors.items():
+        m = bpy.data.materials.new(name)
+        bsdf = m.node_tree.nodes['Principled BSDF']
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
+        mats[name] = m
+    return mats
+
+
+def gltf_point(v):
+    """A Blender-space point in glTF space (Y up, +Z forward for a model facing -Y)."""
+    return [round(v[0], 5), round(v[2], 5), round(-v[1], 5)]
+
+
+def export_skinned(out, skins=True):
+    import os
+    import bpy
+    bpy.ops.export_scene.gltf(
+        filepath=os.path.abspath(out), export_format='GLB', export_yup=True, export_apply=not skins,
+        export_animations=False, export_skins=skins, export_morph=False,
+        export_materials='EXPORT', export_texcoords=False, export_extras=True, export_def_bones=False)
+    print('wrote', os.path.abspath(out), os.path.getsize(out), 'bytes')

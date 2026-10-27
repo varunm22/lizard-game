@@ -45,7 +45,7 @@ HALF = 0.22
 # Marching cubes cell (m) and the box it fills; FLOOR[1] falls on a grid plane so that floor is flat.
 CELL = 0.03
 X0, X1 = -5.0, 5.0
-Y0, Y1 = -0.27, TOP + 0.09
+Y0, Y1 = -0.3, TOP + 0.09
 # The light grid takes every LIGHT_STRIDE-th cell.
 LIGHT_STRIDE = 2
 # Where the sun is, from the point it lights (the game's SUN_OFFSET): sunlight slants down along -SUN.
@@ -122,10 +122,49 @@ SKYLIGHTS = [
     {'name': 'last', 'x': 3.35, 'z': -0.55, 'r': 0.2},
 ]
 JAMEO = {'x': 3.3, 'z': 2.6, 'r': 0.62}
-FINISH = {'x': 3.3, 'z': 2.6, 'r': 0.45}
 # The flooded stretch: a dip in the lower floor (centre, radius across and along the tube, bed depth below the water),
 # its banks gentle enough to walk in and out.
 POOLS = [{'x': 0.9, 'z': 2.85, 'rx': 0.3, 'rz': 0.65, 'depth': 0.065}]
+
+# The way out: from the jameo a big tube runs south-east and opens in a sea cliff onto a small cove,
+# where the tube's flooded end (the sea pool, see layout.ts) runs out into the sea. The cove's back
+# wall is the cliff at z = cove_z(x) (the same curve as `coveZ` in layout.ts); everything south of it
+# is open air down to the sea. Across the water to the south lies the outer islet.
+MOUTH = {'floor': 0, 'name': 'mouth', 'pts': [(3.3, 2.6), (3.72, 3.3), (3.85, 3.95), (3.8, 4.4)],
+         'halves': [0.46, 0.5, 0.6, 0.75], 'heights': [0.46, 0.55, 0.66, 0.75]}
+TUBES.append(MOUTH)
+FINISH = {'x': 4.48, 'z': 4.32, 'r': 0.24}
+ISLET = {'x': 5.2, 'z': 13.4, 'r': 3.9}
+
+
+def cove_z(x):
+    """The cove's cliff line (z, m) at x: south of it is open to the sky. Mirrors `coveZ` in layout.ts."""
+    s = lambda a, b, t: np.clip((t - a) / (b - a), 0, 1) ** 2 * (3 - 2 * np.clip((t - a) / (b - a), 0, 1))  # noqa: E731
+    return 3.95 + 0.08 * np.sin(5.1 * x + 0.7) + 0.05 * np.sin(11.3 * x - 1.2) + 1.6 * s(3.25, 2.55, x) + 1.6 * s(4.55, 5.15, x)
+
+
+# Barn owls' roosts: a ledge high in the shaft of a skylight, on its shady side (away from the sun),
+# where an owl sits by day listening to the tube below.
+ROOSTS = []
+for _name in ('south', 'last'):
+    _sk = next(sk for sk in SKYLIGHTS if sk['name'] == _name)
+    _d = np.array([-SUN[0], -SUN[2]]) / math.hypot(SUN[0], SUN[2])
+    ROOSTS.append({'name': _name, 'x': round(_sk['x'] + _d[0] * _sk['r'] * 0.8, 3), 'y': FLOOR[1] + 0.15,
+                   'z': round(_sk['z'] + _d[1] * _sk['r'] * 0.8, 3), 'dx': round(float(_d[0]), 4), 'dz': round(float(_d[1]), 4)})
+
+# Fallen blocks of roof ("breakdown") on the floors to clamber over, and keep-clear lanes for them:
+# the routes the tests walk, the holes, the rubble piles and the start. Each lane is a segment
+# (x, z) to (x, z) on a floor, with a radius.
+KEEP_CLEAR = [
+    (1, (-3.95, 0.0), (-3.6, 0.0), 0.2),
+    (1, (-1.8, -1.9), (0.3, -1.9), 0.16),
+    (1, (3.4, -0.7), (3.55, -0.2), 0.16),
+    (0, (0.9, 2.0), (0.9, 3.7), 0.2),
+    (0, (3.55, 1.2), (3.3, 2.7), 0.18),
+    (0, (4.3, 3.7), (4.5, 4.4), 0.25),
+    (0, (2.5, 3.4), (3.3, 2.6), 0.16),
+    (0, (3.3, 2.6), (3.85, 3.4), 0.2),
+]
 
 # ---------------------------------------------------------------------------------------------
 
@@ -191,61 +230,230 @@ def seg_dist(X, Z, a, b):
     return np.hypot(X - (ax + t * dx), Z - (az + t * dz))
 
 
-def tube_sdf(X, Y, Z, a, b, floor, half, height):
-    """A lava tube's air: an arched roof over a flat floor. Below the floor its walls drop straight
-    down (the lower floor's ground is the heightfield, the upper floor is cut flat afterwards)."""
-    s = seg_dist(X, Z, a, b)
+def seg_t(X, Z, a, b):
+    """Distance from (X, Z) to the segment a-b, how far along it (0 to 1), and the signed distance from its line (+ on the right)."""
+    ax, az = a
+    bx, bz = b
+    dx, dz = bx - ax, bz - az
+    l2 = dx * dx + dz * dz
+    if l2 == 0:
+        return np.hypot(X - ax, Z - az), np.zeros_like(X + Z), np.zeros_like(X + Z)
+    t = np.clip(((X - ax) * dx + (Z - az) * dz) / l2, 0, 1)
+    side = ((X - ax) * dz - (Z - az) * dx) / math.sqrt(l2)
+    return np.hypot(X - (ax + t * dx), Z - (az + t * dz)), t, side
+
+
+def warp(X, Z):
+    """Plan-view wander for the tubes' walls (m): real tubes meander and bulge rather than run straight."""
+    return X + 0.04 * vnoise(X / 0.55, 0.3, Z / 0.55, 51), Z + 0.04 * vnoise(X / 0.55, 7.1, Z / 0.55, 52)
+
+
+def tube_sdf(X, Y, Z, a, b, floor, half, height, seed, benches=True):
+    """A lava tube's air: an arched roof over a flat floor, its width and height swelling and pinching
+    along it, with lava benches here and there along its walls (the shelves a falling lava stream
+    leaves as it drains). Below the floor its walls drop straight down (the lower floor's ground is
+    the heightfield, the upper floor is cut flat afterwards). `half` and `height` may be pairs, from
+    a to b."""
+    Xw, Zw = warp(X, Z)
+    s, t, side = seg_t(Xw, Zw, a, b)
+    if isinstance(half, tuple):
+        half = half[0] + (half[1] - half[0]) * t
+        height = height[0] + (height[1] - height[0]) * t
+    half = half * (1 + 0.2 * vnoise(Xw / 0.5, 0.0, Zw / 0.5, seed))
+    height = height * (1 + 0.16 * vnoise(Xw / 0.6, 1.7, Zw / 0.6, seed + 1))
     v = np.maximum(Y - floor, 0)
     c, h = 0.45 * height, 0.55 * height
-    return (np.sqrt((s / half) ** 2 + ((v - c) / h) ** 2) - 1) * min(half, h)
+    d = (np.sqrt((s / half) ** 2 + ((v - c) / h) ** 2) - 1) * np.minimum(half, h)
+    if benches:
+        for sgn, k in ((1, 7), (-1, 8)):
+            w = 0.085 * smoothstep(-0.1, 0.25, vnoise(Xw / 0.42, 3.3, Zw / 0.42, seed + k))
+            top = 0.07 + 0.03 * vnoise(Xw / 0.3, 5.1, Zw / 0.3, seed + k + 20) + 0.005 * vnoise(X / 0.04, Y / 0.04, Z / 0.04, 77)
+            bench = np.maximum(half - w - sgn * side, (Y - floor) - top)
+            d = -smin(-d, bench, 0.012)
+    return d
 
 
 def stamp(F, sl, d, k):
     F[sl] = smin(F[sl], d, k)
 
 
-def build_field():
-    F = [np.full((nx, ny, nx), 1.0, np.float32) for _ in FLOOR]
+def around(th_x, th_z, seed, k=1.3):
+    """Smooth noise round a circle, by the direction (th_x, th_z) from its centre: for ragged rims."""
+    n = np.hypot(th_x, th_z) + 1e-9
+    return vnoise(th_x / n * k + 5, th_z / n * k - 3, 0.5, seed)
+
+
+def block_sdf(X, Y, Z, b):
+    """A fallen slab of roof: a box turned by `yaw`, its top tilted a little, bedded below `bottom`,
+    its top edges broken off in chamfers, its faces rough."""
+    c, s = math.cos(b['yaw']), math.sin(b['yaw'])
+    px, pz = X - b['x'], Z - b['z']
+    lx, lz = px * c - pz * s, px * s + pz * c
+    top = b['top'] + b['tx'] * lx + b['tz'] * lz
+    q = np.stack(np.broadcast_arrays(np.abs(lx) - b['hx'], np.maximum(Y - top, b['bottom'] - Y), np.abs(lz) - b['hz']))
+    d = np.linalg.norm(np.maximum(q, 0), axis=0) + np.minimum(np.max(q, axis=0), 0) - 0.004
+    # Broken top edges: a chamfer along each side, deeper on some than others.
+    for (ax, az), cut in zip(((1, 0), (-1, 0), (0, 1), (0, -1)), b['chips']):
+        e = (lx * ax + lz * az) - (b['hx'] if ax else b['hz'])
+        d = np.maximum(d, 0.7 * e + 0.7 * (Y - top) + cut)
+    return d + 0.004 * vnoise(X / 0.035, Y / 0.035, Z / 0.035, b['seed'])
+
+
+def lane_clear(fl, x, z, r):
+    """Whether a block of radius r at (x, z) on floor fl keeps out of the lanes, holes and rubble piles."""
+    for f, a, b, rad in KEEP_CLEAR:
+        if f == fl and seg_t(np.array(x), np.array(z), a, b)[0] < rad + r:
+            return False
+    for h in HOLES:
+        a, b = h.get('a', (h.get('x'), h.get('z'))), h.get('b', (h.get('x'), h.get('z')))
+        if seg_t(np.array(x), np.array(z), a, b)[0] < h['r'] + r + 0.08:
+            return False
+    for rp in RAMPS:
+        f, t = np.array(rp['foot']), np.array(rp['top'])
+        u = (t - f) / np.linalg.norm(t - f)
+        if seg_t(np.array(x), np.array(z), tuple(f - u * 0.3), tuple(t + u * 0.25))[0] < 0.26 + r:
+            return False
+    for p in POOLS:
+        if math.hypot((x - p['x']) / (p['rx'] + 0.1), (z - p['z']) / (p['rz'] + 0.1)) < 1.2:
+            return False
+    return True
+
+
+def make_blocks():
+    """Breakdown along the tubes and in the rooms: mostly low slabs near the walls, a few to climb
+    onto in the middle of wide spots, collapse piles in the start chamber and round the jameo."""
+    rng = np.random.default_rng(17)
+    out = []
+
+    def add(fl, x, z, hx, hz, h, yaw=None, base=None):
+        floor = FLOOR[fl] if base is None else base
+        b = {'floor': fl, 'x': x, 'z': z, 'hx': hx, 'hz': hz, 'top': floor + h, 'bottom': floor - 0.06,
+             'yaw': rng.uniform(0, math.pi) if yaw is None else yaw,
+             'tx': rng.uniform(-0.08, 0.08), 'tz': rng.uniform(-0.08, 0.08),
+             'chips': list(rng.uniform(-0.004, 0.016, 4)), 'seed': int(rng.integers(100, 999))}
+        out.append(b)
+        return b
+
+    def fits(fl, x, z, r):
+        if not lane_clear(fl, x, z, r):
+            return False
+        return all(b['floor'] != fl or math.hypot(b['x'] - x, b['z'] - z) > r + math.hypot(b['hx'], b['hz']) - 0.01 for b in out)
+
+    # The owls' ledges, sticking out of the shaft wall into the light.
+    for ro in ROOSTS:
+        b = add(1, ro['x'] + ro['dx'] * 0.12, ro['z'] + ro['dz'] * 0.12, 0.17, 0.065, 0, yaw=math.atan2(-ro['dz'], ro['dx']), base=ro['y'])
+        b.update(bottom=ro['y'] - 0.07, tx=0, tz=0, chips=[0.004, 0.012, 0.006, 0.008])
+    # Authored piles first. The start chamber: a slab and a block on it, two steps up.
+    add(1, -3.86, -0.27, 0.085, 0.06, 0.05, yaw=0.3)
+    add(1, -3.95, -0.33, 0.05, 0.045, 0.1, yaw=0.9)
+    add(1, -3.7, 0.3, 0.06, 0.05, 0.04, yaw=1.2)
+    # The jameo: a ring of big fallen blocks round its edge, stepping up toward the wall.
+    for ang, rr, h in [(-2.6, 0.62, 0.06), (-2.2, 0.7, 0.11), (-1.9, 0.55, 0.05), (2.2, 0.6, 0.055), (2.6, 0.7, 0.1),
+                       (0.2, 0.62, 0.05), (0.55, 0.72, 0.1), (-0.5, 0.66, 0.06)]:
+        x, z = JAMEO['x'] + rr * math.cos(ang), JAMEO['z'] + rr * math.sin(ang)
+        if lane_clear(0, x, z, 0.05):
+            add(0, x, z, rng.uniform(0.07, 0.11), rng.uniform(0.05, 0.09), h)
+    # Under the skylights: the debris of the collapse that opened them.
+    for sk in SKYLIGHTS:
+        for _ in range(3):
+            ang = rng.uniform(0, 2 * math.pi)
+            x, z = sk['x'] + 0.3 * math.cos(ang), sk['z'] + 0.3 * math.sin(ang)
+            hx, hz = rng.uniform(0.04, 0.08), rng.uniform(0.035, 0.06)
+            if fits(1, x, z, math.hypot(hx, hz)):
+                add(1, x, z, hx, hz, rng.uniform(0.025, 0.06))
+    # Scattered along every tube, often in little heaps: a slab with smaller pieces against it.
     for t in TUBES:
         fl = t['floor']
+        if t['name'] == 'mouth':
+            continue
         half = t.get('half', HALF)
         for a, b in zip(t['pts'], t['pts'][1:]):
-            sl = box(min(a[0], b[0]) - half - 0.1, max(a[0], b[0]) + half + 0.1,
-                     min(a[1], b[1]) - half - 0.1, max(a[1], b[1]) + half + 0.1)
+            length = math.hypot(b[0] - a[0], b[1] - a[1])
+            ux, uz = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+            for _ in range(int(length / 0.2 + rng.random())):
+                u = rng.uniform(0.05, 0.95) * length
+                hx, hz = rng.uniform(0.04, 0.11), rng.uniform(0.035, 0.07)
+                r = math.hypot(hx, hz)
+                mid = rng.random() < 0.3
+                off = rng.uniform(-0.06, 0.06) if mid else rng.choice([-1, 1]) * rng.uniform(half - 0.11, half - 0.02)
+                x, z = a[0] + ux * u - uz * off, a[1] + uz * u + ux * off
+                if not fits(fl, x, z, r):
+                    continue
+                h = rng.uniform(0.03, 0.06) if mid else rng.uniform(0.025, 0.07)
+                add(fl, x, z, hx, hz, h)
+                if rng.random() < 0.5:
+                    # A smaller piece leaning on it, lower or a step higher toward the wall.
+                    ang = rng.uniform(0, 2 * math.pi)
+                    x2, z2 = x + 0.8 * r * math.cos(ang), z + 0.8 * r * math.sin(ang)
+                    hx2, hz2 = rng.uniform(0.03, 0.06), rng.uniform(0.025, 0.05)
+                    if lane_clear(fl, x2, z2, math.hypot(hx2, hz2)):
+                        add(fl, x2, z2, hx2, hz2, min(0.12, h + rng.uniform(-0.03, 0.05)))
+    return out
+
+
+def build_field():
+    F = [np.full((nx, ny, nx), 1.0, np.float32) for _ in FLOOR]
+    for ti, t in enumerate(TUBES):
+        fl = t['floor']
+        half = t.get('half', HALF)
+        pts = t['pts']
+        for si, (a, b) in enumerate(zip(pts, pts[1:])):
+            if 'halves' in t:
+                hw = (t['halves'][si], t['halves'][si + 1])
+                ht = (t['heights'][si], t['heights'][si + 1])
+                pad = max(hw) * 1.3 + 0.1
+            else:
+                hw, ht, pad = half, HEIGHT[fl], half * 1.3 + 0.1
+            sl = box(min(a[0], b[0]) - pad, max(a[0], b[0]) + pad, min(a[1], b[1]) - pad, max(a[1], b[1]) + pad)
             X, Y, Z = coords(sl)
-            stamp(F[fl], sl, tube_sdf(X, Y, Z, a, b, FLOOR[fl], half, HEIGHT[fl]), 0.06)
+            stamp(F[fl], sl, tube_sdf(X, Y, Z, a, b, FLOOR[fl], hw, ht, 100 + ti * 10 + si, 'halves' not in t), 0.06)
     for r in ROOMS:
         fl = r['floor']
-        sl = box(r['x'] - r['r'] - 0.1, r['x'] + r['r'] + 0.1, r['z'] - r['r'] - 0.1, r['z'] + r['r'] + 0.1)
+        sl = box(r['x'] - r['r'] - 0.15, r['x'] + r['r'] + 0.15, r['z'] - r['r'] - 0.15, r['z'] + r['r'] + 0.15)
         X, Y, Z = coords(sl)
         p = (r['x'], r['z'])
-        stamp(F[fl], sl, tube_sdf(X, Y, Z, p, p, FLOOR[fl], r['r'], r['height']), 0.1)
-    # Rough walls and roofs, the floors left flat.
+        stamp(F[fl], sl, tube_sdf(X, Y, Z, p, p, FLOOR[fl], r['r'], r['height'], 300 + len(r['name']), False), 0.1)
+    # Rough walls and roofs: big lumps and hollows, then smaller knobs; the floors left flat.
     sl = (slice(None), slice(None), slice(None))
     X, Y, Z = coords(sl)
     for fl in (0, 1):
-        n = vnoise(X / 0.11, Y / 0.11, Z / 0.11, 3 + fl) * 0.6 + vnoise(X / 0.04, Y / 0.04, Z / 0.04, 9 + fl) * 0.25
-        mask = smoothstep(0.0, 0.07, Y - FLOOR[fl])
-        F[fl] += (0.016 * n * mask).astype(np.float32)
-    # The upper floor cut flat; nothing of it below.
-    F[1] = np.maximum(F[1], (FLOOR[1] - Y) + 0 * X + 0 * Z)
+        n = (vnoise(X / 0.28, Y / 0.2, Z / 0.28, 13 + fl) * 0.042 + vnoise(X / 0.1, Y / 0.1, Z / 0.1, 3 + fl) * 0.015
+             + vnoise(X / 0.04, Y / 0.04, Z / 0.04, 9 + fl) * 0.005)
+        mask = smoothstep(0.0, 0.08, Y - FLOOR[fl])
+        F[fl] += (n * mask).astype(np.float32)
+    # The upper floor cut flat but for shallow sags in the ropy lava; nothing of it below.
+    sag = -0.006 * (0.5 + 0.5 * vnoise(X / 0.3, 0.0, Z / 0.3, 31))
+    F[1] = np.maximum(F[1], (FLOOR[1] + sag - Y) + 0 * X + 0 * Z)
     G = np.minimum(F[0], F[1])
     del F
 
     def shaft(d_xz, y0, y1, sl):
         X, Y, Z = coords(sl)
-        n = vnoise(X / 0.06, Y / 0.06, Z / 0.06, 21) * 0.008
-        return np.maximum(np.maximum(d_xz(X, Z), y0 - Y), Y - y1) + n
+        n = vnoise(X / 0.06, Y / 0.06, Z / 0.06, 21) * 0.01
+        return np.maximum(np.maximum(d_xz(X, Y, Z), y0 - Y), Y - y1) + n
 
     for h in HOLES:
         if h['kind'] == 'gap':
+            # A crack across the tube: its rims ragged toward the walls but true where the lizard crosses.
             a, b, r = h['a'], h['b'], h['r']
-            sl = box(min(a[0], b[0]) - r - 0.1, max(a[0], b[0]) + r + 0.1, min(a[1], b[1]) - r - 0.1, max(a[1], b[1]) + r + 0.1)
-            d = shaft(lambda X, Z: seg_dist(X, Z, a, b) - r, 0.12, FLOOR[1] + 0.12, sl)
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            sl = box(min(a[0], b[0]) - r - 0.15, max(a[0], b[0]) + r + 0.15, min(a[1], b[1]) - r - 0.15, max(a[1], b[1]) + r + 0.15)
+
+            def dg(X, Y, Z, a=a, b=b, r=r, mid=mid):
+                d, t, side = seg_t(X, Z, a, b)
+                ragged = 0.035 * vnoise(Z / 0.06, np.sign(side) * 3 + Y * 0, X * 0, 23) * smoothstep(0.07, 0.16, np.abs(Z - mid[1]))
+                return d - r - ragged
+            d = shaft(dg, 0.12, FLOOR[1] + 0.12, sl)
         else:
+            # A drop hole: a broken, lobed outline, not a circle.
             p, r = (h['x'], h['z']), h['r']
-            sl = box(p[0] - r - 0.1, p[0] + r + 0.1, p[1] - r - 0.1, p[1] + r + 0.1)
-            d = shaft(lambda X, Z: seg_dist(X, Z, p, p) - r, 0.12, FLOOR[1] + 0.12, sl)
+            sl = box(p[0] - 1.4 * r - 0.1, p[0] + 1.4 * r + 0.1, p[1] - 1.4 * r - 0.1, p[1] + 1.4 * r + 0.1)
+
+            def dd(X, Y, Z, p=p, r=r, seed=len(h['name'])):
+                dx, dz = X - p[0], Z - p[1]
+                rr = r * (1 + 0.3 * around(dx, dz, 40 + seed) + 0.12 * around(dx, dz, 50 + seed, 3.1))
+                return np.hypot(dx, dz) - rr
+            d = shaft(dd, 0.12, FLOOR[1] + 0.12, sl)
         stamp(G, sl, d, 0.03)
     for rp in RAMPS:
         # The ceiling hole over the pile's upper part.
@@ -253,19 +461,37 @@ def build_field():
         a = tuple(f + (t - f) * 0.25)
         b = tuple(t + (t - f) / np.linalg.norm(t - f) * 0.02)
         r = 0.14
-        sl = box(min(a[0], b[0]) - r - 0.1, max(a[0], b[0]) + r + 0.1, min(a[1], b[1]) - r - 0.1, max(a[1], b[1]) + r + 0.1)
-        stamp(G, sl, shaft(lambda X, Z: seg_dist(X, Z, a, b) - r, 0.12, FLOOR[1] + 0.12, sl), 0.03)
-    for s in SKYLIGHTS + [JAMEO]:
+        sl = box(min(a[0], b[0]) - r - 0.15, max(a[0], b[0]) + r + 0.15, min(a[1], b[1]) - r - 0.15, max(a[1], b[1]) + r + 0.15)
+
+        def dr(X, Y, Z, a=a, b=b, r=r):
+            d, _, side = seg_t(X, Z, a, b)
+            return d - r * (1 + 0.25 * vnoise(X / 0.08, side * 0, Z / 0.08, 27))
+        stamp(G, sl, shaft(dr, 0.12, FLOOR[1] + 0.12, sl), 0.03)
+    for i, s in enumerate(SKYLIGHTS + [JAMEO]):
+        # Skylights are collapses: ragged, and opening wider toward the surface.
         p, r = (s['x'], s['z']), s['r']
-        sl = box(p[0] - r - 0.15, p[0] + r + 0.15, p[1] - r - 0.15, p[1] + r + 0.15)
+        sl = box(p[0] - 2 * r - 0.15, p[0] + 2 * r + 0.15, p[1] - 2 * r - 0.15, p[1] + 2 * r + 0.15)
         y0 = FLOOR[1] + 0.2 if s is not JAMEO else FLOOR[0] + 0.2
-        stamp(G, sl, shaft(lambda X, Z: seg_dist(X, Z, p, p) - r, y0, Y1 + 1, sl), 0.05)
+
+        def ds(X, Y, Z, p=p, r=r, y0=y0, i=i):
+            dx, dz = X - p[0], Z - p[1]
+            rr = r * (1 + 0.28 * around(dx, dz, 60 + i) + 0.1 * around(dx, dz, 70 + i, 3.3)) * (1 + 0.45 * smoothstep(y0, TOP + 0.05, Y))
+            return np.hypot(dx, dz) - rr
+        stamp(G, sl, shaft(ds, y0, Y1 + 1, sl), 0.05)
     # The lava field: air above TOP, the rims rounded.
     X, Y, Z = coords(sl := (slice(None), slice(None), slice(None)))
     G = smin(G, (TOP - Y) + 0 * X + 0 * Z, 0.05).astype(np.float32)
+    # The cove: open air south of the cliff line, the cliff overhanging and receding, knobbly and cracked.
+    sl = box(2.0, X1, 3.4, X1)
+    X, Y, Z = coords(sl)
+    cliff = (cove_z(X) - 0.1 * smoothstep(0.1, TOP, Y) + 0.06 * vnoise(X / 0.22, Y / 0.18, Z / 0.22, 61)
+             + 0.02 * vnoise(X / 0.07, Y / 0.07, Z / 0.07, 62)) - Z
+    stamp(G, sl, cliff.astype(np.float32), 0.08)
     # Rubble piles: a stair of fallen slabs from the lower floor up to flush with the upper one, each
     # riser low enough for the lizard to scramble up and each tread deep enough to lie on (the body
-    # capsule stays level, so it can't stand on a steep slope). The risers wander a little.
+    # capsule stays level, so it can't stand on a steep slope). Each step is two or three slabs side
+    # by side, their fronts skewed and broken, their tops a few millimetres apart.
+    rng = np.random.default_rng(5)
     for rp in RAMPS:
         f, t = np.array(rp['foot']), np.array(rp['top'])
         u = (t - f) / np.linalg.norm(t - f)
@@ -275,17 +501,33 @@ def build_field():
         side = (X - f[0]) * -u[1] + (Z - f[1]) * u[0]
         end = STEPS * TREAD + 0.3
         for n in range(STEPS):
-            wobble = vnoise(side / 0.07, n * 3.1 + 0 * Y, 0 * side, 41) * 0.012
-            start = n * TREAD + wobble
-            top = FLOOR[0] + (n + 1) * RISER
-            # Exact box distance in (along, side, y): along from start to end, |side| < 0.21, y below top.
-            qa = np.maximum(start - along, along - end)
-            qs = np.abs(side) - 0.21
-            qy = np.maximum(Y - top, Y0 - 1 - Y)
-            q = np.stack(np.broadcast_arrays(qa, qs, qy))
-            d = np.linalg.norm(np.maximum(q, 0), axis=0) + np.minimum(np.max(q, axis=0), 0)
-            G[sl] = -smin(-G[sl], d, 0.012)
+            # Cut where the lizard doesn't walk up the middle: the slabs' seams are off to the sides.
+            cuts = sorted(rng.choice([-1, 1]) * rng.uniform(0.06, 0.13, int(rng.integers(1, 3))))
+            edges = [-0.22] + list(cuts) + [0.22]
+            for e0, e1 in zip(edges, edges[1:]):
+                sc = (e0 + e1) / 2
+                last = n == STEPS - 1 and e0 <= 0 <= e1
+                skew = rng.uniform(-0.15, 0.15)
+                start = n * TREAD + rng.uniform(-0.012, 0.012) + (side - sc) * skew
+                top = FLOOR[0] + (n + 1) * RISER + (0 if last else rng.uniform(-0.004, 0.003))
+                # Exact box distance in (along, side, y): along from start to end, across the slab, y below top.
+                qa = np.maximum(start - along, along - end)
+                qs = np.abs(side - sc) - (e1 - e0) / 2 - 0.006
+                qy = np.maximum(Y - top, Y0 - 1 - Y)
+                q = np.stack(np.broadcast_arrays(qa, qs, qy))
+                d = np.linalg.norm(np.maximum(q, 0), axis=0) + np.minimum(np.max(q, axis=0), 0)
+                # The front's top edge broken off.
+                d = np.maximum(d, 0.7 * (start - along) + 0.7 * (Y - top) + rng.uniform(0.003, 0.008))
+                d = d + 0.003 * vnoise(X / 0.03, Y / 0.03, Z / 0.03, 80 + n)
+                G[sl] = -smin(-G[sl], d, 0.008)
+    # Breakdown blocks on the floors.
+    for b in BLOCKS:
+        r = math.hypot(b['hx'], b['hz']) + 0.05
+        sl = box(b['x'] - r, b['x'] + r, b['z'] - r, b['z'] + r, b['bottom'] - 0.05, b['top'] + 0.05)
+        X, Y, Z = coords(sl)
+        G[sl] = -smin(-G[sl], block_sdf(X, Y, Z, b), 0.01)
     return G
+
 
 
 def plan(G, path):
@@ -378,7 +620,21 @@ def mesh(G):
     return verts, faces
 
 
-def export(verts, faces, target_faces):
+def occlusion(G, pts, normals):
+    """Ambient occlusion at points on the rock (game space), 0 shut in to 1 open: how far the air
+    reaches out along each normal, from the field. Darkens the hollows between lumps, under benches and
+    round fallen blocks, so the rock's shape reads in the unlit, light-baked look."""
+    from scipy.ndimage import map_coordinates
+    ao = np.ones(len(pts))
+    for d, w in ((0.015, 0.3), (0.035, 0.3), (0.07, 0.25), (0.12, 0.15)):
+        q = pts + normals * d
+        idx = ((q - np.array([X0, Y0, X0])) / CELL).T
+        g = map_coordinates(G, idx, order=1, mode='nearest')
+        ao -= w * np.clip((d + g) / d, 0, 1)
+    return np.clip(ao, 0, 1)
+
+
+def export(verts, faces, target_faces, G):
     import bpy  # noqa: I001
     bpy.ops.wm.read_factory_settings(use_empty=True)
     me = bpy.data.meshes.new('rock')
@@ -398,6 +654,18 @@ def export(verts, faces, target_faces):
     for p in ob.data.polygons:
         p.use_smooth = True
     print('decimated to', len(ob.data.polygons), 'faces,', len(ob.data.vertices), 'verts')
+    # Occlusion per vertex, in a colour attribute (all three channels): Blender's (x, y, z) is the game's (x, -z, y).
+    me = ob.data
+    co = np.array([v.co for v in me.vertices])
+    nm = np.array([v.normal for v in me.vertices])
+    pts = np.stack([co[:, 0], co[:, 2], -co[:, 1]], axis=1)
+    nrm = np.stack([nm[:, 0], nm[:, 2], -nm[:, 1]], axis=1)
+    # The mesh faces the air, so the normals point out of the rock.
+    ao = occlusion(G, pts, nrm)
+    print('occlusion: mean', round(float(ao.mean()), 3), 'min', round(float(ao.min()), 3))
+    attr = me.color_attributes.new('ao', 'BYTE_COLOR', 'POINT')
+    attr.data.foreach_set('color', np.repeat(ao, 4).astype(np.float32) * np.tile([1, 1, 1, 0], len(ao)) + np.tile([0, 0, 0, 1], len(ao)))
+    me.color_attributes.active_color = attr
     bpy.ops.export_scene.gltf(
         filepath=os.path.abspath(OUT_GLB),
         export_format='GLB',
@@ -407,6 +675,7 @@ def export(verts, faces, target_faces):
         export_materials='NONE',
         export_texcoords=False,
         export_extras=False,
+        export_vertex_color='ACTIVE',
     )
     print('wrote', os.path.abspath(OUT_GLB), os.path.getsize(OUT_GLB), 'bytes')
 
@@ -433,11 +702,15 @@ def layout(light_meta):
         'steps': {'count': STEPS, 'riser': RISER, 'tread': TREAD},
         'skylights': SKYLIGHTS,
         'pools': POOLS,
+        'islet': ISLET,
+        'roosts': ROOSTS,
         'light': light_meta,
     }
 
 
 def main():
+    global BLOCKS
+    BLOCKS = make_blocks()
     G = build_field()
     if '--plan' in sys.argv:
         plan(G, sys.argv[sys.argv.index('--plan') + 1])
@@ -448,7 +721,7 @@ def main():
     with open(OUT_JSON, 'w') as f:
         json.dump(layout(meta), f, indent=1)
     verts, faces = mesh(G)
-    export(verts, faces, 110_000)
+    export(verts, faces, 160_000, G)
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' ? 384 : LEVEL === 'tu
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : LEVEL === 'tunnels' ? 10 : 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : LEVEL === 'tunnels' ? 34 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -160,7 +160,8 @@ function groundGrid(size: number, cells: number, skip?: (x: number, z: number) =
 
 /** Build the toon-shaded ground mesh and its Rapier heightfield collider, plus walls at the edge. */
 export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
-  // Underground the light is baked into the ground's colours (`tunnels/layout.ts`); there's no world outside the square.
+  // Underground the light is baked into the ground's colours (`tunnels/layout.ts`). Outside the tunnels'
+  // square only the sea side is ever seen, from the cove: the lava field to the north isn't drawn.
   const material =
     LEVEL === 'tunnels'
       ? new THREE.MeshBasicMaterial({ vertexColors: true })
@@ -170,7 +171,11 @@ export function buildTerrain(scene: THREE.Scene, world: RAPIER.World) {
   const half = TERRAIN_SIZE / 2;
   const outer =
     VISUAL_SIZE > TERRAIN_SIZE &&
-    new THREE.Mesh(groundGrid(VISUAL_SIZE, Math.round(VISUAL_SIZE / OUTER_CELL), (x, z) => Math.abs(x) < half && Math.abs(z) < half), material);
+    new THREE.Mesh(
+      groundGrid(VISUAL_SIZE, Math.round(VISUAL_SIZE / OUTER_CELL), (x, z) => (Math.abs(x) < half && Math.abs(z) < half) || (LEVEL === 'tunnels' && z < 2.5)),
+      // The tunnels' fog is the dark of the tubes: the world outside, seen from in there, stays in daylight.
+      LEVEL === 'tunnels' ? Object.assign(material.clone(), { fog: false }) : material,
+    );
   const mesh = new THREE.Group();
   for (const m of outer ? [inner, outer] : [inner]) {
     m.receiveShadow = true;

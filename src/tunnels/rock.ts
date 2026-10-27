@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { loadGltf } from '../render/gltf';
-import { FLOORS, JAMEO, rockColour, SKYLIGHTS, TOP } from './layout';
+import { FLOORS, JAMEO, rockColour, rockShade, SKYLIGHTS, TOP } from './layout';
 
 /**
  * The tunnels' rock (`tunnels.glb`, from `assets-src/tunnels.py`): one mesh of every wall, roof and
@@ -17,15 +17,31 @@ export async function buildRock(url: string, scene: THREE.Scene, world: RAPIER.W
   });
   const geo = geometry! as THREE.BufferGeometry;
   const pos = geo.getAttribute('position') as THREE.BufferAttribute;
-  const normal = geo.getAttribute('normal') as THREE.BufferAttribute;
-  const colours = new Float32Array(pos.count * 3);
+  // Drawn faceted, each face coloured for where it faces, so every lump, ledge and broken block reads.
+  const flat = geo.toNonIndexed();
+  const fpos = flat.getAttribute('position') as THREE.BufferAttribute;
+  // The generator's ambient occlusion, in the colour attribute.
+  const ao = flat.getAttribute('color') as THREE.BufferAttribute | undefined;
+  const colours = new Float32Array(fpos.count * 3);
   const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    rockColour(pos.getX(i), pos.getY(i), pos.getZ(i), normal.getY(i), c);
-    c.toArray(colours, i * 3);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const d = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  for (let i = 0; i < fpos.count; i += 3) {
+    a.fromBufferAttribute(fpos, i);
+    b.fromBufferAttribute(fpos, i + 1);
+    d.fromBufferAttribute(fpos, i + 2);
+    n.subVectors(b, a).cross(d.clone().sub(a)).normalize();
+    const occ = ao ? (ao.getX(i) + ao.getX(i + 1) + ao.getX(i + 2)) / 3 : 1;
+    a.add(b).add(d).divideScalar(3);
+    rockColour(a.x, a.y, a.z, n.y, c);
+    c.multiplyScalar(rockShade(n.x, n.y, n.z, occ));
+    for (let k = 0; k < 3; k++) c.toArray(colours, (i + k) * 3);
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colours, 3));
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }));
+  flat.deleteAttribute('normal');
+  flat.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  const mesh = new THREE.Mesh(flat, new THREE.MeshBasicMaterial({ vertexColors: true }));
   mesh.name = 'rock';
   scene.add(mesh);
 

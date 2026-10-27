@@ -493,10 +493,17 @@ export interface TunnelsTestHooks
     climbs: number;
     leaps: number;
     swam: boolean;
+    /** Times an owl caught the lizard, and where it goes back to after one. */
+    catches: number;
+    checkpoint: { x: number; y: number; z: number; yaw: number };
     basked: boolean[];
     goals: { id: string; label: string; done: boolean }[];
   };
   restart(): void;
+  /** The barn owls: which skylight each roosts in, what it's doing, where it is, and the floor it hunts (its skylight's middle). */
+  owls(): { name: string; state: string; x: number; y: number; z: number; under: { x: number; y: number; z: number } }[];
+  /** The whitetip pups in the flooded mouth: resting, bolting, away at sea or coming back. */
+  sharks(): { state: string; x: number; y: number; z: number }[];
   /** The layout from `tunnels.json`: floors, start, finish, holes, rubble piles, skylights, the flooded dip. */
   layout(): {
     floors: number[];
@@ -509,6 +516,8 @@ export interface TunnelsTestHooks
     steps: { count: number; riser: number; tread: number };
     skylights: { name: string; x: number; z: number; r: number }[];
     pools: { x: number; z: number; rx: number; rz: number; depth: number }[];
+    roosts: { name: string; x: number; y: number; z: number; dx: number; dz: number }[];
+    islet: { x: number; z: number; r: number };
   };
   /** The baked light at a point: sun (open sky along the sun's slant) and glow, 0 to 1. */
   light(x: number, y: number, z: number): { sun: number; glow: number };

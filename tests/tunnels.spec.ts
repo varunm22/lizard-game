@@ -51,7 +51,7 @@ test('the tunnels load: the lizard on the upper floor at the start; holes and ru
   expect(Math.abs(s.player.y - s.L.floors[1])).toBeLessThan(0.01);
   expect(Math.hypot(s.player.x - s.L.start.x, s.player.z - s.L.start.z)).toBeLessThan(0.02);
   expect(s.run.state).toBe('ready');
-  expect(s.run.goals.length).toBe(7);
+  expect(s.run.goals.length).toBe(9);
   for (const h of s.holes) expect(Math.abs(h.floor! - h.ground), h.name).toBeLessThan(0.01);
   for (const treads of s.ramps) {
     expect(Math.abs(treads[0] - s.L.floors[0])).toBeLessThan(0.01);
@@ -75,7 +75,8 @@ test('walking into a hole in the floor drops the lizard into the tube below', as
     const g = window.__tunnels!;
     const L = g.layout();
     const hole = L.holes.find((h) => h.name === 'last')!;
-    const x = 3.4;
+    // Clear of the barn owl's ear: walking right under its ledge, it would hear.
+    const x = 3.55;
     const z = -0.62;
     g.teleport(x, z, facing(x, z, hole.a.x, hole.a.z), L.floors[1]);
     g.advance(10);
@@ -130,7 +131,8 @@ test('the gap is cleared by a running jump; walked or run into, it drops the liz
       g.advance(10);
       // Jump (held) as the snout reaches the rim.
       let held = 0;
-      for (let i = 0; i < 300; i++) {
+      // Until well past it: further along, the tube has fallen blocks to clamber over.
+      for (let i = 0; i < 300 && g.player().x < gap.a.x + 0.5; i++) {
         const p = g.player();
         if (jump && held === 0 && p.x > gap.a.x - gap.r - 0.07) held = 1;
         g.setInput({ move: { x: 0, y: 1 }, run, jump: held > 0 && held++ < 20 });
@@ -156,7 +158,7 @@ test('the gap is cleared by a running jump; walked or run into, it drops the liz
   expect(s.run.goals.find((goal) => goal.id === 'leap')!.done).toBe(true);
 });
 
-test('the flooded stretch is swum, and the tube beyond leads out into the jameo', async ({ page }) => {
+test('the flooded stretch is swum, and the beach past the sea mouth is the way out', async ({ page }) => {
   await bootTunnels(page);
   const s = await page.evaluate(() => {
     const g = window.__tunnels!;
@@ -170,8 +172,8 @@ test('the flooded stretch is swum, and the tube beyond leads out into the jameo'
     swam = g.run().swam;
     for (let i = 0; i < 120 && g.player().swimming; i++) g.advance(5);
     const out = g.player();
-    // From the last tube, south into the jameo.
-    g.teleport(3.55, 1.4, 0, L.floors[0]);
+    // Out of the mouth's sea pool onto the cove's beach, south to the water's edge.
+    g.teleport(L.finish.x, L.finish.z - 0.27, 0);
     g.setInput({ move: { x: 0, y: 1 } });
     for (let i = 0; i < 100 && g.run().state !== 'home'; i++) g.advance(5);
     return { swam, out, run: g.run() };
@@ -181,4 +183,71 @@ test('the flooded stretch is swum, and the tube beyond leads out into the jameo'
   expect(s.run.goals.find((goal) => goal.id === 'swim')!.done).toBe(true);
   expect(s.run.state).toBe('home');
   expect(s.run.finishes).toBe(1);
+  expect(s.run.goals.find((goal) => goal.id === 'out')!.done).toBe(true);
+});
+
+test('a barn owl misses a lizard keeping still under it, and drops on one running', async ({ page }) => {
+  await bootTunnels(page);
+  const s = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    const L = g.layout();
+    const upper = L.floors[1];
+    const owl = g.owls()[0];
+    // The sunniest spot on the floor under its skylight: basking there, still, it never hears.
+    let sunny = { x: owl.under.x, z: owl.under.z, sun: 0 };
+    for (let dx = -0.3; dx <= 0.3; dx += 0.05)
+      for (let dz = -0.3; dz <= 0.3; dz += 0.05) {
+        const sun = g.light(owl.under.x + dx, upper + 0.03, owl.under.z + dz).sun;
+        if (sun > sunny.sun) sunny = { x: owl.under.x + dx, z: owl.under.z + dz, sun };
+      }
+    g.teleport(sunny.x, sunny.z, 0, upper);
+    g.advance(200);
+    const still = { owl: g.owls()[0].state, run: g.run() };
+    // Running across under it: heard, dropped on, held, then back at the checkpoint.
+    g.teleport(owl.under.x - 0.35, owl.under.z, Math.PI / 2, upper);
+    g.advance(80);
+    g.setInput({ move: { x: 0, y: 1 }, run: true });
+    let heard = false;
+    for (let i = 0; i < 60 && g.run().state !== 'caught'; i++) {
+      g.advance(2);
+      heard ||= g.owls()[0].state !== 'roost';
+    }
+    const caught = { run: g.run(), owl: g.owls()[0].state };
+    g.setInput(null);
+    g.advance(150);
+    return { still, heard, caught, after: { run: g.run(), player: g.player(), owl: g.owls()[0].state } };
+  });
+  expect(s.still.owl).toBe('roost');
+  expect(s.still.run.goals.find((goal) => goal.id === 'owl')!.done).toBe(true);
+  expect(s.heard).toBe(true);
+  expect(s.caught.run.state).toBe('caught');
+  expect(s.caught.owl).toBe('mantle');
+  expect(s.after.run.state).toBe('running');
+  expect(s.after.run.catches).toBe(1);
+  expect(s.after.owl).toBe('roost');
+  const cp = s.after.run.checkpoint;
+  expect(Math.hypot(s.after.player.x - cp.x, s.after.player.z - cp.z)).toBeLessThan(0.02);
+});
+
+test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', async ({ page }) => {
+  await bootTunnels(page);
+  const s = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    const shark = g.sharks()[0];
+    // From the dry end of the mouth, into the pool and on over the pup.
+    g.teleport(shark.x, 2.95, 0);
+    g.advance(10);
+    g.setInput({ move: { x: 0, y: 1 } });
+    for (let i = 0; i < 80 && g.sharks()[0].state === 'rest'; i++) g.advance(5);
+    const woke = { shark: g.sharks()[0], player: g.player() };
+    g.setInput(null);
+    g.advance(120);
+    return { shark, woke, later: g.sharks(), run: g.run() };
+  });
+  expect(s.woke.shark.state).toBe('bolt');
+  expect(s.woke.player.swimming).toBe(true);
+  expect(s.later[0].z).toBeGreaterThan(s.shark.z + 1);
+  // The other pup, further out, sleeps on.
+  expect(s.later[1].state).toBe('rest');
+  expect(s.run.goals.find((goal) => goal.id === 'shark')!.done).toBe(true);
 });
