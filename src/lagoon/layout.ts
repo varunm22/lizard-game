@@ -38,9 +38,43 @@ export function channelX(z: number): number {
 /** Where the channel narrows between a root snag and a lava knob: a log floating down jams here. */
 export const JAM_Z = -0.45;
 export function channelHalf(z: number): number {
-  return 0.42 - 0.12 * smoothstep(0.7, 0, Math.abs(z - JAM_Z));
+  return CHANNEL_HALF + 0.2 * smoothstep(0.6, 1.4, z) - 0.12 * smoothstep(0.7, 0, Math.abs(z - JAM_Z));
 }
+/** The channel's half-width away from the narrows (m); north of the snag it's wider by a hand, room for a log to drift down it. */
+const CHANNEL_HALF = 0.42;
 export const JAM = { x: channelX(JAM_Z), z: JAM_Z };
+/**
+ * The snag: an old mangrove trunk lying drowned on a bar of rubble `depth` under the water, out
+ * from the lava face into the channel above the narrows, its broken top pointing upstream: its
+ * middle, its heading (radians: (cos, sin) in x and z) from its top in mid-channel to its foot under
+ * the lava, and half its length. Bare, it lies too deep to catch anything floating; drift wrack
+ * racked up against it stands up to the surface, a spur from the east bank that a log drifting down
+ * catches its leading end on, so the current swings the rest of it round across the channel.
+ */
+export const SNAG = { x: channelX(0.4) + 0.2, z: 0.4, heading: -0.4, half: 0.5, depth: 0.27 };
+/**
+ * The lava knob the snag's foot lies under: the lava face juts out into the channel there, at `z`,
+ * `r` along the bank and `reach` across it (as a share of the channel's half-width), so a log caught
+ * on the rack lies with its butt against it, a step up onto the lava.
+ */
+const KNOB = { z: 0.33, r: 0.24, reach: 0.42 };
+
+/**
+ * The mud spit across from it, upstream: the west bank builds out into the channel there as a cut
+ * bank, its top just out of the water, so the tip of a log swung round on the rack fetches up
+ * against it with its branches lying over the mud.
+ */
+const SPIT = { z: 1.2, r: 0.3, reach: 0.22, top: W + 0.003 };
+
+/** Where the west bank's foot is at z, across the channel (`acrossChannel`): -1 but at the spit. */
+export function westEdge(z: number): number {
+  return -1 + SPIT.reach * smoothstep(SPIT.r, 0.08, Math.abs(z - SPIT.z));
+}
+
+/** Where the lava face is at z, across the channel (`acrossChannel`): 1 but where the knob juts out. */
+export function eastEdge(z: number): number {
+  return 1 - KNOB.reach * smoothstep(KNOB.r, 0.04, Math.abs(z - KNOB.z));
+}
 
 /** Height of the channel's west bank (mud) and the top of its east bank (the lava shelf's lip). */
 export const BANK_TOP = W + 0.012;
@@ -49,24 +83,53 @@ export const SHELF_TOP = W + 0.065;
 const CHANNEL_DEPTH = 0.3;
 
 /** How fast the ebb runs down the channel's middle (m/s), southward; faster through the narrows. */
-export const CURRENT = 0.1;
+export const CURRENT = 0.16;
 
 /** Where (x, z) is across the channel: -1 at the west bank, 1 at the east, beyond either outside it. */
 export function acrossChannel(x: number, z: number): number {
   return (x - channelX(z)) / channelHalf(z);
 }
 
-/** The current at (x, z) (m/s, as x and z into `out`): the channel's ebb south, and the log pool draining east down its creek. */
+/**
+ * The current at (x, z) (m/s, as x and z into `out`): the channel's ebb south, and the log pool
+ * draining toward its creek and east down it, as far as the wrack dammed in the creek's mouth lets
+ * it (`CREEK_FLOW.open`).
+ */
 export function current(x: number, z: number, out: { x: number; z: number }) {
   const u = acrossChannel(x, z);
   out.x = 0;
-  out.z = Math.abs(u) < 1 ? -CURRENT * (0.42 / channelHalf(z)) * (1 - u * u) : 0;
-  if (u <= -1 && x > CREEK_FROM && Math.abs(z - CREEK.z) < CREEK.half + 0.05) out.x = CREEK_FLOW;
+  out.z = Math.abs(u) < 1 ? -CURRENT * (CHANNEL_HALF / channelHalf(z)) * (1 - u * u) : 0;
+  if (CREEK_FLOW.open === 0) return out;
+  if (u > -1) {
+    // The creek's water runs on out into the channel a way before the ebb turns it.
+    if (u < 0.3) out.x = CREEK_JET * CREEK_FLOW.open * smoothstep(CREEK.half + 0.25, CREEK.half - 0.1, Math.abs(z - CREEK.z)) * smoothstep(0.3, -0.6, u);
+    return out;
+  }
+  if (x > CREEK_FROM && Math.abs(z - CREEK.z) < CREEK.half + 0.05) out.x = CREEK_FLOW.speed * CREEK_FLOW.open;
+  else {
+    // The pool drains toward the creek's head, gently.
+    const dx = CREEK_FROM + 0.05 - x;
+    const dz = CREEK.z - z;
+    const d = Math.hypot(dx, dz);
+    if (Math.hypot(x - LOG_POOL.x, z - LOG_POOL.z) < LOG_POOL.r && d > 0.01) {
+      const k = (POOL_DRAIN * CREEK_FLOW.open) / d;
+      out.x = dx * k;
+      out.z = dz * k;
+    }
+  }
   return out;
 }
-/** The creek's outflow (m/s, east) from this far east (m) to the channel. */
-const CREEK_FLOW = 0.035;
+
+/**
+ * The creek's outflow (m/s, east) from this far east (m) to the channel, and how open the creek is,
+ * 0 to 1: the wrack dammed in its mouth holds the pool back until it's cleared (`Wrack`).
+ */
+export const CREEK_FLOW = { speed: 0.05, open: 1 };
 const CREEK_FROM = 1.65;
+/** How fast the creek's water still runs east out in the channel, off its mouth (m/s). */
+const CREEK_JET = 0.06;
+/** How fast the log's pool drains toward the creek's head once the creek is open (m/s). */
+const POOL_DRAIN = 0.03;
 
 /** X of the colony's lava coast on the west side (m) at z: lava west of it, the lagoon east. */
 export function westCoastX(z: number): number {
@@ -77,14 +140,19 @@ export function westCoastX(z: number): number {
 export const POOLS = [
   { x: -2.6, z: 1.9, r: 1.0, d: 0.22 },
   { x: 0.1, z: -2.9, r: 1.1, d: 0.2 },
-  // The log's pool, behind the channel's fringe, joined to the channel by a creek.
-  { x: 1.25, z: 3.05, r: 0.85, d: 0.22 },
+  // The log's pool, behind the channel's fringe, joined to the channel by a creek: scoured out by the
+  // creek's flow, with a flat floor deep enough to float the log and its keel and a steep rim.
+  { x: 1.25, z: 3.05, r: 0.85, d: 0.22, rim: 0.72 },
   { x: -3.3, z: -4.5, r: 0.8, d: 0.18 },
   { x: -0.8, z: 4.4, r: 0.9, d: 0.2 },
 ] as const;
 /** The creek from the log pool out through the fringe to the channel: along z = CREEK.z. */
-export const CREEK = { z: 3.05, half: 0.2, depth: 0.16 };
+export const CREEK = { z: 3.05, half: 0.27, depth: 0.18 };
 export const LOG_POOL = POOLS[2];
+/** Where the drift wrack lies dammed in the creek's mouth, on the sill. */
+export const DAM = { x: 2.3, z: CREEK.z };
+/** Where the log starts: lying east-west in its pool, its butt aground at the west rim with its keel root stuck in the mud; heading and roll as `DriftLog.place`. */
+export const LOG_START = { x: 0.8, z: 3.15, heading: -0.1, roll: 0 };
 
 /** Wading flats: ankle-deep water over firm sand, the herons' best hunting. */
 const FLATS = [
@@ -135,7 +203,7 @@ export const FRINGE: { x: number; z: number }[] = (() => {
   for (let z = -5.6; z <= 5.6; z += 0.58) {
     if (Math.abs(z - CREEK.z) < 0.8 || Math.abs(z - JAM_Z) < 0.55) continue;
     const zz = z + 0.08 * Math.sin(z * 7.3);
-    out.push({ x: channelX(zz) - channelHalf(zz) - 0.18 + 0.05 * Math.sin(zz * 3.1), z: zz });
+    out.push({ x: channelX(zz) - channelHalf(zz) - 0.24 + 0.05 * Math.sin(zz * 3.1), z: zz });
   }
   return out;
 })();
@@ -162,7 +230,7 @@ export function lagoonLava(x: number, z: number): number {
   const ragged = valueNoise(x / 0.2 + 5, z / 0.2 - 2, 61) * 0.06;
   let lava = smoothstep(0.02, -0.06, x - westCoastX(z) + ragged);
   for (const k of ISLETS) lava = Math.max(lava, smoothstep(0.02, -0.04, Math.hypot(x - k.x, z - k.z) - k.r + ragged));
-  lava = Math.max(lava, smoothstep(0.97, 1.02, acrossChannel(x, z)));
+  lava = Math.max(lava, smoothstep(0.97, 1.02, acrossChannel(x, z) + 1 - eastEdge(z)));
   return lava;
 }
 
@@ -179,7 +247,7 @@ function basinHeight(x: number, z: number): number {
   const n = 0.5 + 0.5 * valueNoise(x / 1.6 + 7, z / 1.6 - 3, 63);
   let h = W - (0.035 + 0.05 * n) + valueNoise(x / 0.3, z / 0.3, 64) * 0.004;
   for (const f of FLATS) h += (W - 0.016 - h) * smoothstep(f.r, f.r * 0.45, Math.hypot(x - f.x, z - f.z));
-  for (const p of POOLS) h += (W - p.d - h) * smoothstep(p.r, p.r * 0.35, Math.hypot(x - p.x, z - p.z));
+  for (const p of POOLS) h += (W - p.d - h) * smoothstep(p.r, p.r * ('rim' in p ? p.rim : 0.35), Math.hypot(x - p.x, z - p.z));
   // The sand bar, its crest a couple of centimetres out of the water.
   const bar = smoothstep(BAR_HALF, BAR_HALF * 0.25, barDistance(x, z));
   h = Math.max(h, h + (W + 0.022 - h) * bar);
@@ -220,12 +288,25 @@ export function lagoonHeight(x: number, z: number): number {
   if (u >= 1) return fieldHeight(x, z);
   const basin = basinHeight(x, z);
   if (u < -1.6) return basin;
-  // The channel: a steep mud bank on the west, a deep scoured middle, and the lava face on the east.
-  const deep = W - CHANNEL_DEPTH + 0.02 * valueNoise(x / 0.2, z / 0.2, 66);
-  if (u > 0.9) return deep + (fieldHeight(x, z) - deep) * smoothstep(0.9, 1.0, u);
+  // The channel: a steep mud bank on the west, a deep scoured middle, and the lava face on the east,
+  // with a bar of rubble under the snag.
+  let deep = W - CHANNEL_DEPTH + 0.02 * valueNoise(x / 0.2, z / 0.2, 66);
+  const sx = Math.cos(SNAG.heading);
+  const sz = Math.sin(SNAG.heading);
+  const along = Math.max(-SNAG.half - 0.1, Math.min(SNAG.half + 0.1, (x - SNAG.x) * sx + (z - SNAG.z) * sz));
+  const off = Math.hypot(x - SNAG.x - sx * along, z - SNAG.z - sz * along);
+  deep += (W - SNAG.depth - deep) * smoothstep(0.16, 0.06, off);
+  const edge = eastEdge(z) + 0.03 * valueNoise(x / 0.05, z / 0.05, 70);
+  if (u > edge - 0.1) return deep + (fieldHeight(x, z) - deep) * smoothstep(edge - 0.1, edge, u);
   const bank = Math.min(basin, BANK_TOP);
   if (u < -1) return basin;
-  return bank + (deep - bank) * smoothstep(-1, -0.55, u);
+  const west = westEdge(z);
+  if (west > -1 && u < west + 0.06) {
+    const spit = smoothstep(-1, -0.95, west);
+    const top = bank + (SPIT.top - bank) * spit;
+    return top + (deep - top) * smoothstep(west, west + 0.06, u) * spit + (deep - bank) * smoothstep(-1, -0.78, u) * (1 - spit);
+  }
+  return bank + (deep - bank) * smoothstep(-1, -0.78, u);
 }
 
 /** Water depth at (x, z) over the ground (m), or negative where the ground is above the water. */

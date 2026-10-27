@@ -467,10 +467,28 @@ export interface LagoonTestHooks
     lost: number;
     ridden: number;
     rider: boolean;
+    /** How far it's rolled (radians, fork side down positive), how deep its keel reaches (m), and whether it's touching anything solid. */
+    roll: number;
+    keelDepth: number;
+    /** Hooked on a twig of the wrack racked on the snag, swinging round on it. */
+    hooked: boolean;
+    touching: boolean;
+    /** Where it touches anything this step: the bed, a piece of wrack, or anything else solid. */
+    contacts: { x: number; y: number; z: number; what: string }[];
     ends: { x: number; y: number; z: number }[];
+    /** The main limb's joints, butt to tip: the way along its top. */
+    spine: { x: number; y: number; z: number }[];
   };
-  /** Put the log floating at (x, z) along `heading`. */
-  placeLog(x: number, z: number, heading: number): void;
+  /** The drift wrack: how open the creek is (0 to 1), how many pieces are racked on the snag, and each piece. */
+  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; x: number; y: number; z: number }[] };
+  /** Rack every piece on the snag at once. */
+  rackWrack(): void;
+  /** Set a piece moving at (x, z) m/s, as a shove would. */
+  pushWrack(i: number, x: number, z: number): void;
+  /** A point given in the log's own frame (m, X along its main limb, Y up, the big fork toward -Z), in the world. */
+  logPoint(x: number, y: number, z: number): { x: number; y: number; z: number };
+  /** Put the log at (x, z), its main limb along `heading`, rolled by `roll`, at rest. */
+  placeLog(x: number, z: number, heading: number, roll?: number): void;
   /** Sharks and rays: kind, state, home pool, where each is (its belly) and faces, the top of its fins or wingtips, speed, and a shark's bites. */
   swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; top: number; yaw: number; speed: number; bites: number }[];
   /** Put swimmer `i` at (x, z) facing `yaw`, calm. */
@@ -503,6 +521,9 @@ export interface LagoonTestHooks
     pool: { x: number; z: number; r: number };
     creek: { z: number; half: number };
     jam: { x: number; z: number };
+    /** Where the drift wrack lies dammed in the creek's mouth, and the drowned snag it racks up on. */
+    dam: { x: number; z: number };
+    snag: { x: number; z: number };
   };
 }
 

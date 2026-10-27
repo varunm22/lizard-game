@@ -9,6 +9,7 @@ import type { OccluderFade } from '../camera/occluderFade';
 import type { LagoonTestHooks } from './testHooks';
 import type { Herons } from '../lagoon/herons';
 import type { DriftLog } from '../lagoon/driftLog';
+import type { Wrack } from '../lagoon/wrack';
 import type { Swimmers } from '../lagoon/swimmers';
 import type { LagoonRun } from '../lagoon/run';
 import type { Mangrove } from '../lagoon/props';
@@ -16,7 +17,7 @@ import type { Vitals } from '../player/vitals';
 import type { Wounds } from '../player/wounds';
 import type { Feeding } from '../player/feeding';
 import type { Algae } from '../world/algae';
-import { channelHalf, channelX, CREEK, current, depthAt, FINISH, JAM, LOG_POOL, SAFE_POINTS, START } from '../lagoon/layout';
+import { channelHalf, channelX, CREEK, CREEK_FLOW, current, DAM, depthAt, FINISH, JAM, LOG_POOL, SAFE_POINTS, SNAG, START } from '../lagoon/layout';
 
 interface LagoonHookContext {
   world: RAPIER.World;
@@ -29,6 +30,7 @@ interface LagoonHookContext {
   fade: OccluderFade;
   herons: Herons;
   log: DriftLog;
+  wrack: Wrack;
   swimmers: Swimmers;
   run: LagoonRun;
   vitals: Vitals;
@@ -42,7 +44,7 @@ interface LagoonHookContext {
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, wrack, swimmers, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -152,9 +154,27 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       lost: log.lost,
       ridden: log.ridden,
       rider: log.rider,
+      hooked: log.hooked,
+      roll: log.roll,
+      keelDepth: log.keelDepth,
+      touching: log.touching,
+      contacts: log.contacts.map((c) => ({ ...c })),
       ends: [xyz(log.end(-1, new THREE.Vector3())), xyz(log.end(1, new THREE.Vector3()))],
+      spine: log.spine().map(xyz),
     }),
-    placeLog: (x, z, heading) => log.place(x, z, heading),
+    wrack: () => ({
+      open: CREEK_FLOW.open,
+      racked: wrack.racked,
+      pieces: wrack.pieces.map((w) => ({ kind: w.kind, state: w.state, ...xyz(w.pos) })),
+    }),
+    rackWrack: () => wrack.rackAll(),
+    pushWrack: (i, x, z) => {
+      const w = wrack.pieces[i];
+      w.vel.x = x;
+      w.vel.z = z;
+    },
+    logPoint: (x, y, z) => xyz(log.toWorld(x, y, z, new THREE.Vector3())),
+    placeLog: (x, z, heading, roll = 0) => log.place(x, z, heading, roll),
     swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, state: s.state, pool: s.pool, ...xyz(s.pos), top: swimmers.top(s), yaw: s.yaw, speed: s.speed, bites: s.bites })),
     placeSwimmer: (i, x, z, yaw) => swimmers.place(i, x, z, yaw),
     channel: (z) => ({ x: channelX(z), half: channelHalf(z) }),
@@ -181,6 +201,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       pool: { x: LOG_POOL.x, z: LOG_POOL.z, r: LOG_POOL.r },
       creek: { z: CREEK.z, half: CREEK.half },
       jam: { ...JAM },
+      dam: { ...DAM },
+      snag: { x: SNAG.x, z: SNAG.z },
     }),
   };
 }

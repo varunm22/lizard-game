@@ -69,6 +69,13 @@ C = {
     'gutweed_tip': srgb('#c8e66a'),
     'bostrychia': srgb('#3e1a2a'),
     'bostrychia_tip': srgb('#8a3c52'),
+    'drift': srgb('#b8b1a4'),
+    'drift_light': srgb('#d8d2c4'),
+    'drift_dark': srgb('#7d766b'),
+    'drift_wet': srgb('#5a5a44'),
+    'drift_core': srgb('#c9b48e'),
+    'drowned': srgb('#3a3a2a'),
+    'drowned_film': srgb('#5c6a34'),
 }
 
 
@@ -361,6 +368,183 @@ def bostrychia(rng):
     return mb
 
 
+def limb_radius(r0, r1, nodes, swell=0.22):
+    """A limb tapering r0 -> r1, swollen at each node (s positions along it), as Rhizophora's joints."""
+    return lambda s: (r0 + (r1 - r0) * s) * (1 + sum(swell * math.exp(-(((s - n) / 0.035) ** 2)) for n in nodes))
+
+
+def zigzag(rng, start, direction, length, nodes, kink, droop=0.0):
+    """Points along a jointed limb: straight runs between nodes, turning by up to `kink` radians at
+    each (Rhizophora's zigzag), every ~2.5 cm. `droop` bends it down a little per run. Returns the
+    points and each node's s."""
+    d = Vector(direction).normalized()
+    p = Vector(start)
+    pts = [p.copy()]
+    cuts = sorted([0.0] + [rng.uniform(0.15, 0.85) for _ in range(nodes)] + [1.0])
+    for a, b in zip(cuts, cuts[1:]):
+        seg = (b - a) * length
+        steps = max(1, round(seg / 0.025))
+        for _ in range(steps):
+            p = p + d * (seg / steps)
+            pts.append(p.copy())
+        side = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+        side = (side - d * side.dot(d)).normalized()
+        d = (d + side * math.tan(rng.uniform(0.3, 1.0) * kink) - Vector((0, 0, droop))).normalized()
+    return pts, cuts[1:-1]
+
+
+def snap_end(mb, rng, pts, r, sign_end=True):
+    """A snapped-off end: a ragged ring of splinters round pale bare wood."""
+    tip, prev = (pts[-1], pts[-2]) if sign_end else (pts[0], pts[1])
+    t = (tip - prev).normalized()
+    a = t.orthogonal().normalized()
+    b = t.cross(a)
+    ring = []
+    n = 7
+    for k in range(n):
+        ang = 2 * math.pi * k / n
+        co = tip + (a * math.cos(ang) + b * math.sin(ang)) * r * 0.85 + t * r * rng.uniform(0.0, 1.4)
+        ring.append(mb.vert(co, C['drift_light']))
+    centre = mb.vert(tip + t * r * rng.uniform(0.2, 0.8), C['drift_core'])
+    for k in range(n):
+        if sign_end:
+            mb.face(ring[k], ring[(k + 1) % n], centre)
+        else:
+            mb.face(ring[(k + 1) % n], ring[k], centre)
+
+
+def driftwood_colour(seed, keel_z=-0.02):
+    """Bleached silver-grey, streaked along the grain, darker in the cracks; wet, greened and darker
+    under the waterline (z < 0), where it floats."""
+    def colour(co, s):
+        v = Vector(co)
+        grain = noise.noise(Vector((v.x * 6, v.y * 60, v.z * 60)) + Vector((seed, 0, 0)))
+        c = mix(C['drift'], C['drift_light'], 0.5 + 0.5 * grain)
+        crack = noise.noise(v * 45 + Vector((0, seed, 3)))
+        c = mix(c, C['drift_dark'], max(0.0, crack - 0.35) * 1.6)
+        wet = min(1.0, max(0.0, (keel_z - v.z) / 0.03 + 0.6))
+        return mix(c, C['drift_wet'], 0.75 * wet)
+    return colour
+
+
+def segments(pts, r, every=3):
+    """Colliders along a limb: a capsule over every few points, radius `r(s)` at its middle."""
+    out = []
+    n = len(pts) - 1
+    idx = list(range(0, n, every)) + [n]
+    for i, j in zip(idx, idx[1:]):
+        rad = r((i + j) / 2 / n) * 0.95
+        out.append(gltf(pts[i]) + gltf(pts[j]) + [round(rad, 4)])
+    return out
+
+
+def drift_limb(rng):
+    """The floating gate: see the module docstring. Built in its floating pose round the origin."""
+    mb = MeshBuilder()
+    seed = rng.uniform(0, 50)
+    col = driftwood_colour(seed)
+    segs = []
+    at = lambda pts, s: pts[min(len(pts) - 1, round(s * (len(pts) - 1)))]
+
+    def limb(start, direction, length, nodes, kink, r0, r1, sides, every=3, snapped=True, droop=0.0):
+        pts, ns = zigzag(rng, start, direction, length, nodes, kink, droop)
+        r = limb_radius(r0, r1, ns)
+        tube(mb, pts, r, col, sides=sides, cap=not snapped, rough=0.14, seed=seed + len(segs))
+        if snapped:
+            snap_end(mb, rng, pts, r(1.0))
+        segs.extend(segments(pts, r, every))
+        return pts
+
+    # The main limb: butt end at -X (snapped, thickest), kinking at its nodes, forking near +X.
+    main, nodes = zigzag(rng, Vector((-0.48, 0.0, 0.004)), Vector((1, 0.04, 0)), 0.98, 3, 0.28)
+    r_main = limb_radius(0.037, 0.019, nodes)
+    tube(mb, main, r_main, col, sides=10, cap=False, rough=0.14, seed=seed)
+    snap_end(mb, rng, main, r_main(0.0), sign_end=False)
+    snap_end(mb, rng, main, r_main(1.0))
+    segs += segments(main, r_main)
+    # The fork: a long limb out to +Y, nearly level, so the log lies wide on the water; it forks again.
+    fork = limb(at(main, 0.62), Vector((0.7, 0.7, 0.0)), 0.34, 2, 0.3, 0.022, 0.01, 8)
+    limb(at(fork, 0.45), Vector((0.9, 0.2, 0.15)), 0.2, 1, 0.3, 0.011, 0.006, 6, every=4)
+    limb(at(fork, 0.7), Vector((-0.1, 0.6, 0.7)), 0.1, 0, 0.0, 0.008, 0.004, 5, every=4, snapped=False)
+    # A smaller fork off the tip end to -Y, and twigs off it.
+    side = limb(at(main, 0.8), Vector((0.6, -0.75, 0.1)), 0.19, 1, 0.3, 0.014, 0.007, 7)
+    limb(at(side, 0.55), Vector((0.5, -0.2, 0.8)), 0.08, 0, 0.0, 0.006, 0.003, 5, every=4, snapped=False)
+    # Snapped stubs: one standing up on the side away from the fork, short ones along the limb.
+    limb(at(main, 0.42), Vector((0.25, -0.45, 0.85)), 0.1, 0, 0.0, 0.014, 0.011, 7, every=4)
+    limb(at(main, 0.3), Vector((0.3, 0.7, 0.4)), 0.05, 0, 0.0, 0.011, 0.009, 6, every=4)
+    limb(at(main, 0.05), Vector((0.2, 0.5, 0.8)), 0.045, 0, 0.0, 0.012, 0.01, 6, every=4)
+    # Toward the tip, under the fork, an arching prop root: out to -Y nearly level, then curving down
+    # under the log, the keel. The fork drags more in the water, so the log drifts tip first and the
+    # keel leads.
+    base = at(main, 0.7)
+    out = Vector((0.15, -1, 0)).normalized()
+    p0 = base + out * 0.02
+    p1 = p0 + out * 0.06 + Vector((0, 0, 0.025))
+    p3 = p0 + out * 0.13 + Vector((0.03, 0, -0.085))
+    p2 = p3 + Vector((0, 0, 0.06)) + out * 0.005
+    root = bezier(p0, p1, p2, p3, 8)
+    r_root = limb_radius(0.014, 0.01, [0.45], swell=0.15)
+    root_col = driftwood_colour(seed + 9, keel_z=0.02)
+    tube(mb, root, r_root, root_col, sides=8, cap=False, rough=0.12, seed=seed + 9)
+    snap_end(mb, rng, root, r_root(1.0))
+    keel = list(range(len(segs), len(segs) + len(segments(root, r_root, every=2))))
+    segs += segments(root, r_root, every=2)
+    # Near the butt, two short prop-root stubs, snapped off near the limb.
+    base = at(main, 0.12)
+    out = Vector((-0.2, -1, 0)).normalized()
+    for dx, drop in ((0.06, 0.06), (-0.07, 0.045)):
+        root2 = bezier(base + Vector((dx, 0, 0)) + out * 0.02, base + Vector((dx + 0.02, 0, 0.0)) + out * 0.06,
+                       base + Vector((dx + 0.03, 0, -drop * 0.5)) + out * 0.07, base + Vector((dx + 0.04, 0, -drop)) + out * 0.075, 4)
+        r_root2 = limb_radius(0.011, 0.009, [])
+        tube(mb, root2, r_root2, root_col, sides=6, cap=False, rough=0.1, seed=seed + 11 + dx)
+        snap_end(mb, rng, root2, r_root2(1.0))
+        segs += segments(root2, r_root2, every=4)
+    return mb, {'segments': segs, 'keel': keel}
+
+
+def wrack_stick(rng, length):
+    """A thin dead mangrove twig: kinked, with a fork or two, grey and wet."""
+    mb = MeshBuilder()
+    seed = rng.uniform(0, 50)
+    col = driftwood_colour(seed, keel_z=0.05)
+    main, nodes = zigzag(rng, Vector((-length / 2, 0, 0)), Vector((1, 0, 0)), length, 2, 0.3)
+    r = limb_radius(0.008, 0.004, nodes, swell=0.3)
+    tube(mb, main, r, col, sides=6, cap=False, rough=0.12, seed=seed)
+    snap_end(mb, rng, main, r(0.0), sign_end=False)
+    snap_end(mb, rng, main, r(1.0))
+    segs = segments(main, r, every=3)
+    for k in range(2):
+        f, _ = zigzag(rng, main[min(len(main) - 2, 2 + k * 3)], Vector((0.6, rng.choice((-1, 1)) * 0.8, rng.uniform(-0.3, 0.3))), length * rng.uniform(0.25, 0.4), 1, 0.3)
+        rf = limb_radius(0.005, 0.0025, [])
+        tube(mb, f, rf, col, sides=5, rough=0.1, seed=seed + k)
+        segs += segments(f, rf, every=4)
+    return mb, {'segments': segs}
+
+
+def drowned_trunk(rng):
+    """An old trunk lying on the channel bed: dark, furred with algae, prop-root stubs sticking up."""
+    mb = MeshBuilder()
+    seed = rng.uniform(0, 50)
+    def col(co, s):
+        n = noise.noise(Vector(co) * 30 + Vector((seed, 0, 0)))
+        return mix(C['drowned'], C['drowned_film'], 0.4 + 0.4 * n)
+    main, nodes = zigzag(rng, Vector((-0.5, 0, 0.045)), Vector((1, 0, 0)), 1.0, 3, 0.07)
+    r = limb_radius(0.045, 0.032, nodes, swell=0.15)
+    tube(mb, main, r, col, sides=10, cap=False, rough=0.18, seed=seed)
+    snap_end(mb, rng, main, r(0.0), sign_end=False)
+    snap_end(mb, rng, main, r(1.0))
+    segs = segments(main, r)
+    for k, s in enumerate((0.15, 0.35, 0.55, 0.75, 0.9)):
+        p = main[round(s * (len(main) - 1))]
+        d = Vector((rng.uniform(-0.3, 0.3), rng.choice((-1, 1)) * rng.uniform(0.5, 0.9), 0.8))
+        stub, _ = zigzag(rng, p, d, rng.uniform(0.035, 0.05), 0, 0.0)
+        rs = limb_radius(0.012, 0.009, [])
+        tube(mb, stub, rs, col, sides=6, cap=False, rough=0.15, seed=seed + k)
+        snap_end(mb, rng, stub, rs(1.0))
+        segs += segments(stub, rs, every=4)
+    return mb, {'segments': segs}
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rng = random.Random(71)
@@ -381,6 +565,15 @@ def main():
     arng = random.Random(73)
     objects.append(make_object('gutweed', gutweed(arng), mat))
     objects.append(make_object('bostrychia', bostrychia(arng), mat))
+    # The puzzle's driftwood, from its own generator too.
+    drng = random.Random(79)
+    mb, ex = drift_limb(drng)
+    objects.append(make_object('drift_limb', mb, mat, extras=ex))
+    for i, length in enumerate((0.2, 0.15)):
+        mb, ex = wrack_stick(drng, length)
+        objects.append(make_object(f'wrack_stick_{i}', mb, mat, extras=ex))
+    mb, ex = drowned_trunk(drng)
+    objects.append(make_object('drowned_trunk', mb, mat, extras=ex))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 

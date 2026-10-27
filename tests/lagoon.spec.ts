@@ -4,7 +4,7 @@ import { screenshot } from './helpers/screenshot';
 
 /**
  * The mangrove lagoon (`?level=lagoon`): the ground and the mangroves' roots, the lava herons'
- * stalking and stabbing, the driftwood log that floats out on the ebb and jams across the channel,
+ * stalking and stabbing, the wrack dam, the driftwood log that floats out of its pool and catches across the channel,
  * and the run from the lava coast to the lava field. The hunting tests stand heron 1 at its first
  * spot facing south over the open flat, with the lizard in front of it.
  */
@@ -53,7 +53,7 @@ test('the lagoon loads: the ground, the mangroves and roots, the herons waiting,
   expect(Math.hypot(bones.foot_L.x - feet[0].x, bones.foot_L.z - feet[0].z)).toBeLessThan(0.005);
   expect(Math.hypot(bones.foot_R.x - feet[1].x, bones.foot_R.z - feet[1].z)).toBeLessThan(0.005);
   expect(bones.head.y - bones.body.y).toBeGreaterThan(0.05);
-  expect(s.log).toMatchObject({ state: 'float', inChannel: false, pushes: 0 });
+  expect(s.log).toMatchObject({ state: 'aground', inChannel: false, pushes: 0 });
   expect(Math.hypot(s.log.x - s.marks.pool.x, s.log.z - s.marks.pool.z)).toBeLessThan(s.marks.pool.r);
   // Deep enough to swim in the pool and the channel.
   expect(s.poolDepth).toBeGreaterThan(0.15);
@@ -261,71 +261,99 @@ test('a stalking heron gives up on a lizard in the mangrove roots or swimming lo
   expect(s.atSafe.goals.find((g) => g.id === 'safe')!.done).toBe(true);
 });
 
-test('the log: swum into, it moves; the creek drains it into the channel, the ebb jams it across the narrows, and it bridges to the lava field', async ({ page }) => {
+test('the log: the wrack dam holds the pool still; cleared, it drains; shoved loose, the log floats out, catches on the racked wrack and bridges to the lava field', async ({ page }) => {
   await bootLagoon(page);
   const s = await page.evaluate(() => {
     const g = window.__lagoon!;
-    // Swimming into its side from the pool, the lizard shoves it along.
+    const marks = g.marks();
+    // Stuck by its keel, it doesn't move; the dam holds the creek still.
     const l0 = g.log();
-    const px = -Math.sin(l0.heading);
-    const pz = Math.cos(l0.heading);
-    g.teleport(l0.x - px * 0.12, l0.z - pz * 0.12, Math.atan2(px, pz), -0.07);
-    g.setInput({ move: { x: 0, y: 1 } }, 40);
-    g.advance(40);
-    const pushed = g.log();
-    // Lying in the creek mouth, it drains out into the channel and turns to the flow.
-    g.placeLog(2.3, g.marks().creek.z, 0);
-    for (let i = 0; i < 12 && !g.log().inChannel; i++) g.advance(60);
-    const creek = g.log();
-    // A little upstream of the narrows, it drifts down and jams across.
-    const c = g.channel(0.2);
-    g.placeLog(c.x, 0.2, Math.PI / 2);
-    let steps = 0;
-    for (; steps < 900 && g.log().state !== 'jammed'; steps += 30) g.advance(30);
-    const jammed = g.log();
-    // From the mud by the landing, across the log, onto the lava and to the light.
-    const jam = g.marks().jam;
-    const ch = g.channel(jam.z);
-    g.teleport(ch.x - ch.half - 0.25, jam.z, Math.PI / 2);
-    const f = g.marks().finish;
+    g.advance(60);
+    const still = { log: g.log(), wrack: g.wrack(), creek: g.current(marks.dam.x + 0.3, marks.creek.z) };
+    // Swimming into a piece of the dam shoves it loose.
+    const w0 = g.wrack().pieces[2];
+    g.teleport(w0.x - 0.11, w0.z, Math.PI / 2, -0.07);
+    g.setInput({ move: { x: 0, y: 1 } }, 60);
+    g.advance(60);
+    const shovedPiece = g.wrack().pieces[2];
+    // The rest, loose at once (as though shoved): the creek runs and carries them off.
+    g.wrack().pieces.forEach((_, i) => g.pushWrack(i, 0.35, ((i % 3) - 1) * 0.05));
+    const mid = l0.spine[Math.floor(l0.spine.length / 2)];
+    g.teleport(mid.x, mid.z - 0.12, 0, -0.07);
+    g.advance(30);
+    const cleared = { wrack: g.wrack(), creek: g.current(marks.dam.x + 0.3, marks.creek.z) };
+    // Swimming into its side at the surface (tilting up now and then) works the log loose.
+    let shoves = 0;
+    for (; shoves < 30 && g.log().state === 'aground'; shoves++) {
+      g.setInput({ move: { x: 0, y: 1 }, jump: shoves % 4 === 0 }, 6);
+      g.advance(6);
+    }
+    const loose = g.log();
+    // A moment more to see it off, then the draining pool and the creek take it out; the wrack has racked
+    // up on the snag by the time it comes down the channel, and it catches and swings across.
+    g.setInput({ move: { x: 0, y: 1 } }, 30);
+    g.advance(30);
+    g.teleport(marks.safe[0].x, marks.safe[0].z, 0);
+    let t = 0;
+    for (; t < 100 && g.log().state !== 'jammed'; t++) g.advance(60);
+    const jammed = { log: g.log(), wrack: g.wrack(), t };
+    // From the mud by its west end, along it, up onto the lava and to the light.
+    const sp = jammed.log.spine[0].x < jammed.log.spine[jammed.log.spine.length - 1].x ? jammed.log.spine : [...jammed.log.spine].reverse();
+    const last = sp[sp.length - 1];
+    const dx = last.x - sp[0].x;
+    const dz = last.z - sp[0].z;
+    const n = Math.hypot(dx, dz);
+    g.teleport(sp[0].x - (dx / n) * 0.12, sp[0].z - (dz / n) * 0.12, Math.atan2(dx, dz));
+    const startGround = g.player();
+    const way = [...sp.slice(3), { x: last.x + (dx / n) * 0.15, z: last.z + (dz / n) * 0.15 }, marks.finish];
+    let k = 0;
     let onLog = false;
     for (let i = 0; i < 200 && g.run().state !== 'home'; i++) {
       const p = g.player();
-      const want = i < 60 ? Math.PI / 2 : Math.atan2(f.x - p.x, f.z - p.z);
+      if (Math.hypot(way[k].x - p.x, way[k].z - p.z) < 0.04 && k < way.length - 1) k++;
+      const want = Math.atan2(way[k].x - p.x, way[k].z - p.z);
       const d = Math.atan2(Math.sin(want - p.yaw), Math.cos(want - p.yaw));
-      g.setInput({ move: { x: Math.max(-1, Math.min(1, -d * 3)), y: 1 } }, 5);
-      g.advance(5);
+      g.setInput({ move: { x: Math.max(-1, Math.min(1, -d * 2)), y: 1 } }, 4);
+      g.advance(4);
       onLog ||= g.log().rider;
       if (g.player().swimming) break;
     }
     const crossed = { run: g.run(), player: g.player() };
-    g.viewFrom({ x: -0.55, y: 0.3, z: -0.7 }, { x: jam.x, y: -0.02, z: jam.z });
+    g.viewFrom({ x: 2.2, y: 0.4, z: 1.5 }, { x: (sp[0].x + last.x) / 2, y: -0.05, z: (sp[0].z + last.z) / 2 });
     g.advance(1);
-    return { l0, pushed, creek, jammed, steps, jam, onLog, crossed };
+    return { l0, still, shovedPiece, cleared, shoves, loose, jammed, startGround, onLog, crossed };
   });
-  expect(s.pushed.pushes).toBeGreaterThan(0);
-  expect(Math.hypot(s.pushed.x - s.l0.x, s.pushed.z - s.l0.z)).toBeGreaterThan(0.02);
-  expect(s.creek.inChannel).toBe(true);
-  expect(s.creek.reachedChannel).toBe(1);
-  expect(s.jammed.state).toBe('jammed');
-  // Across the channel: one end on the mud bank, the other on the lava shelf, both out of the water.
-  const [a, b] = [...s.jammed.ends].sort((p, q) => p.x - q.x);
-  expect(b.x - a.x).toBeGreaterThan(0.85);
-  expect(Math.abs(s.jammed.z - s.jam.z)).toBeLessThan(0.05);
-  expect(a.y).toBeGreaterThan(-0.06);
+  expect(s.l0.state).toBe('aground');
+  expect(Math.hypot(s.still.log.x - s.l0.x, s.still.log.z - s.l0.z)).toBeLessThan(0.001);
+  expect(s.still.wrack.open).toBe(0);
+  expect(s.still.creek.x).toBe(0);
+  expect(s.shovedPiece.state).not.toBe('dam');
+  expect(s.cleared.wrack.open).toBe(1);
+  expect(s.cleared.creek.x).toBeGreaterThan(0.03);
+  expect(s.loose.state).toBe('float');
+  expect(s.loose.pushes).toBeGreaterThan(0);
+  expect(s.jammed.log.state).toBe('jammed');
+  expect(s.jammed.log.reachedChannel).toBe(1);
+  expect(s.jammed.wrack.racked).toBe(8);
+  // Caught across the channel, from the west bank's foot to the lava face (or the knob).
+  const [a, b] = [...s.jammed.log.ends].sort((p, q) => p.x - q.x);
+  expect(b.x - a.x).toBeGreaterThan(0.5);
+  expect(s.startGround.swimming).toBe(false);
   expect(s.onLog).toBe(true);
   expect(s.crossed.player.swimming).toBe(false);
   expect(s.crossed.run.state).toBe('home');
   const done = Object.fromEntries(s.crossed.run.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ channel: true, bridge: true, cross: true });
+  expect(done).toMatchObject({ dam: true, free: true, channel: true, bridge: true, cross: true });
   await screenshot(page, 'lagoon-bridge.png');
-  // Starting over puts the log back in its pool.
+  // Starting over puts the log back, stuck in its pool, and the wrack back in the creek's mouth.
   const reset = await page.evaluate(() => {
     window.__lagoon!.restart();
-    return { log: window.__lagoon!.log(), pool: window.__lagoon!.marks().pool };
+    return { log: window.__lagoon!.log(), wrack: window.__lagoon!.wrack(), pool: window.__lagoon!.marks().pool };
   });
-  expect(reset.log.state).toBe('float');
+  expect(reset.log.state).toBe('aground');
   expect(Math.hypot(reset.log.x - reset.pool.x, reset.log.z - reset.pool.z)).toBeLessThan(reset.pool.r);
+  expect(reset.wrack.open).toBe(0);
+  expect(reset.wrack.pieces.every((p) => p.state === 'dam')).toBe(true);
 });
 
 test('the channel: its ebb carries a swimmer south and a riding lizard with the log; its far bank is too steep to climb out on', async ({ page }) => {

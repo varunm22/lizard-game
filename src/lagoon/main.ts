@@ -32,9 +32,10 @@ import lizardUrl from '../assets/lizard.glb?url';
 import propsUrl from '../assets/props.glb?url';
 import lagoonUrl from '../assets/lagoon.glb?url';
 import heronUrl from '../assets/heron.glb?url';
-import { current, FINISH, lagoonLava, SAFE_POINTS, START } from './layout';
+import { CREEK_FLOW, current, FINISH, lagoonLava, SAFE_POINTS, START } from './layout';
 import { buildLagoonProps, loadKit } from './props';
 import { DriftLog } from './driftLog';
+import { Wrack } from './wrack';
 import { loadHeronKit } from './heronBody';
 import { Herons } from './herons';
 import { Swimmers } from './swimmers';
@@ -51,8 +52,9 @@ const TEXT: HudText = {
     '<li>Shark pups are curious, and sometimes bite. Never turn on one close up.</li>' +
     '<li>The water <b>chills</b> you and diving costs <b>air</b>: bask on the black lava to warm up.</li>' +
     '<li>Bite (<b>F</b>) the green <b>gutweed</b> on the lava at the waterline, or the dark red <b>moss</b> on the mangrove roots, to eat.</li>' +
-    '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies in a pool by its bank: ' +
-    'swim into it to push it, out into the current.</li>' +
+    '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies stuck in a still pool behind its bank, ' +
+    'and a dam of <b>drift wrack</b> blocks the pool\'s creek. Push the wrack loose to let the pool drain, then shove the log free: ' +
+    'the creek carries it out. Wrack catches on an old drowned trunk downstream, and a log can catch on wrack.</li>' +
     '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
     '<span class="go">Move to start.</span>',
   watched: 'A heron is stalking you. Keep moving!',
@@ -96,16 +98,17 @@ export async function lagoon() {
   const feeding = new Feeding(lizard, algae);
   feeding.onMouthful = () => vitals.eat();
 
-  const logGeometry = kit.geometry.get('log_0')!;
-  const logExtras = kit.extras.get('log_0') as { radius: number; length: number };
-  const logMaterial = new THREE.MeshToonMaterial({ vertexColors: true, color: 0xd9d4cc, gradientMap: toonGradient() });
+  const logGeometry = kit.geometry.get('drift_limb')!;
+  const logExtras = kit.extras.get('drift_limb') as { segments: number[][]; keel: number[] };
+  const logMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
   const log = new DriftLog(world, logGeometry, logExtras, logMaterial, player);
   scene.add(log.mesh);
+  const wrack = new Wrack(world, kit, logMaterial, scene, player);
   const ground = new GroundProbe(world, player.body);
   const swimmers = new Swimmers(kit.geometry, scene);
   const heronKit = await loadHeronKit(heronUrl);
   const herons = new Herons(heronKit, scene, world, ground, obstacles, mangroves, player.body);
-  const run = new LagoonRun(player, wounds, vitals, herons, log, swimmers);
+  const run = new LagoonRun(player, wounds, vitals, herons, log, wrack, swimmers);
   herons.prey = run.prey;
   swimmers.prey = run.prey;
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: SAFE_POINTS });
@@ -155,7 +158,14 @@ export async function lagoon() {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`Across! ${clock(run.time)}`, best, endKeys('lagoon'));
   };
-  log.onJammed = () => flashMessage('The log has jammed across the channel', 'A bridge to the lava field.');
+  log.hooksOn = (a, b, r, out) => wrack.hooks(a, b, r, out);
+  wrack.onCleared = () => flashMessage('The creek is flowing', 'The pool drains out into the channel, and the wrack goes with it.');
+  wrack.onRacked = (count) => {
+    if (count === 1) flashMessage('The wrack has caught on something', 'An old trunk lies drowned off the lava knob, down the channel.');
+  };
+  log.onAfloat = () =>
+    flashMessage('The log is loose', CREEK_FLOW.open > 0 ? 'The draining pool carries it toward the creek.' : 'But the pool is still: nothing carries it anywhere yet.');
+  log.onJammed = () => flashMessage('The log has caught on the wrack and swung across', 'A bridge from the mud spit to the lava knob.');
   log.onLost = () => flashMessage('The log drifted out to sea', 'Another has washed into the pool.');
   runKeys('lagoon', run);
 
@@ -171,7 +181,7 @@ export async function lagoon() {
   const flow = { x: 0, z: 0 };
 
   const hooks = createLagoonHooks({
-    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat: () => canEat,
+    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, wrack, swimmers, run, vitals, wounds, algae, feeding, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -189,7 +199,8 @@ export async function lagoon() {
     if (run.held) input = { ...input, ...still };
     run.step(dt, input.move.x !== 0 || input.move.y !== 0);
     herons.step(dt);
-    log.step(dt, input.move.y > 0 && player.swimming);
+    wrack.step(dt, input.move.y > 0);
+    log.step(dt, input.move.y > 0);
     player.feetAt(1, tickFeet);
     swimmers.step(dt);
     // The channel's ebb carries a swimming lizard south.
@@ -235,6 +246,7 @@ export async function lagoon() {
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     lizard.updateBodySpheres();
     log.update(alpha);
+    wrack.update(alpha);
     herons.update(alpha);
     swimmers.update(alpha, frameDt);
     algae.update(frameDt);

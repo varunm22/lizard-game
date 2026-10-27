@@ -5,6 +5,7 @@ import { VITALS, type DownCause, type Vitals } from '../player/vitals';
 import type { Wounds } from '../player/wounds';
 import { terrainHeight } from '../world/terrain';
 import type { DriftLog } from './driftLog';
+import type { Wrack } from './wrack';
 import type { HeronPrey, Herons } from './herons';
 import { FINISH, SAFE_POINTS, START } from './layout';
 import type { Swimmers } from './swimmers';
@@ -60,6 +61,7 @@ export class LagoonRun {
     private vitals: Vitals,
     private herons: Herons,
     private log: DriftLog,
+    private wrack: Wrack,
     private swimmers: Swimmers,
   ) {
     const free = () => this.state === 'ready' || this.state === 'running';
@@ -91,8 +93,10 @@ export class LagoonRun {
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
       { id: 'deep', label: 'Escape a heron into deep water', met: () => this.dove },
       { id: 'slip', label: 'Slip away from a stalking heron', met: () => this.slipped },
+      { id: 'dam', label: 'Clear the wrack dam from the creek', met: () => wrack.cleared },
+      { id: 'free', label: 'Work the stuck log loose', met: () => log.state !== 'aground' },
       { id: 'channel', label: 'Float the driftwood out into the channel', met: () => log.reachedChannel > 0 },
-      { id: 'bridge', label: 'Jam the log across the narrows', met: () => log.state === 'jammed' },
+      { id: 'bridge', label: 'Catch the log across the channel', met: () => log.state === 'jammed' },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
       { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
@@ -140,6 +144,7 @@ export class LagoonRun {
     this.vitals.reset();
     this.player.setFeet(this.feet.set(START.x, terrainHeight(START.x, START.z), START.z), START.yaw);
     this.log.reset();
+    this.wrack.reset();
     this.herons.reset();
     this.swimmers.calm();
     this.onReset?.();

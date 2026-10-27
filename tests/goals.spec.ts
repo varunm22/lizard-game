@@ -101,7 +101,7 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   await expect(bar('island')).toHaveAttribute('aria-label', '1 of 6 goals done');
   await expect(bar('dunes').locator('.seg.on')).toHaveCount(2);
   await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 4 goals done');
-  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 10 goals done');
+  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 12 goals done');
   await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 7 goals done');
   // Once the picker has faded in.
   await page.waitForTimeout(300);

@@ -1,7 +1,7 @@
 import { LEVEL, type Level } from './level';
 
 /** How many goals each stage has, for the stage picker's bars before a stage has been played. */
-export const GOAL_COUNT: Record<Level, number> = { island: 6, dunes: 4, lagoon: 10, tunnels: 7 };
+export const GOAL_COUNT: Record<Level, number> = { island: 6, dunes: 4, lagoon: 12, tunnels: 7 };
 
 const key = (level: Level) => `lizard-goals-${level}`;
 
