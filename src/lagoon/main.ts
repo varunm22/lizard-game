@@ -38,6 +38,7 @@ import { DriftLog } from './driftLog';
 import { loadHeronKit } from './heronBody';
 import { Herons } from './herons';
 import { Swimmers } from './swimmers';
+import { Fries } from './fry';
 import { lagoonAlgaeSites } from './algae';
 import { CAUGHT_TIME, LagoonRun } from './run';
 
@@ -70,7 +71,7 @@ export async function lagoon() {
   cel.waterY = WATER_Y;
   buildTerrain(scene, world);
   const kit = await loadKit([propsUrl, lagoonUrl]);
-  const { obstacles, mangroves, crowns, rootWaterline } = buildLagoonProps(kit, scene, world);
+  const { obstacles, mangroves, crowns, rootWaterline, rootPosts } = buildLagoonProps(kit, scene, world);
   // Gutweed on the lava at the waterline, and Bostrychia on the mangrove roots.
   const algae = new Algae(
     scene,
@@ -103,6 +104,11 @@ export async function lagoon() {
   scene.add(log.mesh);
   const ground = new GroundProbe(world, player.body);
   const swimmers = new Swimmers(kit.geometry, scene);
+  // Juvenile fish darting about among the prop roots, bolting from the lizard and the shark pups.
+  const fries = new Fries(scene, kit.geometry, kit.extras as Map<string, Record<string, number>>, { rootPosts }, [
+    player.position,
+    ...swimmers.list.filter((s) => s.kind === 'shark').map((s) => s.pos),
+  ]);
   const heronKit = await loadHeronKit(heronUrl);
   const herons = new Herons(heronKit, scene, world, ground, obstacles, mangroves, player.body);
   const run = new LagoonRun(player, wounds, vitals, herons, log, swimmers);
@@ -171,7 +177,7 @@ export async function lagoon() {
   const flow = { x: 0, z: 0 };
 
   const hooks = createLagoonHooks({
-    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat: () => canEat,
+    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, fries, run, vitals, wounds, algae, feeding, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -192,6 +198,7 @@ export async function lagoon() {
     log.step(dt, input.move.y > 0 && player.swimming);
     player.feetAt(1, tickFeet);
     swimmers.step(dt);
+    fries.step(dt);
     // The channel's ebb carries a swimming lizard south.
     if (player.swimming) {
       current(tickFeet.x, tickFeet.z, flow);
@@ -237,6 +244,7 @@ export async function lagoon() {
     log.update(alpha);
     herons.update(alpha);
     swimmers.update(alpha, frameDt);
+    fries.update(alpha);
     algae.update(frameDt);
     canEat = !wounds.down && !!feeding.inReach();
     eatPrompt(canEat);

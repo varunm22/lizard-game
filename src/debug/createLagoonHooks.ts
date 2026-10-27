@@ -10,6 +10,7 @@ import type { LagoonTestHooks } from './testHooks';
 import type { Herons } from '../lagoon/herons';
 import type { DriftLog } from '../lagoon/driftLog';
 import type { Swimmers } from '../lagoon/swimmers';
+import type { Fries } from '../lagoon/fry';
 import type { LagoonRun } from '../lagoon/run';
 import type { Mangrove } from '../lagoon/props';
 import type { Vitals } from '../player/vitals';
@@ -30,6 +31,7 @@ interface LagoonHookContext {
   herons: Herons;
   log: DriftLog;
   swimmers: Swimmers;
+  fries: Fries;
   run: LagoonRun;
   vitals: Vitals;
   wounds: Wounds;
@@ -42,7 +44,7 @@ interface LagoonHookContext {
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, fries, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -132,6 +134,9 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       downBy: wounds.downBy,
     }),
     setVitals: (v) => Object.assign(vitals, v),
+    fry: () => fries.list.map((f) => ({ shoal: fries.shoals.indexOf(f.shoal), species: f.shoal.species, ...xyz(f.pos), speed: Math.hypot(f.vel.x, f.vel.z) })),
+    fryShoals: () => fries.shoals.map((s) => ({ species: s.species, x: s.home.x, z: s.home.z, roots: s.posts.map((p) => ({ ...p })) })),
+    fryDarts: () => fries.darts,
     algae: () => algae.all().map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     bite: () => feeding.bite(),
     feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, canEat: canEat() }),

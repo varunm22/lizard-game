@@ -169,6 +169,43 @@ test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the m
   expect(r.fullness).toBeGreaterThan(0.35);
 });
 
+test('juvenile fish shoal among the mangrove roots: they dart between the roots, never through one or out of the water, and bolt from a lizard', async ({ page }) => {
+  await bootLagoon(page);
+  const r = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    const shoals = g.fryShoals();
+    const start = g.fry();
+    let peak = 0;
+    let bad = 0;
+    for (let i = 0; i < 120; i++) {
+      g.advance(1);
+      for (const f of g.fry()) {
+        peak = Math.max(peak, f.speed);
+        const s = shoals[f.shoal];
+        if (s.roots.some((q) => Math.hypot(f.x - q.x, f.z - q.z) < q.r) || g.depth(f.x, f.z) < 0.02 || f.y > g.terrainHeight(f.x, f.z) + g.depth(f.x, f.z) - 0.004) bad++;
+      }
+    }
+    const moved = g.fry().filter((f, i) => Math.hypot(f.x - start[i].x, f.z - start[i].z) > 0.02).length;
+    // The lizard drops in beside a shoal: the fry near it get away.
+    const mine = () => g.fry().filter((f) => f.shoal === 0);
+    const c = mine();
+    const x = c.reduce((a, f) => a + f.x, 0) / c.length + 0.05;
+    const z = c.reduce((a, f) => a + f.z, 0) / c.length;
+    const near = () => mine().filter((f) => Math.hypot(f.x - x, f.z - z) < 0.08).length;
+    const before = near();
+    g.teleport(x, z, 0);
+    g.advance(30);
+    return { shoals: shoals.length, count: start.length, peak, bad, moved, before, after: near(), kinds: [...new Set(shoals.map((s) => s.species))].sort() };
+  });
+  expect(r.shoals).toBeGreaterThanOrEqual(8);
+  expect(r.count).toBeGreaterThan(60);
+  expect(r.kinds).toEqual(['mullet', 'snapper']);
+  expect(r.peak).toBeGreaterThan(0.25);
+  expect(r.moved).toBeGreaterThan(r.count / 2);
+  expect(r.bad).toBe(0);
+  expect(r.after).toBeLessThan(Math.max(1, r.before));
+});
+
 test('a stalking heron steps slowly, one foot at a time, its body level; a swimmer that comes near one is struck at once', async ({ page }) => {
   await bootLagoon(page, { herons: [HERON, 5] });
   const s = await page.evaluate((hi) => {

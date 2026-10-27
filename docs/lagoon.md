@@ -152,6 +152,19 @@ they steer as boids with the others of their pool (in line, toward the middle, s
 close), taking up the first one's goal, so schools form, wander and break up. A swimming lizard
 heading at a ray within 36 cm, or anywhere within 15 cm, sends it veering off (`shy`).
 
+## Juvenile fish (`fry.ts`, models in `assets-src/lagoon.py`)
+
+The mangrove roots are the lagoon's nursery: about a dozen shoals (`FRY`) of mullet fry and young
+snapper, 6 to 10 fish each, each at home where at least four prop roots stand in water together
+(`rootPosts` from `buildLagoonProps`: each root where it crosses the surface, as an upright post).
+The models come from reef.py's `fish` and share its swimming shader (`swimMaterial` in
+`src/creatures/fish.ts`). A fry hangs nearly still, then darts for 0.06 to 0.14 s to a spot beside a
+root or in the gap between two and glides to a stop; shoal-mates within 10 cm often dart after it. Fry
+slide round the posts rather than through them, keep out of water under 2.2 cm and stay just under the
+surface. The lizard or a shark pup within 17 cm sends the fry it nears bolting into the roots on the
+far side. Drawn only, with their own random numbers; cheap, so tests leave them swimming. Hooks:
+`fry()`, `fryShoals()`, `fryDarts()`.
+
 ## Tests (`tests/lagoon.spec.ts`, `tests/helpers/bootLagoon.ts`)
 
 `bootLagoon` holds the herons and the swimmers still unless a test asks for them. Hooks:

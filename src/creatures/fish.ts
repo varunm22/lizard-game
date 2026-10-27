@@ -198,7 +198,7 @@ export class Fishes {
         }
         this.schools.push(school);
       }
-      const mesh = new THREE.InstancedMesh(g, swimMaterial(species, g), fish.length);
+      const mesh = new THREE.InstancedMesh(g, swimMaterial(`fish-${species}`, g), fish.length);
       mesh.name = `fish-${species}`;
       // The fish roam the whole sea: never cull the batch as one.
       mesh.frustumCulled = false;
@@ -411,8 +411,11 @@ export class Fishes {
   }
 }
 
-/** Toon shading with the body waving side to side, from nothing at the snout to most at the tail. */
-function swimMaterial(species: FishSpecies, geometry: THREE.BufferGeometry): THREE.Material {
+/**
+ * Toon shading with the body waving side to side, from nothing at the snout to most at the tail, from
+ * each instance's `aSwim` (phase, sway in m). `key` names the program: each geometry needs its own.
+ */
+export function swimMaterial(key: string, geometry: THREE.BufferGeometry): THREE.Material {
   geometry.computeBoundingBox();
   const box = geometry.boundingBox!;
   const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
@@ -426,7 +429,7 @@ function swimMaterial(species: FishSpecies, geometry: THREE.BufferGeometry): THR
         transformed.x += aSwim.y * (0.12 + back * back) * sin(aSwim.x - back * 4.0);`,
       );
   };
-  material.customProgramCacheKey = () => `fish-${species}`;
+  material.customProgramCacheKey = () => key;
   return material;
 }
 
