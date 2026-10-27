@@ -77,7 +77,7 @@ async function main() {
   const laidOut = [...landmarks, ...props.obstacles];
   // The way out: the crack, kept clear, the fig tree and the dead tree on the rim.
   const kept = clearForPuzzle(props.obstacles, scene, world);
-  const figs = new Figs(scene, world, FIG_TREE, (): readonly Obstacle[] => steerRound);
+  const figs = new Figs(scene, world, FIG_TREE, props.figTree, (): readonly Obstacle[] => steerRound);
   const snag = new Snag(scene, world, SNAG);
   const obstacles: Obstacle[] = [...landmarks, ...kept, figs.tree, snag.obstacle];
   // What the tortoise steers round, and figs stop against: all but the dead tree, which it's meant to bump.
@@ -206,6 +206,8 @@ async function main() {
     player.feetAt(1, tickFeet);
     // The cold slows it too, on land and in the water.
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw)) * vitals.speedScale;
+    // Wedged down in the lava crack it can only squirm.
+    player.speedScale *= run.speedScale;
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
@@ -263,6 +265,7 @@ async function main() {
     figs.update();
     const { text, hint } = run.objective;
     hud.objective(text, hint);
+    hud.banner(run.banner);
     visual.downed = wounds.down;
     visual.update(states.state, alpha, frameDt);
     hawk.update(alpha, frameDt);
@@ -281,6 +284,8 @@ async function main() {
     const steering = player.bodyTurning || player.horizontalSpeed > 0.02;
     // Swimming, the camera follows the lizard up and down as if it were on the ground.
     const groundedFeetY = player.grounded || player.swimming ? player.feetAt(1, groundedFeet).y : null;
+    // Stuck down in the lava crack, look down on the lizard from overhead rather than at the wall.
+    followCam.overhead = run.fallen !== null;
     followCam.update(feet, groundedFeetY, player.yawAt(alpha), steering, frameDt);
     if (viewOffset) {
       const at = viewTarget ?? feet;

@@ -37,6 +37,9 @@ const CSS = `
 .objective .hint{font-size:13px;color:#5a6a50;margin-top:2px}
 .objective.new{animation:objective-new 1.6s ease-out}
 @keyframes objective-new{0%{background:#ffd84a00}15%{background:#ffe38acc}100%{background:#fffc}}
+.island-banner{position:fixed;left:50%;top:60px;transform:translateX(-50%);padding:8px 26px;border-radius:14px;font:800 30px system-ui,sans-serif;
+  letter-spacing:.02em;box-shadow:0 4px 16px #0003;pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap;background:#ffd6ccf0;color:#9a2a10}
+.island-banner.show{opacity:1}
 .island-message{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);padding:12px 22px;border-radius:12px;background:#fffffff0;
   text-align:center;font:700 24px system-ui,sans-serif;color:#2f3a2a;box-shadow:0 6px 24px #0003;pointer-events:none;opacity:0;transition:opacity .3s}
 .island-message small{display:block;margin-top:4px;font:500 14px system-ui,sans-serif;color:#5a6a50}
@@ -65,6 +68,8 @@ export function createHud(): {
   intro(show: boolean): void;
   /** The stage's objective over the goals, and a hint toward it. */
   objective(text: string, hint: string): void;
+  /** A big word at the top of the screen (like the dunes' "Freeze!"), e.g. "Stuck!" down in the lava crack; null hides it. */
+  banner(text: string | null): void;
   /** The end screen: a big message, its line of detail, and keys with what each does; null hides it. */
   message(title: string | null, detail?: string, keys?: [string, string][]): void;
 } {
@@ -92,6 +97,9 @@ export function createHud(): {
   const message = document.createElement('div');
   message.className = 'island-message';
   document.body.appendChild(message);
+  const shout = document.createElement('div');
+  shout.className = 'island-banner';
+  document.body.appendChild(shout);
   // The controls, in one short row at the bottom in the middle; they stay 3 s once it moves, then fade.
   // Sized to its content: left at 50% alone would cap it at half the window and wrap it below ~870 px.
   const el = document.createElement('div');
@@ -219,6 +227,10 @@ export function createHud(): {
         void objective.offsetWidth;
         objective.classList.add('new');
       }
+    },
+    banner(text) {
+      shout.classList.toggle('show', text !== null);
+      if (text !== null && shout.textContent !== text) shout.textContent = text;
     },
     message(title, detail, keys) {
       message.classList.toggle('show', title !== null);

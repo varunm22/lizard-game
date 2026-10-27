@@ -141,14 +141,17 @@ test('led to a fig at the dead tree, the tortoise knocks the tree down across th
   expect(errors).toEqual([]);
 });
 
-test('the crack is too wide to jump: a lizard that falls in is back up on the rim it went in from', async ({ page }) => {
+test('the crack is too wide to jump: a lizard that falls in is stuck at the bottom a while, then back up on the rim it went in from; a fig nosed in drops to the bottom', async ({ page }) => {
   const errors = await bootGame(page);
-  const run = await page.evaluate(() => {
+  const banner = page.locator('.island-banner');
+  const fall = await page.evaluate(() => {
     const g = window.__game!;
     const z = -0.2;
     const c = g.crack(z);
     g.clearPlants(c.x + c.half + 0.6, z, c.x, z, 0.1);
     g.teleport(c.x + c.half + 0.35, z, -Math.PI / 2);
+    // A fig on the rim, in the lizard's way: it's nosed over the edge first.
+    g.figPlace(0, c.x + c.half + 0.08, z);
     g.advance(20, false);
     // A running jump at it.
     g.setInput({ move: { x: 0, y: 1 }, run: true }, 2 * 60);
@@ -159,16 +162,41 @@ test('the crack is too wide to jump: a lizard that falls in is back up on the ri
       deepest = Math.min(deepest, g.player().y - g.terrainHeight(c.x + c.half + 0.3, z));
     }
     g.setInput(null);
-    g.advance(60, false);
-    return { run: g.islandRun(), p: g.player(), c, deepest };
+    g.advance(5, true);
+    const fig = g.figs()[0];
+    // Trying to crawl along the bottom, it barely gets anywhere.
+    const p0 = g.player();
+    g.setInput({ move: { x: 0, y: 1 } }, 30);
+    g.advance(30, false);
+    const p1 = g.player();
+    return { run: g.islandRun(), c, deepest, fig, floor: g.terrainHeight(fig.x, fig.z), crawled: Math.hypot(p1.x - p0.x, p1.z - p0.z) };
   });
-  expect(run.deepest).toBeLessThan(-0.1);
-  expect(run.run.falls).toBe(1);
-  expect(run.run.state).toBe('playing');
+  expect(fall.deepest).toBeLessThan(-0.1);
+  expect(fall.run.falls).toBe(1);
+  expect(fall.run.fallen).toBe('stuck');
+  await expect(banner).toHaveClass(/show/);
+  await expect(banner).toHaveText('Stuck!');
+  // A walk is ~0.1 m in half a second; wedged, it's a fraction of that.
+  expect(fall.crawled).toBeLessThan(0.05);
+  // The fig went in too, all the way down, not hanging at the rim.
+  expect(fall.fig.state).toBe('lost');
+  expect(fall.fig.y).toBeLessThan(fall.floor + 0.03);
+  expect(Math.abs(fall.fig.x - fall.c.x)).toBeLessThan(fall.c.half);
+
+  const out = await page.evaluate(() => {
+    const g = window.__game!;
+    g.setInput(null);
+    g.advance(4 * 60, false);
+    g.advance(1, true);
+    return { run: g.islandRun(), p: g.player(), c: g.crack(-0.2) };
+  });
+  await expect(banner).not.toHaveClass(/show/);
+  expect(out.run.fallen).toBe(null);
+  expect(out.run.falls).toBe(1);
+  expect(out.run.state).toBe('playing');
   // Back on the colony's side, by the rim, on its feet.
-  expect(run.p.x).toBeGreaterThan(run.c.x + run.c.half);
-  // (It may have run on a little, facing away from the crack.)
-  expect(run.p.x).toBeLessThan(run.c.x + run.c.half + 0.5);
-  expect(run.p.grounded).toBe(true);
+  expect(out.p.x).toBeGreaterThan(out.c.x + out.c.half);
+  expect(out.p.x).toBeLessThan(out.c.x + out.c.half + 0.5);
+  expect(out.p.grounded).toBe(true);
   expect(errors).toEqual([]);
 });

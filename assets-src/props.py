@@ -17,6 +17,8 @@ object so the game can fade each placed prop on its own. Objects:
 - rock_0..5: lava boulders, convex (the game's collider is the hull of the mesh), about 1 m across,
   flat base at z = -0.55 * squash; the game scales and sinks them. Grey, so the game tints them per place.
 - algae_green, algae_red: sea lettuce and red turf tufts a few cm across, growing up from the origin.
+- fig_tree: the island puzzle's wild fig, ripe figs on its limbs; extras `trunk_radius` and
+  `trunk_height` (up to the fork) as for the trees, and `crown_y`, the underside of its leaves.
 - slab_0..3: blocky lava slabs for the rock piles, convex, about 2 m across (radius ~1), the top a
   near-flat facet at z = extras `top`, the base at z = extras `bottom`. The game scales them
   unevenly (each slab's top set by the pile's shape, its base pushed down to the ground) and
@@ -74,6 +76,12 @@ C = {
     'ulva_tip': srgb('#a6e05c'),
     'turf': srgb('#6e2228'),
     'turf_tip': srgb('#c45a48'),
+    'fig_bark': srgb('#a39d92'),
+    'fig_bark_dark': srgb('#76726a'),
+    'fig_leaf': srgb('#2f5f2a'),
+    'fig_leaf_light': srgb('#5f8f3c'),
+    'fig': srgb('#e0c03a'),
+    'fig_green': srgb('#a9b04a'),
 }
 
 # Grey lava rock, tinted per place by the game (black by the sea, mossy in the forest).
@@ -613,6 +621,111 @@ def turf(rng):
     return mb
 
 
+def fig_tree(rng):
+    """A wild fig at the forest edge, the puzzle's fig tree: smooth pale grey bark, a short fluted
+    trunk on a flare of surface roots snaking out over the ground, forking low into a few thick,
+    sinuous limbs that spread wider than the tree is tall, under a dense dome of big dark leathery
+    leaves. Ripe yellow figs (and a few green ones) sit in bunches straight on the limbs and twigs
+    under the leaves. Returns the mesh, the trunk's radius and height (to the fork) and the height
+    of the crown's underside, where figs drop from."""
+    mb = MeshBuilder()
+    seed = rng.random() * 50
+    r0 = 0.07
+    fork = rng.uniform(0.38, 0.46)
+    col = bark(C['fig_bark'], [(C['fig_bark_dark'], 0.35, lambda co, s: 1.0), (C['lichen'], 0.3, lambda co, s: 1.0), (C['moss'], 0.3, lambda co, s: max(0.0, 1 - co[2] / 0.25))], 7, seed)
+    lean = Vector((rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), 1))
+    trunk = path((0, 0, 0), lean, fork, 7, rng=rng, wobble=0.06)
+    # Fluted: a few deep grooves running up the trunk, fading out toward the fork.
+    tube(mb, trunk, flare(r0, r0 * 0.85, 0.9, 0.07, fork), col, sides=12, cap=False, rough=0.22, seed=seed)
+    # Surface roots: buttresses running out from the foot, tall where they leave the trunk and
+    # sinking into the ground within a short way, then showing only as low ridges snaking off.
+    n = rng.randint(5, 7)
+    a0 = rng.uniform(0, 2 * math.pi)
+    for i in range(n):
+        a = a0 + 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / n
+        d = Vector((math.cos(a), math.sin(a), 0))
+        length = rng.uniform(0.18, 0.34)
+        rr = r0 * rng.uniform(0.4, 0.55)
+        start = Vector((0, 0, rng.uniform(0.07, 0.12))) + d * r0 * 0.5
+        root = path(start, d + Vector((0, 0, -0.6)), length, 7, bend=Vector((0, 0, 0.9)) + Vector((-d.y, d.x, 0)) * rng.uniform(-0.7, 0.7), rng=rng, wobble=0.1)
+        for k, p in enumerate(root):
+            # Never higher than the buttress allows, and half buried beyond it.
+            s_ = k / (len(root) - 1)
+            p.z = min(p.z, start.z * (1 - s_) ** 2 - rr * 0.45 * s_)
+        tube(mb, root, lambda s, rr=rr: rr * (1 - 0.55 * s), col, sides=7, rough=0.2, seed=seed + i)
+    tips = []
+    twigs = []
+
+    def grow(start, d, r, length, depth):
+        br = path(start, d, length, 6, bend=Vector((0, 0, 0.25 - 0.15 * depth)) - Vector((d.x, d.y, 0)) * 0.15, rng=rng, wobble=0.2)
+        tube(mb, br, lambda s: r * (1 - 0.4 * s), col, sides=8 if depth == 0 else 5, rough=0.15, seed=seed + depth)
+        twigs.append((br, r))
+        if depth >= 2 or (depth == 1 and rng.random() < 0.3):
+            tips.append(br[-1])
+            return
+        for _ in range(rng.choice((2, 2, 3))):
+            a = rng.uniform(0, 2 * math.pi)
+            nd = (Vector(d) + Vector((math.cos(a), math.sin(a), rng.uniform(-0.1, 0.4))) * rng.uniform(0.5, 1.0)).normalized()
+            grow(br[rng.randint(3, 6)], nd, r * 0.62, length * rng.uniform(0.5, 0.75), depth + 1)
+
+    # A few thick limbs forking low and spreading out, more out than up.
+    n = rng.randint(3, 4)
+    a0 = rng.uniform(0, 2 * math.pi)
+    for i in range(n):
+        a = a0 + 2 * math.pi * (i + rng.uniform(-0.25, 0.25)) / n
+        d = Vector((math.cos(a), math.sin(a), rng.uniform(0.55, 0.95)))
+        grow(trunk[rng.randint(5, 7)], d, r0 * rng.uniform(0.55, 0.7), rng.uniform(0.38, 0.52), 0)
+    crown = sum(tips, Vector()) / len(tips) - Vector((0, 0, 0.3))
+
+    def leaf(co, hz):
+        n = noise.noise(Vector(co) * 4 + Vector((seed, 2, 0))) * 0.5 + 0.5
+        dapple = noise.noise(Vector(co) * 22 + Vector((0, seed, 1)))
+        return mix(C['fig_leaf'], C['fig_leaf_light'], hz * 0.55 + (n - 0.5) * 0.5 + dapple * 0.2)
+    clumps = []
+    for p in tips:
+        for _ in range(rng.randint(2, 3)):
+            off = Vector((rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1), rng.uniform(-0.02, 0.07)))
+            sz = rng.uniform(0.14, 0.21)
+            size = (sz, sz * rng.uniform(0.8, 1.2), sz * rng.uniform(0.55, 0.75))
+            clump(mb, p + off, size, leaf, rng, detail=2, lump=0.3, crown=crown, crown_k=0.7)
+            clumps.append((p + off, size))
+    # Filling the middle of the dome, so the crown is one dense mass with an uneven skin.
+    top = max(p.z for p in tips)
+    for _ in range(rng.randint(3, 4)):
+        c = crown + Vector((rng.uniform(-0.15, 0.15), rng.uniform(-0.15, 0.15), 0))
+        c.z = top + rng.uniform(-0.02, 0.06)
+        sz = rng.uniform(0.18, 0.24)
+        size = (sz, sz * rng.uniform(0.8, 1.2), sz * 0.6)
+        clump(mb, c, size, leaf, rng, detail=2, lump=0.3, crown=crown, crown_k=0.7)
+        clumps.append((c, size))
+    # Big leathery leaves, fewer and broader than the tree daisy's.
+    leaves(mb, clumps, 170, 0.085, lambda co, r: leaf(co, 0.25 + 0.75 * r), rng, crown=crown, lift=0.35)
+    # Figs in bunches straight on the limbs, mostly ripe, hanging under the leaves.
+    fig_r = 0.02
+    for br, r in twigs:
+        # Only up among the leaves, not on the bare trunk and lower limbs.
+        if rng.random() < 0.35 or br[-1].z < crown.z:
+            continue
+        for _ in range(rng.randint(1, 3)):
+            k = rng.randint(1, len(br) - 1)
+            t = (br[k] - br[k - 1]).normalized()
+            side = t.cross(Vector((0, 0, 1)))
+            if side.length < 1e-3:
+                side = Vector((1, 0, 0))
+            side.normalize()
+            ang = rng.uniform(0, 2 * math.pi)
+            out = (side * math.cos(ang) + t.cross(side) * math.sin(ang)).normalized()
+            out.z = min(out.z, -0.2)
+            out.normalize()
+            ripe = rng.random() < 0.8
+            colour = lambda co, s, ripe=ripe: mix(C['fig'] if ripe else C['fig_green'], C['fig_bark_dark'], max(0.0, s - 0.85) * 3)
+            base = br[k] + out * r * 0.9
+            body = [base + out * fig_r * f for f in (0.0, 0.4, 1.0, 1.7, 2.2)]
+            radii = (0.3, 0.75, 1.0, 0.8, 0.25)
+            tube(mb, body, lambda s, radii=radii: fig_r * radii[min(4, round(s * 4))], lambda co, s: colour(co, 1 - s), sides=9)
+    return mb, r0 * 1.2, fork, min(p.z for p, _ in clumps) - 0.05
+
+
 def make_object(name, mb, mat, smooth=True, extras=None):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(mb.verts, [], mb.faces)
@@ -664,6 +777,9 @@ def main():
     srng = random.Random(31)
     for i, top in enumerate((0.3, 0.35, 0.25, 0.4)):
         objects.append(make_object(f'slab_{i}', slab(srng, top), mat, smooth=False, extras={'top': top, 'bottom': -0.5}))
+    # The island puzzle's fig tree, likewise from its own generator.
+    mb, r, h, crown_y = fig_tree(random.Random(37))
+    objects.append(make_object('fig_tree', mb, mat, extras={'trunk_radius': r, 'trunk_height': h, 'crown_y': crown_y}))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 

@@ -186,7 +186,7 @@ export function createTestHooks({
     },
     knockSnag: () => snag.knock(),
     crack: (z) => ({ x: crackX(z), half: crackHalf(z), depth: CRACK.depth }),
-    islandRun: () => ({ state: run.state, progress: run.progress, falls: run.falls, ...run.objective }),
+    islandRun: () => ({ state: run.state, progress: run.progress, falls: run.falls, fallen: run.fallen, ...run.objective }),
     crabs: () =>
       crabs.list.map((c) => ({
         x: c.pos.x,

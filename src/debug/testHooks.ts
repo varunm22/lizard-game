@@ -149,7 +149,7 @@ export interface GameTestHooks {
   /** The crack at z: its centre line's x, half-width and depth (m). */
   crack: (z: number) => { x: number; half: number; depth: number };
   /** The island's objective: whether the lizard is over the crack ('home'), how far along, falls into the crack, and the objective line. */
-  islandRun: () => { state: string; progress: string; falls: number; text: string; hint: string };
+  islandRun: () => { state: string; progress: string; falls: number; fallen: 'stuck' | 'climbing' | null; text: string; hint: string };
   /**
    * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
    * sideways), what it's doing and the clip playing, whether it lives on a rock pile, how many hops

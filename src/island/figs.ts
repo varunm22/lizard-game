@@ -2,16 +2,14 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { toonGradient } from '../render/toon';
-import { PALETTE } from '../render/scene';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import { covers, type Obstacle } from '../world/obstacles';
 import type { Pusher } from '../world/plantSpring';
-import { overCrack } from './crack';
+import type { PropsResult } from '../world/props';
+import { crackHalf, crackX, overCrack } from './crack';
 
-/** The fig tree's trunk, crown and how far out under it figs land (m). */
-const TRUNK = { radius: 0.06, height: 0.62 };
-const CROWN = { y: 0.66, radius: 0.42 };
+/** How far out under the fig tree figs land (m). */
 const DROP_RING = [0.2, 0.36] as const;
 /** A fig's radius (m). */
 export const FIG_R = 0.02;
@@ -50,7 +48,7 @@ export interface Fig {
 }
 
 /**
- * A fig tree at the forest edge (drawn here, not in props.glb: a stout trunk under a broad crown hung
+ * A fig tree at the forest edge (`fig_tree` in props.glb: a short fluted trunk under a broad crown hung
  * with figs) and its fruit. Ripe figs drop now and then and lie under it. They're drawn, not
  * simulated: the lizard's body nudges one along the ground ahead of it, it rolls on a little, it
  * stops against rocks and trunks, and one pushed over the crack's rim drops in for good. The
@@ -63,14 +61,18 @@ export class Figs {
   private ripen: number;
   private mesh: THREE.InstancedMesh;
   private matrix = new THREE.Matrix4();
+  /** Where ripe figs drop from, above the tree's foot (m). */
+  private crownY: number;
 
   constructor(
     scene: THREE.Scene,
     world: RAPIER.World,
     at: { x: number; z: number },
+    model: PropsResult['figTree'],
     private obstacles: () => readonly Obstacle[],
   ) {
-    this.tree = buildTree(scene, world, at);
+    this.tree = plantTree(scene, world, at, model);
+    this.crownY = model.extras.crown_y;
     const geometry = figGeometry();
     const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
     this.mesh = new THREE.InstancedMesh(geometry, material, 16);
@@ -101,7 +103,7 @@ export class Figs {
     const ground = terrainHeight(x, z) + FIG_R;
     // Lying on its side, the stem pointing some way along the ground.
     const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, this.rand() * 2 * Math.PI, 0, 'YXZ'));
-    const fig: Fig = { x, y: lying ? ground : this.tree.position.y + CROWN.y, z, vx: 0, vy: 0, vz: 0, state: lying ? 'lying' : 'falling', pushed: 0, turn };
+    const fig: Fig = { x, y: lying ? ground : this.tree.position.y + this.crownY, z, vx: 0, vy: 0, vz: 0, state: lying ? 'lying' : 'falling', pushed: 0, turn };
     this.list.push(fig);
     return fig;
   }
@@ -131,6 +133,7 @@ export class Figs {
     for (const f of this.list) {
       if (f.state === 'falling') this.fall(f, dt);
       else if (f.state === 'lying') this.roll(f, dt, pushers, ahead);
+      else if (f.state === 'lost') this.sink(f, dt);
     }
   }
 
@@ -145,6 +148,32 @@ export class Figs {
     else {
       f.vy = 0;
       f.state = 'lying';
+    }
+  }
+
+  /** Gone over the rim: it drops on down the crack, between its walls, and lies at the bottom. */
+  private sink(f: Fig, dt: number) {
+    if (f.y <= terrainHeight(f.x, f.z) + FIG_R && f.vy === 0 && f.vx === 0 && f.vz === 0) return;
+    f.vy -= GRAVITY * dt;
+    f.y += f.vy * dt;
+    f.vx *= DAMP_STEP(dt);
+    f.vz *= DAMP_STEP(dt);
+    // Down the sloping floor into the slot at the bottom.
+    const mid = crackX(f.z);
+    const room = Math.max(0, crackHalf(f.z) - FIG_R * 1.5);
+    f.vx += Math.sign(mid - f.x) * GRAVITY * 0.5 * dt * (f.y < terrainHeight(f.x, f.z) + FIG_R * 2 ? 1 : 0);
+    const nx = Math.min(mid + room, Math.max(mid - room, f.x + f.vx * dt));
+    const nz = f.z + f.vz * dt;
+    const d = Math.hypot(nx - f.x, nz - f.z);
+    if (d > 1e-7) f.turn.premultiply(ROLL.setFromAxisAngle(AXIS.set((nz - f.z) / d, 0, -(nx - f.x) / d), d / FIG_R));
+    f.x = nx;
+    f.z = nz;
+    const ground = terrainHeight(f.x, f.z) + FIG_R;
+    if (f.y <= ground) {
+      f.y = ground;
+      f.vy = 0;
+      // At rest once it's down in the slot.
+      if (Math.abs(f.x - mid) < FIG_R) f.vx = f.vz = 0;
     }
   }
 
@@ -208,9 +237,9 @@ export class Figs {
     if (d > 1e-7) f.turn.premultiply(ROLL.setFromAxisAngle(AXIS.set(dz / d, 0, -dx / d), d / FIG_R));
     f.x = nx;
     f.z = nz;
-    f.y = terrainHeight(f.x, f.z) + FIG_R;
-    // Over the rim of the crack it drops in, out of reach for good.
+    // Over the rim of the crack it drops in, out of reach for good; it falls from the rim's height.
     if (overCrack(f.x, f.z)) f.state = 'lost';
+    else f.y = terrainHeight(f.x, f.z) + FIG_R;
   }
 
   /** Draw the figs where they are now. */
@@ -255,53 +284,17 @@ function figGeometry(): THREE.BufferGeometry {
   return mergeGeometries([coloured(body, FIG_COLOUR), coloured(stem, STEM_COLOUR), coloured(eye, EYE_COLOUR)])!;
 }
 
-/** The fig tree: a short, stout trunk under a broad, low crown of glossy leaves with figs among them. One mesh; solid at the trunk. */
-function buildTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }): Obstacle {
-  const rand = rng(62);
-  const parts: THREE.BufferGeometry[] = [];
-  const part = (g: THREE.BufferGeometry, color: THREE.ColorRepresentation, m: THREE.Matrix4) => {
-    const geo = (g.index ? g.toNonIndexed() : g).applyMatrix4(m);
-    geo.deleteAttribute('uv');
-    const c = new THREE.Color(color);
-    const n = geo.getAttribute('position').count;
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(Array.from({ length: n }, () => [c.r, c.g, c.b]).flat()), 3));
-    parts.push(geo);
-  };
-  const m = new THREE.Matrix4();
-  part(new THREE.CylinderGeometry(TRUNK.radius * 0.7, TRUNK.radius, TRUNK.height + 0.05, 10), PALETTE.bark, m.makeTranslation(0, (TRUNK.height + 0.05) / 2 - 0.05, 0));
-  // Limbs spreading out into the crown.
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * 2 * Math.PI + rand();
-    const tilt = 0.7 + 0.35 * rand();
-    const limb = new THREE.Matrix4().makeTranslation(0, TRUNK.height - 0.1, 0).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(Math.sin(a) * tilt, 0, Math.cos(a) * tilt)));
-    part(new THREE.CylinderGeometry(0.014, 0.03, 0.22, 7).translate(0, 0.11, 0), PALETTE.bark, limb);
-  }
-  // The crown: a broad, uneven canopy of leafy clumps, darker underneath.
-  for (let i = 0; i < 22; i++) {
-    const a = rand() * 2 * Math.PI;
-    const d = CROWN.radius * Math.sqrt(rand()) * 1.05;
-    const r = 0.07 + 0.06 * rand();
-    const under = rand() < 0.35;
-    const leafy = new THREE.Color(under ? 0x2f5524 : 0x447a30).offsetHSL(0.03 * (rand() - 0.5), 0.05 * (rand() - 0.5), 0.06 * (rand() - 0.5));
-    const y = CROWN.y + (under ? -0.05 : 0.03 + 0.06 * rand()) - (d / CROWN.radius) ** 2 * 0.08;
-    part(new THREE.IcosahedronGeometry(r, 1).scale(1, 0.6, 1).rotateY(rand() * 3), leafy, m.makeTranslation(Math.cos(a) * d, y, Math.sin(a) * d));
-  }
-  // Figs in bunches along the limbs, under the leaves.
-  for (let i = 0; i < 18; i++) {
-    const a = rand() * 2 * Math.PI;
-    const d = CROWN.radius * (0.2 + 0.7 * rand());
-    part(new THREE.IcosahedronGeometry(FIG_R, 1).scale(1, 1.15, 1), FIG_COLOUR, m.makeTranslation(Math.cos(a) * d, CROWN.y - 0.08 - 0.04 * rand(), Math.sin(a) * d));
-  }
-  const geometry = mergeGeometries(parts)!;
-  geometry.computeVertexNormals();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }));
+/** The fig tree from props.glb, standing at `at`; solid at the trunk, up to where it forks. */
+function plantTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }, model: PropsResult['figTree']): Obstacle {
+  const { trunk_radius: radius, trunk_height: height } = model.extras;
+  const mesh = new THREE.Mesh(model.geometry, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }));
   const y = terrainHeight(at.x, at.z) - 0.01;
   mesh.position.set(at.x, y, at.z);
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.name = 'fig-tree';
   scene.add(mesh);
   const collider = world.createCollider(
-    RAPIER.ColliderDesc.cylinder(TRUNK.height / 2 + 0.03, TRUNK.radius).setTranslation(at.x, y + TRUNK.height / 2 - 0.03, at.z).setFriction(0.9),
+    RAPIER.ColliderDesc.cylinder(height / 2 + 0.03, radius).setTranslation(at.x, y + height / 2 - 0.03, at.z).setFriction(0.9),
   );
-  return { name: 'fig-tree', kind: 'tree', position: mesh.position, height: CROWN.y + 0.1, radius: TRUNK.radius, mesh, collider };
+  return { name: 'fig-tree', kind: 'tree', position: mesh.position, height, radius, mesh, collider };
 }
