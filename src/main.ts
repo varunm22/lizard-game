@@ -5,7 +5,7 @@ import { createScene, followSun } from './render/scene';
 import { ViewCheck } from './render/viewCheck';
 import { CelRenderer } from './render/cel';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from './world/terrain';
-import { buildObstacles, covers } from './world/obstacles';
+import { buildObstacles, covers, type Obstacle } from './world/obstacles';
 import { buildProps } from './world/props';
 import { Algae } from './world/algae';
 import { loadReefKit, Reef } from './world/reef';
@@ -54,6 +54,12 @@ import { stageSelect } from './stageSelect';
 import { dunes } from './dunes/main';
 import { lagoon } from './lagoon/main';
 import { tunnels } from './tunnels/main';
+import { endKeys, runKeys } from './dunes/hud';
+import { clearForPuzzle, FIG_TREE, SNAG } from './island/layout';
+import { Figs } from './island/figs';
+import { Snag } from './island/snag';
+import { IslandRun } from './island/run';
+import { overCrack } from './island/crack';
 
 async function main() {
   // The wasm build loads with the module. The single-file preview build swaps in the compat package
@@ -66,20 +72,33 @@ async function main() {
   buildTerrain(scene, world);
   const landmarks = buildObstacles(scene, world);
   const props = await buildProps(propsUrl, scene, world, landmarks);
-  const obstacles = [...landmarks, ...props.obstacles];
-  const algae = new Algae(scene, props.algae, obstacles);
+  // Everything as it was laid out, which the plants, algae and reef are laid out round, so the
+  // puzzle's clearings leave them all where they were.
+  const laidOut = [...landmarks, ...props.obstacles];
+  // The way out: the crack, kept clear, the fig tree and the dead tree on the rim.
+  const kept = clearForPuzzle(props.obstacles, scene, world);
+  const figs = new Figs(scene, world, FIG_TREE, (): readonly Obstacle[] => steerRound);
+  const snag = new Snag(scene, world, SNAG);
+  const obstacles: Obstacle[] = [...landmarks, ...kept, figs.tree, snag.obstacle];
+  // What the tortoise steers round, and figs stop against: all but the dead tree, which it's meant to bump.
+  const steerRound: Obstacle[] = obstacles.filter((o) => o !== snag.obstacle);
+  const algae = new Algae(scene, props.algae, laidOut);
   // Corals and urchins on the sea floor, clear of the algae.
   const reefKit = await loadReefKit(reefUrl);
-  const reef = new Reef(scene, reefKit.geometry, obstacles, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
+  const reef = new Reef(scene, reefKit.geometry, laidOut, (x, z) => algae.all().some((p) => Math.abs(p.x - x) < 0.03 && Math.abs(p.z - z) < 0.03));
   const water = new Water(scene);
   cel.waterY = WATER_Y;
   const splashes = new Splashes(water);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
-  const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
+  const open = (x: number, z: number) => !laidOut.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, SPAWN);
+  // Nothing grows down in the crack or at the new trees' feet.
+  for (const p of [...plants.all]) {
+    if (overCrack(p.x, p.z, 0.01) || covers(figs.tree, p.x, p.z, 0.02) || covers(snag.obstacle, p.x, p.z, 0.02)) plants.eat(p);
+  }
   const route = new Route(TORTOISE_ROUTE.x, TORTOISE_ROUTE.z, TORTOISE_ROUTE.rx, TORTOISE_ROUTE.rz);
   const regrowth = new Regrowth(route, plants);
-  const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants);
+  const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants, figs, () => steerRound);
 
   const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), (PLAYER_GROUP << 16) | 0xffff);
   player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
@@ -106,7 +125,7 @@ async function main() {
   const cover = new Cover(world, obstacles, plants);
   const climate = new ClimateSense(player, cover, () => iguanas.list.filter((ig) => !ig.down).map((ig) => ig.body.position), waterDepth);
   const prey = quarries(player, lizard, wounds, iguanas, crabs, tortoise);
-  const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(obstacles, forestCover, PATROL, fit), cover, prey);
+  const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(steerRound, forestCover, PATROL, fit), cover, prey);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -127,6 +146,12 @@ async function main() {
     { id: 'fish', label: 'Touch a fish', met: () => fishes.touched > 0 },
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
+  // The objective: over the crack. Once there, the run's end screen: R from the start, C on.
+  const run = new IslandRun(player, tortoise, snag);
+  run.onHome = () => hud.message('Across the crack!', 'The trail out of the colony leads on from here.', endKeys('island'));
+  runKeys('island', run);
+  hud.intro(true);
+  hud.objective(run.objective.text, run.objective.hint);
   goals.onDone = (goal) => goalsPanel.done(goal);
   // A strike that lands: dust and feathers fly off the lizard's back, the view jolts and reddens.
   const puff = new StrikePuff(scene);
@@ -163,7 +188,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat: () => canEat,
+    tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -183,6 +208,8 @@ async function main() {
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
+    figs.step(dt, lizard.bodySpheres, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) });
+    snag.step(dt);
     iguanas.step(dt);
     crabs.step(dt);
     fishes.step(dt);
@@ -203,12 +230,16 @@ async function main() {
     if (hop) wounds.prick(hop.x, hop.z);
     goals.step(dt);
     player.step(dt, input);
+    run.step(dt);
     // Walking into another iguana pushes it slowly out of the way.
     if (input.move.y > 0) iguanas.pushedBy(player, dt);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
     const state = states.update(movementFacts(player), dt);
-    if (state !== lastState && state !== 'idle') hud.hideHint();
+    if (state !== lastState && state !== 'idle') {
+      hud.hideHint();
+      hud.intro(false);
+    }
     lastState = state;
     world.timestep = dt;
     world.step();
@@ -225,6 +256,10 @@ async function main() {
     view.update(camera);
     // The tortoise first: the lizard is fitted to its shell where it's drawn this frame.
     tortoise.update(alpha, frameDt);
+    snag.update(alpha);
+    figs.update();
+    const { text, hint } = run.objective;
+    hud.objective(text, hint);
     visual.downed = wounds.down;
     visual.update(states.state, alpha, frameDt);
     hawk.update(alpha, frameDt);

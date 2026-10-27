@@ -6,27 +6,69 @@ import { toonify } from '../render/toon';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
 import { registerExactSurface, setDrawnPose } from '../world/exactSurface';
-import type { Plant, Plants } from '../world/plants';
+import type { Plant, PlantKind, Plants } from '../world/plants';
+import { covers, type Obstacle } from '../world/obstacles';
+import { shoreDistance } from '../world/layout';
+import { TERRAIN_SIZE } from '../world/terrain';
+import { overCrack, crackSide } from '../island/crack';
+import type { Fig, Figs } from '../island/figs';
 import type { PlayerController } from '../player/controller';
 import { centreAboveFeet } from '../player/movement';
 import type { Route } from './route';
 
 /**
- * A Galapagos giant tortoise (assets-src/tortoise.py) that plods round its route all day: it presses
- * the plants under it flat, so its round becomes a trail; it stops to eat some of the plants its
- * mouth comes to; now and then it lies down for a rest. It takes no notice of the lizard. Its shell
- * is solid (a kinematic body, so the lizard can stand on it), and if it walks into the lizard it
- * shoves it aside; if the lizard can't go anywhere, the tortoise waits.
+ * A Galapagos giant tortoise (assets-src/tortoise.py) that grazes its meadow all day: it ambles from
+ * one spot in it to another, picked at random, pressing the plants under it flat; it heads for food
+ * it notices, liking figs best, then flowers, then grass; now and then it lies down for a rest. A
+ * fig it will walk well out of its way for (`FIG_SENSE`), off its meadow and down the trail if that's
+ * where the fig is; a flower only nearby; grass only when it hasn't eaten for a while and the grass
+ * is right at its mouth. It steers round rocks, trees and logs, and keeps off the crack and the sea.
+ * It takes no notice of the lizard. Its shell is solid (a kinematic body, so the lizard can stand on
+ * it), and if it walks into the lizard it shoves it aside; if the lizard can't go anywhere, the
+ * tortoise waits.
  */
 export type TortoiseState = 'walk' | 'eat' | 'lie_down' | 'rest' | 'get_up';
 
 /** How far ahead of its centre the mouth meets the ground when it reaches down to eat (m). */
-const MOUTH_AHEAD = 0.16;
-/** A plant this close to that spot (m) and at least half grown can be eaten. */
-const BITE_REACH = 0.03;
-/** It eats about this share of the plants its mouth comes to, and not again for a while (s). */
-const EAT_CHANCE = 0.4;
-const EAT_COOLDOWN = 12;
+export const MOUTH_AHEAD = 0.16;
+/** A plant this close to that spot (m) and at least half grown can be eaten; a fig, which it noses for, a little further. */
+const BITE_REACH = 0.035;
+const FIG_REACH = 0.045;
+/**
+ * What it notices, and how long after a meal (s) before it wants each: a fig this far from its centre
+ * (m), a flower this far from its mouth, and grass only once it's hungry and the grass is right at
+ * its mouth.
+ */
+const FIG_SENSE = 1.0;
+const FIG_AFTER = 3;
+const FLOWER_SENSE = 0.5;
+const FLOWER_AFTER = 12;
+const GRASS_SENSE = 0.12;
+const HUNGRY = 35;
+export const FLOWERS: readonly PlantKind[] = ['lecocarpus', 'cotton', 'tomato', 'ipomoea'];
+const GRASSES: readonly PlantKind[] = ['grass', 'sesuvium', 'tiquilia'];
+/** It looks round for something better this often (s), and gives up on a plant it can't get its mouth onto in this long. */
+const THINK = 0.25;
+const PLANT_GIVE_UP = 8;
+/**
+ * Wandering, it heads for spots in its meadow: within this share of the meadow's oval, at least this
+ * far off (m), and gives up on one it hasn't reached in this long (s).
+ */
+const WANDER_SPREAD = 0.85;
+const WANDER_MIN = 0.3;
+const WANDER_GIVE_UP = 40;
+/** Turning rate at full stride (rad/s); it turns as it lurches, hardly at all in a drag. */
+const TURN = 0.6;
+/**
+ * Steering: the shell's ground footprint (m), checked this far ahead of it along each heading it
+ * might take; it tries headings this far apart (rad) either side of the one it wants.
+ */
+const SHELL_R = 0.11;
+const FEELERS = [0.08, 0.2] as const;
+const VEER = 0.3;
+/** It keeps this far from the waterline on land (m) and from the crack's rim. */
+const SHORE_KEEP = -0.55;
+const CRACK_KEEP = 0.14;
 /** Walks this long between rests, then rests this long (s, from-to). */
 const WALK_SPELL = [45, 90] as const;
 const REST_SPELL = [20, 35] as const;
@@ -77,8 +119,21 @@ export class Tortoise {
   readonly collider: RAPIER.Collider;
   private drawnAt = new THREE.Vector3();
   state: TortoiseState = 'walk';
-  /** How far round its route it is (m). */
-  along: number;
+  /** How far it has walked in all (m). */
+  along = 0;
+  /** Where its centre stands on the ground, and the way it faces (yaw, as the lizard's: 0 is +Z). */
+  private x: number;
+  private z: number;
+  yaw: number;
+  /** What it's heading for: a fig, a plant, or just a spot in its meadow. */
+  aim: { kind: 'fig'; fig: Fig } | { kind: 'plant'; plant: Plant; for: number } | { kind: 'wander'; x: number; z: number; for: number } | null = null;
+  /** Plants it gave up trying to reach. */
+  private passed = new WeakSet<Plant>();
+  /** Seconds since it last ate. */
+  sinceMeal = 0;
+  private thinkIn = 0;
+  /** Which way it last veered round something in its way (1 left, -1 right). */
+  private veer = 1;
   private stateTime = 0;
   private mixer: THREE.AnimationMixer;
   private actions: Record<string, THREE.AnimationAction>;
@@ -87,7 +142,6 @@ export class Tortoise {
   private rand = rng(5);
   private untilRest: number;
   private restFor = 0;
-  private eatCooldown = 0;
   private trampleCooldown = 0;
   /**
    * Called when it walks onto the lizard, with how far to shove it (m, level) to clear its path.
@@ -96,9 +150,7 @@ export class Tortoise {
   onTrample: ((dx: number, dz: number, shell: RAPIER.Collider) => boolean) | null = null;
   /** Times it has trampled the lizard. */
   tramples = 0;
-  private meal: Plant | null = null;
-  /** Plants it has already passed by without eating, so each gets one chance. */
-  private passed = new WeakSet<Plant>();
+  private meal: { plant: Plant } | { fig: Fig } | null = null;
   private greedy = false;
   private pos = new THREE.Vector3();
   private prevPos = new THREE.Vector3();
@@ -119,6 +171,8 @@ export class Tortoise {
     world: RAPIER.World,
     private route: Route,
     private plants: Plants,
+    private figs: Figs | null,
+    private obstacles: () => readonly Obstacle[],
     start: number,
   ) {
     this.root = gltf.scene;
@@ -137,7 +191,10 @@ export class Tortoise {
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
     this.collider = world.createCollider(RAPIER.ColliderDesc.convexHull(shellHull(this.extras))!, this.body);
     registerExactSurface(this.collider);
-    this.along = start;
+    const at = route.at(start);
+    this.x = at.x;
+    this.z = at.z;
+    this.yaw = Math.atan2(at.dx, at.dz);
     this.untilRest = this.spell(WALK_SPELL);
     this.pose();
     this.prevPos.copy(this.pos);
@@ -147,8 +204,9 @@ export class Tortoise {
     this.play('walk');
   }
 
-  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, route: Route, plants: Plants, start = 0) {
-    const tortoise = new Tortoise(await loadGltf(url), world, route, plants, start);
+  /** `route` is the oval of its meadow; `figs` the fig tree's fruit, if the stage has one; `obstacles` what it steers round. */
+  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, route: Route, plants: Plants, figs: Figs | null, obstacles: () => readonly Obstacle[], start = 0) {
+    const tortoise = new Tortoise(await loadGltf(url), world, route, plants, figs, obstacles, start);
     scene.add(tortoise.root);
     return tortoise;
   }
@@ -164,23 +222,54 @@ export class Tortoise {
 
   /** Where its centre stands on the ground, and the way it faces (yaw, as the lizard's). */
   get position() {
-    const { dx, dz } = this.route.at(this.along);
-    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: Math.atan2(dx, dz) };
+    return { x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw };
   }
 
-  /** The point on its route `d` metres ahead of it. */
+  /** Where its mouth reaches the ground when it eats. */
+  get mouth() {
+    return { x: this.x + Math.sin(this.yaw) * MOUTH_AHEAD, z: this.z + Math.cos(this.yaw) * MOUTH_AHEAD };
+  }
+
+  /** The point `d` metres straight ahead of it. */
   ahead(d: number) {
-    const { x, z } = this.route.at(this.along + d);
-    return { x, z };
+    return { x: this.x + Math.sin(this.yaw) * d, z: this.z + Math.cos(this.yaw) * d };
   }
 
-  /** Tests: rest now, or eat the next plant it comes to. */
-  request(action: 'eat' | 'rest') {
+  /** What it's heading for now, if anything, and where that is. */
+  get heading(): { kind: 'fig' | 'plant' | 'wander'; x: number; z: number } | null {
+    const a = this.aim;
+    if (!a) return null;
+    if (a.kind === 'fig') return { kind: a.kind, x: a.fig.x, z: a.fig.z };
+    if (a.kind === 'plant') return { kind: a.kind, x: a.plant.x, z: a.plant.z };
+    return { kind: a.kind, x: a.x, z: a.z };
+  }
+
+  /** Tests: rest now, eat the next plant it comes to, or wander off toward (x, z). */
+  request(action: 'eat' | 'rest' | { x: number; z: number }) {
     if (action === 'rest') this.untilRest = 0;
-    else {
-      this.eatCooldown = 0;
+    else if (action === 'eat') {
       this.greedy = true;
+      this.thinkIn = 0;
+    } else {
+      this.aim = { kind: 'wander', x: action.x, z: action.z, for: 0 };
+      this.thinkIn = WANDER_GIVE_UP;
     }
+  }
+
+  /** Tests: stand it at (x, z), facing `yaw`, walking. */
+  place(x: number, z: number, yaw: number) {
+    this.x = x;
+    this.z = z;
+    this.yaw = yaw;
+    this.aim = null;
+    this.meal = null;
+    this.thinkIn = 0;
+    if (this.state !== 'walk') this.enter('walk');
+    this.pose();
+    this.prevPos.copy(this.pos);
+    this.prevRot.copy(this.rot);
+    this.body.setTranslation(this.pos, true);
+    this.body.setRotation(this.rot, true);
   }
 
   /** Advance one fixed step. */
@@ -190,12 +279,13 @@ export class Tortoise {
     this.prevPos.copy(this.pos);
     this.prevRot.copy(this.rot);
     this.stateTime += dt;
-    this.eatCooldown -= dt;
+    this.sinceMeal += dt;
     this.trampleCooldown -= dt;
     const t = this.stateTime;
     switch (this.state) {
       case 'walk': {
-        this.untilRest -= dt;
+        // No rest while there's a fig in view.
+        if (this.aim?.kind !== 'fig') this.untilRest -= dt;
         const phase = this.walkPhase();
         const pause = this.surge(phase) < DRAG_PAUSE;
         if (this.untilRest <= 0 && pause) {
@@ -203,32 +293,42 @@ export class Tortoise {
           this.enter('lie_down');
           break;
         }
-        // Look for a plant where its mouth will be when it next pauses, and stop there to eat it.
-        this.meal ??= this.findMeal(this.untilPause(phase));
+        this.thinkIn -= dt;
+        if (this.thinkIn <= 0) {
+          this.thinkIn = THINK;
+          this.think();
+        }
+        // Heading for food: once its mouth will be on it when it next pauses, it stops there to eat.
+        this.meal ??= this.mealAhead(this.untilPause(phase));
         if (this.meal && pause) {
           this.enter('eat');
           break;
         }
-        const was = this.along;
+        const [wasX, wasZ, wasYaw] = [this.x, this.z, this.yaw];
         // Step and drag: it lurches forward as each foreleg reaches out, then all but stops while
         // the hind leg is dragged up; the walk clip's planted feet slide back under it to match.
-        this.along += this.speed * this.surge(phase) * dt;
+        const surge = this.surge(phase);
+        const step = this.speed * surge * dt;
+        if (!this.meal) this.steer(surge * dt);
+        this.x += Math.sin(this.yaw) * step;
+        this.z += Math.cos(this.yaw) * step;
         this.pose();
         if (!this.clearLizard(player)) {
           // Pinned lizard: wait for it rather than walk over it.
-          this.along = was;
+          [this.x, this.z, this.yaw] = [wasX, wasZ, wasYaw];
           this.pose();
-        }
+        } else this.along += step;
         this.trample(TRAMPLE_REACH);
         break;
       }
       case 'eat':
         if (this.meal && t >= this.extras.bite_time) {
-          if (!this.meal.eaten) this.plants.eat(this.meal);
+          this.bite(this.meal);
           this.meal = null;
         }
         if (t >= this.duration('eat')) {
-          this.eatCooldown = EAT_COOLDOWN;
+          this.aim = null;
+          this.thinkIn = 0;
           this.enter('walk');
         }
         break;
@@ -353,21 +453,127 @@ export class Tortoise {
     return d;
   }
 
-  /** A plant at its mouth, once it has walked `ahead` further, worth stopping for, or null. */
-  private findMeal(ahead: number): Plant | null {
-    if (this.eatCooldown > 0) return null;
-    const { x, z, dx, dz } = this.route.at(this.along + ahead);
-    const p = this.plants.nearest(x + dx * MOUTH_AHEAD, z + dz * MOUTH_AHEAD, BITE_REACH, 0.5);
-    if (!p || this.passed.has(p)) return null;
-    this.passed.add(p);
-    if (!this.greedy && this.rand() > EAT_CHANCE) return null;
-    this.greedy = false;
-    return p;
+  /** Take the bite: the plant goes, or the fig if its mouth is still on it (the lizard may have nosed it away). */
+  private bite(meal: { plant: Plant } | { fig: Fig }) {
+    const mouth = this.mouth;
+    if ('fig' in meal) {
+      const f = meal.fig;
+      if (f.state !== 'lying' || Math.hypot(f.x - mouth.x, f.z - mouth.z) > FIG_REACH * 1.5) return;
+      this.figs!.eat(f);
+    } else if (!meal.plant.eaten) this.plants.eat(meal.plant);
+    this.sinceMeal = 0;
   }
 
-  /** Stand at the current point of the route: centre on the ground, tilted to where its feet are. */
+  /** Pick what to head for: the best food it notices, or else a spot in its meadow. */
+  private think() {
+    const { x: mx, z: mz } = this.mouth;
+    const side = crackSide(this.x, this.z);
+    // A fig, if one lies within its notice on this side of the crack.
+    if (this.figs && this.sinceMeal > FIG_AFTER) {
+      let best: Fig | null = null;
+      let bestD = FIG_SENSE;
+      for (const f of this.figs.lying) {
+        const d = Math.hypot(f.x - this.x, f.z - this.z);
+        if (d < bestD && crackSide(f.x, f.z) === side) [best, bestD] = [f, d];
+      }
+      if (best) {
+        this.aim = { kind: 'fig', fig: best };
+        return;
+      }
+    }
+    if (this.aim?.kind === 'fig') this.aim = null;
+    // A plant it's still after, as long as it's there and it hasn't been circling it too long.
+    if (this.aim?.kind === 'plant') {
+      if (!this.aim.plant.eaten && (this.aim.for += THINK) < PLANT_GIVE_UP) return;
+      this.passed.add(this.aim.plant);
+      this.aim = null;
+    }
+    // A flower near its mouth, or grass right at it when hungry.
+    const flower = this.greedy || this.sinceMeal > FLOWER_AFTER ? this.nearestPlant(mx, mz, FLOWER_SENSE, this.greedy ? null : FLOWERS) : null;
+    const grass = !flower && (this.greedy || this.sinceMeal > HUNGRY) ? this.nearestPlant(mx, mz, GRASS_SENSE, GRASSES) : null;
+    const plant = flower ?? grass;
+    if (plant) {
+      this.greedy = false;
+      this.aim = { kind: 'plant', plant, for: 0 };
+      return;
+    }
+    // Otherwise amble to another spot in the meadow.
+    const a = this.aim;
+    if (a?.kind === 'wander' && Math.hypot(a.x - this.x, a.z - this.z) > 0.08 && (a.for += THINK) < WANDER_GIVE_UP) return;
+    this.aim = this.wanderSpot();
+  }
+
+  private nearestPlant(x: number, z: number, r: number, kinds: readonly PlantKind[] | null): Plant | null {
+    let best: Plant | null = null;
+    let bestD = r;
+    for (const p of this.plants.near(x, z, r)) {
+      if (p.growth < 0.5 || p.crush > 0.5 || this.passed.has(p) || (kinds && !kinds.includes(p.kind))) continue;
+      const d = Math.hypot(p.x - x, p.z - z);
+      if (d < bestD && !this.blocked(p.x, p.z, 0)) [best, bestD] = [p, d];
+    }
+    return best;
+  }
+
+  /** A spot in its meadow, picked at random, a little way off and clear of anything solid. */
+  private wanderSpot(): { kind: 'wander'; x: number; z: number; for: number } {
+    const r = this.route;
+    for (let i = 0; i < 20; i++) {
+      const a = this.rand() * 2 * Math.PI;
+      const d = Math.sqrt(this.rand()) * WANDER_SPREAD;
+      const x = r.x + Math.cos(a) * r.rx * d;
+      const z = r.z + Math.sin(a) * r.rz * d;
+      if (Math.hypot(x - this.x, z - this.z) > WANDER_MIN && !this.blocked(x, z, SHELL_R)) return { kind: 'wander', x, z, for: 0 };
+    }
+    return { kind: 'wander', x: r.x, z: r.z, for: 0 };
+  }
+
+  /** Food at its mouth once it has walked `ahead` further on its heading, or null. */
+  private mealAhead(ahead: number): { plant: Plant } | { fig: Fig } | null {
+    const a = this.aim;
+    if (!a || a.kind === 'wander') return null;
+    const { x, z } = this.ahead(ahead + MOUTH_AHEAD);
+    if (a.kind === 'fig') return Math.hypot(a.fig.x - x, a.fig.z - z) < FIG_REACH ? { fig: a.fig } : null;
+    return Math.hypot(a.plant.x - x, a.plant.z - z) < BITE_REACH ? { plant: a.plant } : null;
+  }
+
+  /** Whether a shell of radius r at (x, z) would be somewhere it can't go. */
+  private blocked(x: number, z: number, r: number): boolean {
+    const edge = TERRAIN_SIZE / 2 - 0.2;
+    if (Math.abs(x) > edge - r || Math.abs(z) > edge - r) return true;
+    if (shoreDistance(x, z) > SHORE_KEEP + r || overCrack(x, z, CRACK_KEEP + r)) return true;
+    return this.obstacles().some((o) => covers(o, x, z, r));
+  }
+
+  /** Turn toward what it's heading for, round anything in the way; `amount` is how much of a full-stride second's turn it gets. */
+  private steer(amount: number) {
+    const h = this.heading;
+    if (!h) return;
+    // Toward the food so its mouth comes onto it, or the spot itself.
+    let want = Math.atan2(h.x - this.x, h.z - this.z);
+    const clear = (yaw: number) => FEELERS.every((d) => !this.blocked(this.x + Math.sin(yaw) * d, this.z + Math.cos(yaw) * d, SHELL_R));
+    if (!clear(want)) {
+      // Round it the way it last went, else the other way.
+      let found = false;
+      for (let k = 1; k <= 8 && !found; k++) {
+        for (const side of [this.veer, -this.veer]) {
+          const yaw = want + side * k * VEER;
+          if (clear(yaw)) {
+            want = yaw;
+            this.veer = side;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+    const diff = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
+    const most = TURN * amount;
+    this.yaw += Math.max(-most, Math.min(most, diff));
+  }
+
+  /** Stand where it is: centre on the ground, tilted to where its feet are. */
   private pose() {
-    const { x, z, dx, dz } = this.route.at(this.along);
+    const [x, z, dx, dz] = [this.x, this.z, Math.sin(this.yaw), Math.cos(this.yaw)];
     // Its left, in the ground plane.
     const lx = dz;
     const lz = -dx;
@@ -386,8 +592,7 @@ export class Tortoise {
   }
 
   private trample(reach: number) {
-    const { dx, dz } = this.route.at(this.along);
-    this.plants.trample(this.pos.x, this.pos.z, reach, dx, dz);
+    this.plants.trample(this.pos.x, this.pos.z, reach, Math.sin(this.yaw), Math.cos(this.yaw));
   }
 
   /**
@@ -397,7 +602,7 @@ export class Tortoise {
   private clearLizard(player: PlayerController): boolean {
     const feet = player.feetAt(1, new THREE.Vector3());
     if (feet.y > this.pos.y + ON_TOP) return true;
-    const { dx, dz } = this.route.at(this.along);
+    const [dx, dz] = [Math.sin(this.yaw), Math.cos(this.yaw)];
     const ox = feet.x - this.pos.x;
     const oz = feet.z - this.pos.z;
     const along = ox * dx + oz * dz;

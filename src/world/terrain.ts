@@ -9,6 +9,7 @@ import { duneColour, duneHeight } from '../dunes/layout';
 import { lagoonColour, lagoonHeight } from '../lagoon/layout';
 import { tunnelsColour, tunnelsHeight } from '../tunnels/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
+import { CRACK, crackCut, crackHalf, crackX } from '../island/crack';
 
 /**
  * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes,
@@ -56,6 +57,14 @@ export const terrainHeight: (x: number, z: number) => number =
  * bank at the island's inland rim, and the coast carved in.
  */
 function islandHeight(x: number, z: number): number {
+  return islandGround(x, z) - crackCut(x, z);
+}
+
+/**
+ * The island's ground before the grieta (`island/crack.ts`) is cut into it. The plants are laid out
+ * over this, so the crack leaves every plant's place and random draws as they were.
+ */
+function islandGround(x: number, z: number): number {
   const r = Math.hypot(x, z);
   const swell = valueNoise(x / 1.3 + 11, z / 1.3 - 4) * 0.05;
   const bumps = valueNoise(x / 0.35 - 7, z / 0.35 + 3) * 0.012;
@@ -71,6 +80,9 @@ function islandHeight(x: number, z: number): number {
   const land = Math.max(WATER_Y + 0.01, (swell + bumps) * calm + grit + roots + lava + bank);
   return carveShore(x, z, land);
 }
+
+/** Ground height for laying out the island's plants: the ground as it was before the crack. */
+export const plantingHeight: (x: number, z: number) => number = LEVEL === 'island' ? islandGround : terrainHeight;
 
 /** Approximate surface normal from the height function, for colouring. */
 function slopeAt(x: number, z: number): number {
@@ -117,6 +129,14 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
     const pit = smoothstep(0.35, 0.8, valueNoise(x / 0.06 + 9, z / 0.06 - 2, 33));
     tmp.copy(LAVA).lerp(LAVA_CREST, crest).lerp(LAVA_WET, Math.max(wet, 0.6 * pit));
     c.lerp(tmp, lava);
+  }
+  // The crack: bare dark basalt along its lips, down its sheer walls and on its floor, darkest at the bottom.
+  const lip = Math.abs(x - crackX(z)) - crackHalf(z);
+  if (lip < 0.12) {
+    const cut = crackCut(x, z);
+    const rough = smoothstep(0.35, 0.8, valueNoise(x / 0.05 + 9, z / 0.05 - 2, 33));
+    tmp.copy(LAVA_CREST).lerp(LAVA, 0.5 * rough).lerp(LAVA_WET, smoothstep(0, CRACK.depth * 0.7, cut));
+    c.lerp(tmp, smoothstep(0.12 + 0.04 * valueNoise(x / 0.1, z / 0.1, 34), 0.02, lip));
   }
 }
 const tmp = new THREE.Color();

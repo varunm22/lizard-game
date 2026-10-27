@@ -29,6 +29,10 @@ import type { Goals } from '../goals';
 import type { FollowCamera } from '../camera/followCamera';
 import type { OccluderFade } from '../camera/occluderFade';
 import type { GameTestHooks } from './testHooks';
+import type { Figs } from '../island/figs';
+import type { Snag } from '../island/snag';
+import type { IslandRun } from '../island/run';
+import { CRACK, crackHalf, crackX } from '../island/crack';
 
 interface HookContext {
   world: RAPIER.World;
@@ -57,6 +61,9 @@ interface HookContext {
   climate: ClimateSense;
   puff: StrikePuff;
   goals: Goals;
+  figs: Figs;
+  snag: Snag;
+  run: IslandRun;
   canEat: () => boolean;
   setInput: GameTestHooks['setInput'];
   viewFrom: GameTestHooks['viewFrom'];
@@ -65,7 +72,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, canEat,
+  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, canEat,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
@@ -149,8 +156,37 @@ export function createTestHooks({
       return gone.length;
     },
     sprout: (kind, x, z, grown) => plants.sprout(kind as PlantKind, x, z, grown) !== null,
-    tortoise: () => ({ ...tortoise.position, state: tortoise.state, ridden: tortoise.ridden, tramples: tortoise.tramples, clip: tortoise.clip, along: tortoise.along, ahead: tortoise.ahead(0.3), route: { ...TORTOISE_ROUTE } }),
+    tortoise: () => ({
+      ...tortoise.position,
+      state: tortoise.state,
+      ridden: tortoise.ridden,
+      tramples: tortoise.tramples,
+      clip: tortoise.clip,
+      along: tortoise.along,
+      ahead: tortoise.ahead(0.3),
+      mouth: tortoise.mouth,
+      heading: tortoise.heading,
+      sinceMeal: tortoise.sinceMeal,
+      route: { ...TORTOISE_ROUTE },
+    }),
     tortoiseDo: (action) => tortoise.request(action),
+    tortoisePlace: (x, z, yaw, sinceMeal) => {
+      tortoise.place(x, z, yaw);
+      if (sinceMeal !== undefined) tortoise.sinceMeal = sinceMeal;
+    },
+    figs: () => figs.list.map((f) => ({ x: f.x, y: f.y, z: f.z, state: f.state, pushed: f.pushed })),
+    figPlace: (i, x, z) => {
+      while (figs.list.length <= i) figs.drop(true);
+      figs.place(i, x, z);
+    },
+    figTree: () => ({ x: figs.tree.position.x, z: figs.tree.position.z }),
+    snag: () => {
+      const tip = snag.tip;
+      return { state: snag.state, x: snag.position.x, y: snag.position.y, z: snag.position.z, angle: snag.angle, tip: { x: tip.x, y: tip.y, z: tip.z } };
+    },
+    knockSnag: () => snag.knock(),
+    crack: (z) => ({ x: crackX(z), half: crackHalf(z), depth: CRACK.depth }),
+    islandRun: () => ({ state: run.state, progress: run.progress, falls: run.falls, ...run.objective }),
     crabs: () =>
       crabs.list.map((c) => ({
         x: c.pos.x,
