@@ -175,8 +175,8 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   expect(s.best).toBeGreaterThan(0);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
   expect(done).toMatchObject({ shore: true, unseen: true, outrun: false });
-  // The end screen offers another go or the next stage. C walks the hatchling on in among the adults
-  // as the screen fades, then goes on to it.
+  // The end screen offers another go or the next stage. C walks the hatchling on past the adults and
+  // down the lane toward the island's trees as the screen fades, then goes on to the island.
   await expect(page.locator('.dunes-message')).toHaveClass(/show/);
   await expect(page.locator('.dunes-message .keys')).toHaveText(/R\s*play again\s*C\s*next: Galápagos island/);
   await screenshot(page, 'dunes-end.png');
@@ -187,15 +187,19 @@ test('reaching the adults under the light wins the run and ticks off its goals',
     const from = g.player();
     g.advance(120);
     const mid = { ...g.arrival(), ...g.player() };
-    return { colony: g.colony(), from: Math.hypot(from.x - f.x, from.z - f.z), mid, deep: Math.hypot(mid.x - f.x, mid.z - f.z) };
+    const trees = g.obstacles().filter((o) => o.name.startsWith('grove-'));
+    return { colony: g.colony(), from, mid, f, trees: trees.length, ahead: Math.min(...trees.map((t) => t.z)) < mid.z };
   });
   expect(walk.colony.adults).toBeGreaterThan(6);
   expect(walk.colony.crabs).toBeGreaterThan(0);
   expect(walk.mid.walking).toBe(true);
   expect(walk.mid.fade).toBe(0);
-  expect(walk.deep).toBeLessThan(Math.min(walk.from, 0.2));
+  // Down the lane, south, the way the trees are.
+  expect(walk.mid.z).toBeLessThan(Math.min(walk.from.z, walk.f.z) - 0.1);
+  expect(walk.trees).toBeGreaterThan(10);
+  expect(walk.ahead).toBe(true);
   await screenshot(page, 'dunes-walk-in.png');
-  await page.evaluate(() => window.__dunes!.advance(100));
+  await page.evaluate(() => window.__dunes!.advance(260));
   await page.waitForURL(/level=island/, { waitUntil: 'commit' });
 });
 
