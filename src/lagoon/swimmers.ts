@@ -67,10 +67,15 @@ export const RAY = {
   close: 0.15,
   flee: 0.2,
   turn: 1.5,
+  /** How far the body banks into a turn: the wing's rise per metre out, per radian/s of turn, and the most turn it banks for. */
+  bank: 0.12,
+  bankTurn: 1.2,
 };
 
-/** Only water deeper than this is swum through (m). */
-const MIN_DEPTH = 0.1;
+/** The tops of fins and wingtips keep this far under the surface (m). */
+const SUBMERGED = 0.008;
+/** Only water deeper than this is swum through (m): a shark pup needs room for its fins under the surface. */
+const MIN_DEPTH: Record<Kind, number> = { shark: 0.13, ray: 0.1 };
 
 export interface Swimmer {
   kind: Kind;
@@ -119,7 +124,7 @@ function swimMaterial(kind: Kind, uniforms: Swimmer['uniforms'], length: number,
             // and the tail swings out behind it.
             float wing = min(1.0, abs(transformed.x) / ${span.toFixed(4)});
             transformed.y += amp * pow(wing, 1.5) * sin(phase + transformed.z * ${(2.4 / span).toFixed(2)});
-            transformed.y -= bend * 0.18 * transformed.x;
+            transformed.y -= bend * ${RAY.bank.toFixed(3)} * transformed.x;
             float tail = max(0.0, ${(nose - length * 0.75).toFixed(4)} - transformed.z);
             transformed.x -= bend * 4.0 * tail * tail;`,
       );
@@ -145,6 +150,8 @@ export class Swimmers {
   private lastYaw: number | null = null;
   /** Each kind's snout ahead of its middle (m). */
   private nose: Record<Kind, number> = { shark: 0, ray: 0 };
+  /** Each kind's height from its belly (the mesh's origin) to the top of its fins (m). */
+  private height: Record<Kind, number> = { shark: 0, ray: 0 };
   private feet = new THREE.Vector3();
 
   constructor(geometry: Map<string, THREE.BufferGeometry>, scene: THREE.Scene) {
@@ -164,6 +171,9 @@ export class Swimmers {
     const ray = centre(geometry.get('golden_ray')!);
     this.nose.shark = shark.boundingBox!.max.z;
     this.nose.ray = ray.boundingBox!.max.z;
+    this.height.shark = shark.boundingBox!.max.y;
+    // A ray's wingtips rise above its back as it flaps and banks.
+    this.height.ray = ray.boundingBox!.max.y + 0.016 + RAY.bank * RAY.bankTurn * ray.boundingBox!.max.x;
     const length = (g: THREE.BufferGeometry) => g.boundingBox!.max.z - g.boundingBox!.min.z;
     // Which pool each lives in: shark pups in the big pools, rays in little schools.
     const plan: [Kind, number][] = [
@@ -181,10 +191,10 @@ export class Swimmers {
       mesh.castShadow = false;
       mesh.receiveShadow = true;
       scene.add(mesh);
-      const goal = this.pick(pool);
+      const goal = this.pick(pool, kind);
       const s: Swimmer = {
         kind, pool, state: kind === 'shark' ? 'cruise' : this.rand() < 0.6 ? 'school' : 'solo', pos: new THREE.Vector3(goal.x, 0, goal.z), yaw: this.rand() * Math.PI * 2,
-        speed: kind === 'shark' ? SHARK.cruise : RAY.speed, turning: 0, goal: this.pick(pool), mesh, prev: new THREE.Vector3(), prevYaw: 0,
+        speed: kind === 'shark' ? SHARK.cruise : RAY.speed, turning: 0, goal: this.pick(pool, kind), mesh, prev: new THREE.Vector3(), prevYaw: 0,
         timer: 0, cool: 0, orbit: 1, bold: 0, uniforms, glide: 0, bites: 0,
       };
       uniforms.phase.value = this.rand() * 10;
@@ -198,14 +208,14 @@ export class Swimmers {
   }
 
   /** A random point in pool `i` deep enough to swim to. */
-  private pick(i: number): { x: number; z: number } {
+  private pick(i: number, kind: Kind): { x: number; z: number } {
     const p = POOLS[i];
     for (let k = 0; k < 40; k++) {
       const a = this.rand() * Math.PI * 2;
       const r = Math.sqrt(this.rand()) * p.r * 0.75;
       const x = p.x + Math.sin(a) * r;
       const z = p.z + Math.cos(a) * r;
-      if (depthAt(x, z) > MIN_DEPTH + 0.03) return { x, z };
+      if (depthAt(x, z) > MIN_DEPTH[kind] + 0.03) return { x, z };
     }
     return { x: p.x, z: p.z };
   }
@@ -214,17 +224,26 @@ export class Swimmers {
     return r[0] + (r[1] - r[0]) * this.rand();
   }
 
-  /** Swimming height: rays low over the bed, sharks mid-water (up by the surface when after the lizard), never out of it. */
+  /**
+   * Swimming height (of the belly, the mesh's origin): rays low over the bed, sharks mid-water (up
+   * by the surface when after the lizard), the tops of their fins and wingtips always under it.
+   */
   private swimY(s: Swimmer) {
-    const d = depthAt(s.pos.x, s.pos.z);
-    if (s.kind === 'ray') return WATER_Y - d + Math.min(0.025, d * 0.3);
+    const bed = WATER_Y - depthAt(s.pos.x, s.pos.z);
+    const top = WATER_Y - SUBMERGED - this.height[s.kind];
+    if (s.kind === 'ray') return Math.max(bed + 0.006, Math.min(bed + 0.025, top));
     const up = s.state === 'curious' || s.state === 'tense' || s.state === 'bite';
-    return WATER_Y - Math.min(d - 0.02, Math.max(up ? 0.035 : 0.045, d * (up ? 0.25 : 0.45)));
+    return Math.max(bed + 0.006, up ? top : Math.min(top, bed + (top - bed) * 0.45));
   }
 
   /** The snout (world, at its swimming height). */
   snout(s: Swimmer, out: THREE.Vector3) {
     return out.set(s.pos.x + Math.sin(s.yaw) * this.nose[s.kind], s.pos.y + 0.012, s.pos.z + Math.cos(s.yaw) * this.nose[s.kind]);
+  }
+
+  /** The top of a swimmer's fins or wingtips (world y). */
+  top(s: Swimmer) {
+    return s.pos.y + this.height[s.kind];
   }
 
   /** Put swimmer `i` at (x, z) facing `yaw`, cruising (tests). */
@@ -286,7 +305,7 @@ export class Swimmers {
   private shark(s: Swimmer, dt: number, near: number, lx: number, lz: number, at: boolean, swimming: boolean) {
     const toGoal = () => Math.atan2(s.goal.x - s.pos.x, s.goal.z - s.pos.z);
     const pool = POOLS[s.pool];
-    const inPool = Math.hypot(this.feet.x - pool.x, this.feet.z - pool.z) < pool.r * 1.1 && depthAt(this.feet.x, this.feet.z) > MIN_DEPTH * 0.8;
+    const inPool = Math.hypot(this.feet.x - pool.x, this.feet.z - pool.z) < pool.r * 1.1 && depthAt(this.feet.x, this.feet.z) > MIN_DEPTH.shark * 0.8;
     const reachable = swimming && inPool;
     s.cool -= dt;
     // Startled: a lizard close by that suddenly turns to swim straight at it gets bitten; one swimming at it steadily, it bolts from.
@@ -296,7 +315,7 @@ export class Swimmers {
     }
     switch (s.state) {
       case 'cruise': {
-        if (Math.hypot(s.goal.x - s.pos.x, s.goal.z - s.pos.z) < 0.08) s.goal = this.pick(s.pool);
+        if (Math.hypot(s.goal.x - s.pos.x, s.goal.z - s.pos.z) < 0.08) s.goal = this.pick(s.pool, s.kind);
         if (reachable && near < SHARK.interest && s.cool <= 0 && this.rand() < SHARK.takeInterest * dt) {
           s.state = 'curious';
           s.timer = this.between(SHARK.stay);
@@ -310,7 +329,7 @@ export class Swimmers {
         if (!reachable || s.timer <= 0) {
           s.state = 'cruise';
           s.cool = this.between(SHARK.cool);
-          s.goal = this.pick(s.pool);
+          s.goal = this.pick(s.pool, s.kind);
           return { want: toGoal(), speed: SHARK.cruise, turn: SHARK.turn };
         }
         s.bold = Math.min(1, s.bold + dt / 6);
@@ -363,7 +382,7 @@ export class Swimmers {
         s.timer -= dt;
         if (s.timer <= 0) {
           s.state = 'cruise';
-          s.goal = this.pick(s.pool);
+          s.goal = this.pick(s.pool, s.kind);
         }
         return { want: Math.atan2(-lx, -lz), speed: SHARK.bolt, turn: SHARK.turn * 3 };
       }
@@ -389,7 +408,7 @@ export class Swimmers {
     if (s.cool <= 0) {
       s.cool = this.between(RAY.mood);
       if (s.state !== 'shy') s.state = s.state === 'school' ? 'solo' : 'school';
-      if (s.state === 'solo') s.goal = this.pick(s.pool);
+      if (s.state === 'solo') s.goal = this.pick(s.pool, s.kind);
     }
     if (swimming && (near < RAY.close || (at && near < RAY.shy))) {
       s.state = 'shy';
@@ -401,7 +420,7 @@ export class Swimmers {
       // Away from the lizard, and off to the side of where it's heading.
       return { want: Math.atan2(-lx, -lz), speed: RAY.flee, turn: RAY.turn * 2.5 };
     }
-    if (Math.hypot(s.goal.x - s.pos.x, s.goal.z - s.pos.z) < 0.08) s.goal = this.pick(s.pool);
+    if (Math.hypot(s.goal.x - s.pos.x, s.goal.z - s.pos.z) < 0.08) s.goal = this.pick(s.pool, s.kind);
     let wx = s.goal.x - s.pos.x;
     let wz = s.goal.z - s.pos.z;
     const gl = Math.hypot(wx, wz) || 1;
@@ -449,7 +468,7 @@ export class Swimmers {
     const look = s.kind === 'shark' ? 0.2 : 0.16;
     for (const t of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
       const a = want + t;
-      if (depthAt(s.pos.x + Math.sin(a) * look, s.pos.z + Math.cos(a) * look) > MIN_DEPTH) {
+      if (depthAt(s.pos.x + Math.sin(a) * look, s.pos.z + Math.cos(a) * look) > MIN_DEPTH[s.kind]) {
         want = a;
         break;
       }
@@ -462,8 +481,8 @@ export class Swimmers {
     s.speed += (speed - s.speed) * Math.min(1, dt * (speed > s.speed ? (snap > 4 ? 8 : 3) : 1.5));
     const nx = s.pos.x + Math.sin(s.yaw) * s.speed * dt;
     const nz = s.pos.z + Math.cos(s.yaw) * s.speed * dt;
-    if (depthAt(nx, nz) > MIN_DEPTH * 0.8) s.pos.set(nx, 0, nz);
-    else s.goal = this.pick(s.pool);
+    if (depthAt(nx, nz) > MIN_DEPTH[s.kind] * (s.kind === 'shark' ? 0.92 : 0.8)) s.pos.set(nx, s.pos.y, nz);
+    else s.goal = this.pick(s.pool, s.kind);
     const y = this.swimY(s);
     s.pos.y += (y - s.pos.y) * Math.min(1, dt * 2);
   }
@@ -492,7 +511,8 @@ export class Swimmers {
         u.phase.value += frameDt * Math.PI * 2 * (hurried ? 2.2 : 0.9 - 0.5 * s.glide);
         const amp = (hurried ? 0.016 : 0.011) * (1 - 0.75 * s.glide);
         u.amp.value += (amp - u.amp.value) * Math.min(1, frameDt * 3);
-        u.bend.value += (s.turning - u.bend.value) * Math.min(1, frameDt * 3);
+        const bank = Math.max(-RAY.bankTurn, Math.min(RAY.bankTurn, s.turning));
+        u.bend.value += (bank - u.bend.value) * Math.min(1, frameDt * 3);
         // The body heaves a little against each downstroke.
         s.mesh.position.y -= Math.cos(u.phase.value) * u.amp.value * 0.15;
       }

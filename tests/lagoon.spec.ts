@@ -142,6 +142,30 @@ test("the lagoon keeps the island's bars: a stab takes health without catching, 
   expect(s.basked.down).toBe(false);
 });
 
+test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the mangrove roots, and a bite of it fills the food bar', async ({ page }) => {
+  await bootLagoon(page, { vitals: true });
+  const r = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    const patches = g.algae();
+    const kinds = new Set(patches.map((p) => p.kind));
+    const weed = patches.find((p) => p.kind === 'gutweed')!;
+    g.setVitals({ fullness: 0.3 });
+    let ate = 0;
+    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      g.teleport(weed.x - Math.sin(yaw) * 0.05, weed.z - Math.cos(yaw) * 0.05, yaw);
+      g.advance(10);
+      g.bite();
+      g.advance(30);
+      if ((ate = g.feeding().mouthfuls) > 0) break;
+    }
+    return { kinds: [...kinds].sort(), count: patches.length, ate, fullness: g.vitals().fullness };
+  });
+  expect(r.kinds).toEqual(['bostrychia', 'gutweed']);
+  expect(r.count).toBeGreaterThan(40);
+  expect(r.ate).toBeGreaterThan(0);
+  expect(r.fullness).toBeGreaterThan(0.35);
+});
+
 test('a stalking heron steps slowly, one foot at a time, its body level; a swimmer that comes near one is struck at once', async ({ page }) => {
   await bootLagoon(page, { herons: [HERON, 5] });
   const s = await page.evaluate((hi) => {
@@ -342,16 +366,19 @@ test('shark pups and rays cruise the pools, and swimming beside them ticks their
     g.advance(120);
     const after = g.swimmers();
     const deep = after.map((f) => g.depth(f.x, f.z));
+    // How far under the surface each one's highest point is: the surface is the ground plus the water over it.
+    const under = after.map((f) => g.terrainHeight(f.x, f.z) + g.depth(f.x, f.z) - f.top);
     const shark = after.find((f) => f.kind === 'shark')!;
     g.teleport(shark.x + 0.2, shark.z, 0, -0.1);
     g.advance(4);
     const ray = g.swimmers().find((f) => f.kind === 'ray')!;
     g.teleport(ray.x + 0.2, ray.z, 0, -0.1);
     g.advance(4);
-    return { before, after, deep, goals: g.run().goals };
+    return { before, after, deep, under, goals: g.run().goals };
   });
   for (let i = 0; i < s.before.length; i++) expect(Math.hypot(s.after[i].x - s.before[i].x, s.after[i].z - s.before[i].z)).toBeGreaterThan(0.05);
   for (const d of s.deep) expect(d).toBeGreaterThan(0.08);
+  for (const u of s.under) expect(u).toBeGreaterThan(0.005);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
   expect(done).toMatchObject({ shark: true, rays: true });
 });

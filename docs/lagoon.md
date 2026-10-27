@@ -97,14 +97,26 @@ on it is carried with it (`player.carry`). `R` puts it back in its pool.
 
 ## Vitals
 
-The island's four bars (`src/player/vitals.ts`, drawn by `createVitalsPanel` in `src/hud.ts`, bottom
+The island's four bars (`src/player/vitals.ts`, drawn by `createVitalsPanel` in `src/vitalsPanel.ts`, bottom
 right) run here as on the island: warmth from the sun on land (`ClimateSense`, with `lagoonLava` for
 the black lava that warms best, and the instanced mangroves passed to `Cover` so they shade), lost in
-the water and faster under it; air used under water; food burning down (there's nothing to eat in the
-lagoon yet); health mending while fed and warm, drained by freezing, starving or drowning, and taken
+the water and faster under it; air used under water; food burning down, and filled by biting the lagoon's algae (below); health mending while fed and warm, drained by freezing, starving or drowning, and taken
 by stabs and bites. At none, `Wounds` lays the lizard down for `CAUGHT_TIME` (2.5 s); then the run puts it back
 (`afterDown`) with full bars. Starting over (R) fills them too. `bootLagoon` holds the bars still
 (`setVitals({ frozen: true })`, strikes still land) unless a test asks for `vitals`.
+
+## Algae (`algae.ts`, models in `assets-src/lagoon.py`)
+
+Not the open coast's red turf and sea lettuce but what grows in a sheltered mangrove lagoon:
+gutweed (*Ulva intestinalis*), the bright green tube weed of calm brackish shallows (and a marine
+iguana food), on the lava where it runs into the water (0.3 to 7 cm deep, round the knobs and along
+the colony's coast); and *Bostrychia*, the dark red-purple moss-like alga of the "Bostrychietum" that
+fringes mangrove prop roots at the waterline, on about half the roots (`rootWaterline` from
+`buildLagoonProps`: where each root crosses the surface, pushed out to its bark). `lagoonAlgaeSites`
+places them (seeded, 4.5 cm apart, about half grown at the start) for the island's `Algae`
+(`src/world/algae.ts`, which takes a geometry per kind and optional sites), so patches regrow and
+sprout as there. F bites (`Feeding`), and each mouthful fills food (`vitals.eat`). Hooks: `algae()`,
+`bite()`, `feeding()`.
 
 ## Run and goals (`run.ts`)
 
@@ -118,7 +130,10 @@ the log into the channel, jam it, ride it 1 s, swim beside a shark pup, swim wit
 
 Three newborn blacktip shark pups (0.38 m, slim) and fifteen young golden cownose rays (0.24 m
 across) keep to their own pools, steering toward points deep enough to swim. Drawn and steered
-only, no colliders. Each has its own material, so the vertex shader bends it from its own uniforms:
+only, no colliders. Each swims under the surface: its height is kept (only the smoothing changes it),
+the top of its fins or wingtips (`height`, from the model's bounds plus the ray's bank) stays
+`SUBMERGED` under the water, and it only heads where the water is `MIN_DEPTH` deep. Rays keep near the
+bed; sharks cruise low and rise toward the surface when they come to look at a swimmer. Each has its own material, so the vertex shader bends it from its own uniforms:
 a wave travelling down the shark's body, quicker and wider with speed, and the body curved a little
 into a turn; the ray's wings rise and fall in a wave running back along them, in bouts of flapping
 and gliding, banking into turns with the tail swinging out. Turn rates ease in and out.

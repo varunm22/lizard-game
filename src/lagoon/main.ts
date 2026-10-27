@@ -9,6 +9,8 @@ import { Cover } from '../world/cover';
 import { ClimateSense } from '../player/climate';
 import { Vitals, type DownCause } from '../player/vitals';
 import { Wounds } from '../player/wounds';
+import { Feeding } from '../player/feeding';
+import { Algae } from '../world/algae';
 import { createHitFlash, createVitalsPanel } from '../vitalsPanel';
 import { CelRenderer } from '../render/cel';
 import { Water } from '../world/water';
@@ -36,6 +38,7 @@ import { DriftLog } from './driftLog';
 import { loadHeronKit } from './heronBody';
 import { Herons } from './herons';
 import { Swimmers } from './swimmers';
+import { lagoonAlgaeSites } from './algae';
 import { CAUGHT_TIME, LagoonRun } from './run';
 
 const TEXT: HudText = {
@@ -47,12 +50,14 @@ const TEXT: HudText = {
     'Swim too near one and it strikes without stalking.</li>' +
     '<li>Shark pups are curious, and sometimes bite. Never turn on one close up.</li>' +
     '<li>The water <b>chills</b> you and diving costs <b>air</b>: bask on the black lava to warm up.</li>' +
+    '<li>Bite (<b>F</b>) the green <b>gutweed</b> on the lava at the waterline, or the dark red <b>moss</b> on the mangrove roots, to eat.</li>' +
     '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies in a pool by its bank: ' +
     'swim into it to push it, out into the current.</li>' +
     '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
     '<span class="go">Move to start.</span>',
   watched: 'A heron is stalking you. Keep moving!',
   chased: 'It is about to strike!',
+  controls: [['F', 'bite']],
 };
 
 /** The mangrove lagoon (`?level=lagoon`): cross the shallows past the lava herons, and float a log across the channel. */
@@ -65,7 +70,14 @@ export async function lagoon() {
   cel.waterY = WATER_Y;
   buildTerrain(scene, world);
   const kit = await loadKit([propsUrl, lagoonUrl]);
-  const { obstacles, mangroves, crowns } = buildLagoonProps(kit, scene, world);
+  const { obstacles, mangroves, crowns, rootWaterline } = buildLagoonProps(kit, scene, world);
+  // Gutweed on the lava at the waterline, and Bostrychia on the mangrove roots.
+  const algae = new Algae(
+    scene,
+    { gutweed: kit.geometry.get('gutweed')!, bostrychia: kit.geometry.get('bostrychia')! },
+    [],
+    lagoonAlgaeSites({ rootWaterline }),
+  );
   const water = new Water(scene);
   const splashes = new Splashes(water);
 
@@ -81,6 +93,8 @@ export async function lagoon() {
   const wounds = new Wounds(player, lizard, vitals, () => run.afterDown(), CAUGHT_TIME);
   const cover = new Cover(world, obstacles, null, crowns);
   const climate = new ClimateSense(player, cover, () => [], waterDepth, lagoonLava);
+  const feeding = new Feeding(lizard, algae);
+  feeding.onMouthful = () => vitals.eat();
 
   const logGeometry = kit.geometry.get('log_0')!;
   const logExtras = kit.extras.get('log_0') as { radius: number; length: number };
@@ -155,7 +169,7 @@ export async function lagoon() {
   const flow = { x: 0, z: 0 };
 
   const hooks = createLagoonHooks({
-    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds,
+    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -190,6 +204,7 @@ export async function lagoon() {
       groomed: false,
     });
     wounds.step(dt);
+    if (frameInput.bite && !wounds.down) feeding.bite();
     player.speedScale = vitals.speedScale;
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
@@ -220,6 +235,7 @@ export async function lagoon() {
     log.update(alpha);
     herons.update(alpha);
     swimmers.update(alpha, frameDt);
+    algae.update(frameDt);
     markers.update(frameDt, camera.position);
     if (messageLeft !== null && (messageLeft -= frameDt) <= 0) {
       messageLeft = null;

@@ -22,6 +22,9 @@ metres, coloured per vertex, standing on z = 0 at the origin). Objects:
 - shark_pup: a newborn blacktip reef shark pup (Carcharhinus melanopterus), 0.38 m and slim, nose
   along +Z in glTF. Bronze-grey above, white below, black-tipped fins, big eyes. The game sends a
   wave down its body.
+- gutweed: Ulva intestinalis, the green tube weed of sheltered brackish shallows, a ~5 cm tuft from
+  the origin. bostrychia: the dark red-purple moss-like alga that fringes mangrove prop roots at the
+  waterline, a ~3 cm cushion. Both grow up along +Y in glTF; the game places them as algae to eat.
 - golden_ray: a young golden cownose ray (Rhinoptera steindachneri), 0.24 m across, 0.22 m long with the
   tail; nose along +Z in glTF. The game flaps its wings in a wave and trails its tail.
 """
@@ -62,6 +65,10 @@ C = {
     'ray_top': srgb('#c49a4c'),
     'ray_dark': srgb('#8a6a32'),
     'ray_belly': srgb('#f0ece2'),
+    'gutweed': srgb('#5aa82e'),
+    'gutweed_tip': srgb('#c8e66a'),
+    'bostrychia': srgb('#3e1a2a'),
+    'bostrychia_tip': srgb('#8a3c52'),
 }
 
 
@@ -320,6 +327,40 @@ def golden_ray(rng):
     return mb
 
 
+def gutweed(rng):
+    """Gutweed (Ulva intestinalis): a tuft of long, thin, hollow green tubes, the weed of sheltered,
+    brackish shallows, fanning out from a holdfast and lying over in the water, paler toward the tips.
+    About 5 cm long."""
+    mb = MeshBuilder()
+    for i in range(11):
+        a = 2 * math.pi * i / 11 + rng.uniform(-0.25, 0.25)
+        d = Vector((math.cos(a), math.sin(a), rng.uniform(0.6, 1.3)))
+        length = rng.uniform(0.03, 0.055)
+        pts = path(Vector((0, 0, 0)), d, length, 5, bend=Vector((0, 0, -0.9)), wobble=0.25, rng=rng)
+        colour = lambda co, s: mix(C['gutweed'], C['gutweed_tip'], s ** 1.4)
+        tube(mb, pts, lambda s: 0.0016 * (1 - 0.55 * s), colour, sides=4)
+    return mb
+
+
+def bostrychia(rng):
+    """Bostrychia: the dark red-purple moss-like red alga that fringes mangrove prop roots at the
+    waterline (with Caloglossa, the 'Bostrychietum'). A low, dense cushion of fine branching
+    strands, about 3 cm across."""
+    mb = MeshBuilder()
+    for i in range(14):
+        a = rng.uniform(0, 2 * math.pi)
+        r = 0.013 * math.sqrt(rng.random())
+        base = Vector((math.cos(a) * r, math.sin(a) * r, 0))
+        d = Vector((math.cos(a) * 0.5 + rng.uniform(-0.3, 0.3), math.sin(a) * 0.5 + rng.uniform(-0.3, 0.3), 1))
+        h = rng.uniform(0.008, 0.014)
+        pts = path(base, d, h, 2, rng=rng, wobble=0.35)
+        tube(mb, pts, lambda s: 0.0011 * (1 - 0.5 * s), lambda co, s: mix(C['bostrychia'], C['bostrychia_tip'], s), sides=3)
+        for k in range(2):
+            fork = path(pts[1 + k], d + Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), 0)), h * 0.5, 1, rng=rng)
+            tube(mb, fork, lambda s: 0.0007, lambda co, s: mix(C['bostrychia'], C['bostrychia_tip'], 0.5 + 0.5 * s), sides=3)
+    return mb
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rng = random.Random(71)
@@ -336,6 +377,10 @@ def main():
     objects.append(make_object('propagule', propagule(rng), mat))
     objects.append(make_object('shark_pup', shark_pup(rng), mat))
     objects.append(make_object('golden_ray', golden_ray(rng), mat))
+    # The algae draw from their own generator, so adding them left everything above as it was.
+    arng = random.Random(73)
+    objects.append(make_object('gutweed', gutweed(arng), mat))
+    objects.append(make_object('bostrychia', bostrychia(arng), mat))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 

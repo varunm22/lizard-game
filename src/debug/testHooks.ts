@@ -443,6 +443,12 @@ export interface LagoonTestHooks
   };
   /** Set bars, or hold them (`frozen`: strikes still land, nothing drifts). */
   setVitals(v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>): void;
+  /** The lagoon's algae patches: gutweed on the lava, Bostrychia on the mangrove roots, and how grown each is (0 to 1). */
+  algae(): { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
+  /** Bite, as pressing F does; false while a bite is already under way. */
+  bite(): boolean;
+  /** The player's bites so far, and those that got algae. */
+  feeding(): { bites: number; mouthfuls: number };
   /** Heron `i`'s standing spots. */
   haunts(i: number): { x: number; z: number; yaw: number }[];
   /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */
@@ -465,8 +471,8 @@ export interface LagoonTestHooks
   };
   /** Put the log floating at (x, z) along `heading`. */
   placeLog(x: number, z: number, heading: number): void;
-  /** Sharks and rays: kind, state, home pool, where each is and faces, speed, and a shark's bites. */
-  swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; yaw: number; speed: number; bites: number }[];
+  /** Sharks and rays: kind, state, home pool, where each is (its belly) and faces, the top of its fins or wingtips, speed, and a shark's bites. */
+  swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; top: number; yaw: number; speed: number; bites: number }[];
   /** Put swimmer `i` at (x, z) facing `yaw`, calm. */
   placeSwimmer(i: number, x: number, z: number, yaw: number): void;
   /** The channel's middle and half-width at z, the current there (m/s), and water depth at (x, z). */

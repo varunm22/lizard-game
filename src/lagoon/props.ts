@@ -63,6 +63,8 @@ export interface LagoonProps {
   roots: Set<number>;
   /** The drawn mangroves (instanced), which shade what's under them. */
   crowns: THREE.Object3D[];
+  /** Where each prop root standing in the water meets the waterline, and which way it faces out: where Bostrychia grows. */
+  rootWaterline: { position: THREE.Vector3; normal: THREE.Vector3 }[];
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -81,6 +83,7 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   const obstacles: Obstacle[] = [];
   const mangroves: Mangrove[] = [];
   const roots = new Set<number>();
+  const rootWaterline: LagoonProps['rootWaterline'] = [];
   const hidden = material();
   hidden.visible = false;
   const yawQ = (yaw: number) => new THREE.Quaternion().setFromAxisAngle(Y, yaw);
@@ -130,6 +133,17 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
       const rFoot = root[root.length - 1] * scale;
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(root[i * 3], root[i * 3 + 1], root[i * 3 + 2]).applyMatrix4(place));
+      // Where the root, arching down from the trunk, goes into the water, if that's out over water.
+      const line = WATER_Y - 0.004;
+      for (let i = 0; i + 1 < n; i++) {
+        if (pts[i].y < line || pts[i + 1].y >= line) continue;
+        const at = pts[i].clone().lerp(pts[i + 1], (pts[i].y - line) / (pts[i].y - pts[i + 1].y));
+        if (depthAt(at.x, at.z) > 0.012) {
+          const out = new THREE.Vector3(at.x - x, 0, at.z - z).normalize();
+          rootWaterline.push({ position: at.addScaledVector(out, (rTop + rFoot) * 0.4), normal: out.add(new THREE.Vector3(0, 0.6, 0)).normalize() });
+        }
+        break;
+      }
       const idx = [0, 2, 4, n - 1].filter((v, k, arr) => v < n && arr.indexOf(v) === k);
       for (let k = 0; k + 1 < idx.length; k++) {
         a.copy(pts[idx[k]]);
@@ -346,5 +360,5 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   propMesh.name = 'propagules';
   scene.add(propMesh);
 
-  return { obstacles, mangroves, roots, crowns };
+  return { obstacles, mangroves, roots, crowns, rootWaterline };
 }
