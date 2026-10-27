@@ -44,6 +44,40 @@ test('walking into a fig noses it along the ground ahead of the snout', async ({
   expect(errors).toEqual([]);
 });
 
+test('the fig tree drops its figs into the sea, where they float off the beach; a swimming lizard noses one ashore and it lies on the sand', async ({ page }) => {
+  const errors = await bootGame(page);
+  const sea = await page.evaluate(() => {
+    const g = window.__game!;
+    const t = g.figTree();
+    g.advance(600, false);
+    const afloat = g.figs().map((f) => ({ ...f, depth: f.y - g.terrainHeight(f.x, f.z), off: Math.hypot(f.x - t.x, f.z - t.z) }));
+    // Swimming in from offshore, behind the first one, toward the beach (-X).
+    const f = g.figs()[0];
+    g.teleport(f.x + 0.12, f.z, -Math.PI / 2);
+    g.advance(20, false);
+    const swimming = g.player().swimming;
+    g.setInput({ move: { x: 0, y: 1 } }, 160);
+    g.advance(160, false);
+    return { afloat, swimming, fig: g.figs()[0], ground: g.terrainHeight(g.figs()[0].x, g.figs()[0].z), run: g.islandRun() };
+  });
+  // Afloat at the surface, over water, still off the tree's seaward side.
+  expect(sea.afloat.length).toBeGreaterThanOrEqual(2);
+  for (const f of sea.afloat) {
+    expect(f.state).toBe('floating');
+    expect(Math.abs(f.y + 0.045)).toBeLessThan(0.006);
+    expect(f.depth).toBeGreaterThan(0.03);
+    expect(f.off).toBeLessThan(0.8);
+  }
+  expect(sea.swimming).toBe(true);
+  // Washed up: on the sand, brought ashore, and the objective moves on.
+  expect(sea.fig.state).toBe('lying');
+  expect(sea.fig.landed).toBe(true);
+  expect(sea.ground).toBeGreaterThan(-0.07);
+  expect(sea.run.progress).toBe('landed');
+  expect(sea.run.hint).toContain('beach path');
+  expect(errors).toEqual([]);
+});
+
 test('the tortoise goes for a fig over a nearer flower, and only eats grass when hungry', async ({ page }) => {
   const errors = await bootGame(page);
   const fig = await page.evaluate(() => {

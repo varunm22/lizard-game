@@ -180,7 +180,7 @@ export function createTestHooks({
       tortoise.place(x, z, yaw);
       if (sinceMeal !== undefined) tortoise.sinceMeal = sinceMeal;
     },
-    figs: () => figs.list.map((f) => ({ x: f.x, y: f.y, z: f.z, state: f.state, pushed: f.pushed })),
+    figs: () => figs.list.map((f) => ({ x: f.x, y: f.y, z: f.z, state: f.state, pushed: f.pushed, landed: f.landed })),
     figPlace: (i, x, z) => {
       while (figs.list.length <= i) figs.drop(true);
       figs.place(i, x, z);

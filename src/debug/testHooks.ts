@@ -137,9 +137,9 @@ export interface GameTestHooks {
   tortoiseDo: (action: 'eat' | 'rest' | { x: number; z: number }) => void;
   /** Stand the tortoise at (x, z) facing `yaw`, walking, and say how long since it ate. */
   tortoisePlace: (x: number, z: number, yaw: number, sinceMeal?: number) => void;
-  /** The figs from the fig tree: where each is, whether it's falling, lying, lost in the crack or eaten, and how often the lizard has pushed it. */
-  figs: () => { x: number; y: number; z: number; state: string; pushed: number }[];
-  /** Lay fig `i` (making more if there are fewer) on the ground at (x, z). */
+  /** The figs from the fig tree: where each is, whether it's falling, floating, lying, lost in the crack or eaten, how often the lizard has pushed it, and whether it nosed it ashore. */
+  figs: () => { x: number; y: number; z: number; state: string; pushed: number; landed: boolean }[];
+  /** Lay fig `i` (making more if there are fewer) at (x, z): on the ground, or afloat if that's in the sea. */
   figPlace: (i: number, x: number, z: number) => void;
   figTree: () => { x: number; z: number };
   /** The dead tree on the crack's rim: standing, falling or fallen, its foot, how far over it is (radians) and its tip. */

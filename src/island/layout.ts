@@ -2,13 +2,15 @@ import type * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d';
 import { covers, type Obstacle } from '../world/obstacles';
 import { crackHalf, crackX, overCrack } from './crack';
+import { shoreX } from '../world/shore';
 
 /**
- * Where the island's way out is laid out: the fig tree at the forest edge west of the spawn, out of
- * the tortoise's notice from its meadow; the dead tree (snag) on the crack's east rim; and a game
+ * Where the island's way out is laid out: the fig tree at the back of the beach north of the beach
+ * path, its crown over the sea and out of the tortoise's notice from its meadow; the dead tree (snag) on the crack's east rim; and a game
  * trail from the meadow through the trees to it, kept clear so the tortoise can be led down it.
  */
-export const FIG_TREE = { x: -1.55, z: 0.35 };
+const FIG_Z = 1.65;
+export const FIG_TREE = { x: shoreX(FIG_Z) - 0.12, z: FIG_Z };
 /** The dead tree stands this far in from the rim, at this z, and falls west across the crack. */
 const SNAG_Z = 1.35;
 const SNAG_IN = 0.07;

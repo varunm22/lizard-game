@@ -4,20 +4,28 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { toonGradient } from '../render/toon';
 import { rng } from '../world/noise';
 import { terrainHeight } from '../world/terrain';
+import { WATER_Y, shoreX } from '../world/shore';
 import { covers, type Obstacle } from '../world/obstacles';
 import type { Pusher } from '../world/plantSpring';
 import type { PropsResult } from '../world/props';
 import { crackHalf, crackX, overCrack } from './crack';
 
-/** How far out under the fig tree figs land (m). */
-const DROP_RING = [0.2, 0.36] as const;
+/** The fig tree leans out over the sea: figs drop round a spot this far seaward (+X) of its trunk, up to this far from it, always into the water (m). */
+const SEAWARD = 0.28;
+const DROP_SPREAD = 0.2;
 /** A fig's radius (m). */
 export const FIG_R = 0.02;
 /** Ripe yellow, with a brown stem at one end and a dark eye at the other. */
 const FIG_COLOUR = 0xe0c03a;
 const STEM_COLOUR = 0x6a4a2a;
 const EYE_COLOUR = 0x5a4020;
-/** Figs lying under the tree at the start; a new one ripens and drops every so often (s, from-to) while fewer than MAX are about. */
+/** Afloat, a fig bobs this much (m) and this fast (rad/s); the water drags it to a stop at this rate (1/s), and the swell carries it out to drift about this far offshore (m, from the waterline), at most this fast (m/s), wandering along the shore. */
+const BOB = { height: 0.003, rate: 2.2 };
+const WATER_DRAG = 2.5;
+const OFFSHORE = 0.45;
+const DRIFT = 0.025;
+const WANDER = 0.012;
+/** Figs afloat under the tree at the start; a new one ripens and drops every so often (s, from-to) while fewer than MAX are about. */
 const START_FIGS = 2;
 const RIPEN = [25, 40] as const;
 const MAX = 4;
@@ -39,8 +47,12 @@ export interface Fig {
   vx: number;
   vy: number;
   vz: number;
-  /** 'falling' from the crown, 'lying' on the ground (where it can be pushed and eaten), 'lost' in the crack, or 'eaten'. */
-  state: 'falling' | 'lying' | 'lost' | 'eaten';
+  /** 'falling' from the crown, 'floating' in the sea, 'lying' on the ground (where it can be pushed and eaten), 'lost' in the crack, or 'eaten'. */
+  state: 'falling' | 'floating' | 'lying' | 'lost' | 'eaten';
+  /** Brought ashore by the lizard: it was pushed while afloat and has washed up on the beach. */
+  landed: boolean;
+  /** Its own phase for bobbing and wandering on the water. */
+  phase: number;
   /** Times the lizard has pushed it (steps). */
   pushed: number;
   /** How it's turned: it rolls as it goes, so its stem comes round. */
@@ -48,11 +60,13 @@ export interface Fig {
 }
 
 /**
- * A fig tree at the forest edge (`fig_tree` in props.glb: a short fluted trunk under a broad crown hung
- * with figs) and its fruit. Ripe figs drop now and then and lie under it. They're drawn, not
- * simulated: the lizard's body nudges one along the ground ahead of it, it rolls on a little, it
- * stops against rocks and trunks, and one pushed over the crack's rim drops in for good. The
- * tortoise goes out of its way for them (`tortoise.ts`).
+ * A fig tree at the back of the beach (`fig_tree` in props.glb: a short fluted trunk under a broad
+ * crown hung with figs) and its fruit. Its crown leans over the sea, so ripe figs drop now and then
+ * into the shallows, where they bob and drift out to linger off the beach. They're drawn, not
+ * simulated: a swimming lizard noses one ashore, where it washes up and lies on the sand; on land the
+ * lizard's body nudges it along ahead of it, it rolls on a little, it stops against rocks and trunks,
+ * and one pushed over the crack's rim drops in for good. The tortoise goes out of its way for figs on
+ * land (`tortoise.ts`).
  */
 export class Figs {
   readonly list: Fig[] = [];
@@ -61,6 +75,9 @@ export class Figs {
   private ripen: number;
   private mesh: THREE.InstancedMesh;
   private matrix = new THREE.Matrix4();
+  private time = 0;
+  /** A fig splashing into the sea, for a ripple. */
+  onSplash: ((x: number, z: number) => void) | null = null;
   /** Where ripe figs drop from, above the tree's foot (m). */
   private crownY: number;
 
@@ -81,7 +98,6 @@ export class Figs {
     this.mesh.castShadow = true;
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
-    for (let i = 0; i < START_FIGS; i++) this.drop(true);
     this.ripen = this.spell();
   }
 
@@ -94,16 +110,36 @@ export class Figs {
     return this.list.filter((f) => f.state === 'lying');
   }
 
-  /** A ripe fig drops from the crown (or, at the start, is already lying under it). */
-  drop(lying = false): Fig {
-    const a = this.rand() * 2 * Math.PI;
-    const d = DROP_RING[0] + (DROP_RING[1] - DROP_RING[0]) * this.rand();
-    const x = this.tree.position.x + Math.cos(a) * d;
-    const z = this.tree.position.z + Math.sin(a) * d;
-    const ground = terrainHeight(x, z) + FIG_R;
+  /** A ripe fig drops from the crown into the sea (or, at the start, is already afloat). */
+  drop(afloat = false): Fig {
+    // Somewhere under the crown's seaward side that's water, not sand or a rock.
+    let x = this.tree.position.x + SEAWARD;
+    let z = this.tree.position.z;
+    for (let k = 0; k < 12; k++) {
+      const a = this.rand() * 2 * Math.PI;
+      const d = DROP_SPREAD * Math.sqrt(this.rand());
+      const tx = this.tree.position.x + SEAWARD + Math.cos(a) * d;
+      const tz = this.tree.position.z + Math.sin(a) * d;
+      if (terrainHeight(tx, tz) + FIG_R < WATER_Y && !this.obstacles().some((o) => covers(o, tx, tz, FIG_R))) {
+        [x, z] = [tx, tz];
+        break;
+      }
+    }
     // Lying on its side, the stem pointing some way along the ground.
     const turn = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, this.rand() * 2 * Math.PI, 0, 'YXZ'));
-    const fig: Fig = { x, y: lying ? ground : this.tree.position.y + this.crownY, z, vx: 0, vy: 0, vz: 0, state: lying ? 'lying' : 'falling', pushed: 0, turn };
+    const fig: Fig = {
+      x,
+      y: afloat ? WATER_Y : this.tree.position.y + this.crownY,
+      z,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      state: afloat ? 'floating' : 'falling',
+      pushed: 0,
+      turn,
+      landed: false,
+      phase: this.rand() * 2 * Math.PI,
+    };
     this.list.push(fig);
     return fig;
   }
@@ -113,10 +149,11 @@ export class Figs {
     fig.state = 'eaten';
   }
 
-  /** Tests: put fig `i` at (x, z), lying still. */
+  /** Tests: put fig `i` at (x, z), lying still (afloat, if that's in the sea). */
   place(i: number, x: number, z: number) {
     const f = this.list[i];
-    Object.assign(f, { x, z, y: terrainHeight(x, z) + FIG_R, vx: 0, vy: 0, vz: 0, state: 'lying' });
+    const ground = terrainHeight(x, z) + FIG_R;
+    Object.assign(f, { x, z, y: Math.max(ground, WATER_Y), vx: 0, vy: 0, vz: 0, state: ground < WATER_Y ? 'floating' : 'lying', landed: false });
   }
 
   /**
@@ -125,13 +162,17 @@ export class Figs {
    * one nosed along stays in front of the snout instead of slipping off to the side.
    */
   step(dt: number, pushers: readonly Pusher[], ahead: { x: number; z: number }) {
+    // The first few are already afloat (dropped here, once what they stop against is all laid out).
+    if (this.time === 0) for (let i = 0; i < START_FIGS; i++) this.drop(true);
+    this.time += dt;
     this.ripen -= dt;
     if (this.ripen <= 0) {
       this.ripen = this.spell();
-      if (this.list.filter((f) => f.state === 'falling' || f.state === 'lying').length < MAX) this.drop();
+      if (this.list.filter((f) => f.state === 'falling' || f.state === 'floating' || f.state === 'lying').length < MAX) this.drop();
     }
     for (const f of this.list) {
       if (f.state === 'falling') this.fall(f, dt);
+      else if (f.state === 'floating') this.float(f, dt, pushers, ahead);
       else if (f.state === 'lying') this.roll(f, dt, pushers, ahead);
       else if (f.state === 'lost') this.sink(f, dt);
     }
@@ -141,6 +182,14 @@ export class Figs {
     f.vy -= GRAVITY * dt;
     f.y += f.vy * dt;
     const ground = terrainHeight(f.x, f.z) + FIG_R;
+    if (ground < WATER_Y && f.y <= WATER_Y) {
+      // Into the sea: a splash, and it floats.
+      f.y = WATER_Y;
+      f.vy = 0;
+      f.state = 'floating';
+      this.onSplash?.(f.x, f.z);
+      return;
+    }
     if (f.y > ground) return;
     f.y = ground;
     // One small bounce, then it lies there.
@@ -177,7 +226,8 @@ export class Figs {
     }
   }
 
-  private roll(f: Fig, dt: number, pushers: readonly Pusher[], ahead: { x: number; z: number }) {
+  /** How far the lizard's body pushes `f` this step (m, along the ground or the water). */
+  private push(f: Fig, pushers: readonly Pusher[], ahead: { x: number; z: number }): [number, number] {
     let px = 0;
     let pz = 0;
     // Just in front of the snout (the first sphere), it's nosed along: kept ahead of it, drifting
@@ -204,6 +254,47 @@ export class Figs {
       px += (dx / d) * (reach - d);
       pz += (dz / d) * (reach - d);
     }
+    return [px, pz];
+  }
+
+  /** Afloat: it bobs on the swell and drifts out to linger off the beach, nosed along by a swimming lizard; pushed into the shallows, it washes up and lies on the sand. */
+  private float(f: Fig, dt: number, pushers: readonly Pusher[], ahead: { x: number; z: number }) {
+    const [px, pz] = this.push(f, pushers, ahead);
+    if (px !== 0 || pz !== 0) {
+      f.pushed++;
+      f.vx = px / dt;
+      f.vz = pz / dt;
+    } else {
+      // Carried out to linger off the beach, wandering along it.
+      const settle = 1 - Math.exp(-WATER_DRAG * dt);
+      const out = OFFSHORE - (f.x - shoreX(f.z));
+      const want = THREE.MathUtils.clamp(out, -1, 1) * DRIFT;
+      f.vx += (want - f.vx) * settle;
+      f.vz += (WANDER * Math.sin(this.time * 0.13 + f.phase) - f.vz) * settle;
+    }
+    const nx = f.x + f.vx * dt;
+    const nz = f.z + f.vz * dt;
+    if (this.obstacles().some((o) => o.kind !== 'log' && covers(o, nx, nz, FIG_R))) {
+      f.vx = f.vz = 0;
+    } else {
+      const d = Math.hypot(nx - f.x, nz - f.z);
+      if (d > 1e-7) f.turn.premultiply(ROLL.setFromAxisAngle(AXIS.set((nz - f.z) / d, 0, -(nx - f.x) / d), d / FIG_R));
+      f.x = nx;
+      f.z = nz;
+    }
+    f.y = WATER_Y + BOB.height * Math.sin(this.time * BOB.rate + f.phase);
+    // Run aground: it's on the sand now.
+    const ground = terrainHeight(f.x, f.z) + FIG_R;
+    if (ground >= WATER_Y - 0.004) {
+      f.y = ground;
+      f.vx = f.vz = 0;
+      f.state = 'lying';
+      if (f.pushed > 0) f.landed = true;
+    }
+  }
+
+  private roll(f: Fig, dt: number, pushers: readonly Pusher[], ahead: { x: number; z: number }) {
+    const [px, pz] = this.push(f, pushers, ahead);
     if (px !== 0 || pz !== 0) {
       f.pushed++;
       // It goes where it's pushed this step, then rolls on a little.
@@ -240,6 +331,11 @@ export class Figs {
     // Over the rim of the crack it drops in, out of reach for good; it falls from the rim's height.
     if (overCrack(f.x, f.z)) f.state = 'lost';
     else f.y = terrainHeight(f.x, f.z) + FIG_R;
+    // Pushed back into the sea, it floats off again.
+    if (f.state === 'lying' && f.y < WATER_Y - 0.004) {
+      f.y = WATER_Y;
+      f.state = 'floating';
+    }
   }
 
   /** Draw the figs where they are now. */

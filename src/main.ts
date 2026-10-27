@@ -91,6 +91,7 @@ async function main() {
   const water = new Water(scene);
   cel.waterY = WATER_Y;
   const splashes = new Splashes(water);
+  figs.onSplash = (x, z) => water.ripple(x, z, 0.6);
   // Plants grow anywhere a rock, log or tree (or its rim) isn't.
   const open = (x: number, z: number) => !laidOut.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, SPAWN);
@@ -149,7 +150,7 @@ async function main() {
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
   // The objective: over the crack. Once there, the run's end screen: R from the start, C on.
-  const run = new IslandRun(player, tortoise, snag);
+  const run = new IslandRun(player, tortoise, snag, figs);
   run.onHome = () => hud.message('Across the crack!', 'Over the bank to the west lies the mangrove lagoon.', endKeys('island'));
   // Going on (C): the lizard walks on west up the bank to where the mangrove lagoon, the next stage,
   // opens out below, as the screen fades; then it's the lagoon.
