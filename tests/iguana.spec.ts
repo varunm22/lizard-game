@@ -199,6 +199,20 @@ test('an iguana on its way goes round the lizard lying across its path instead o
     }
     g.advance(30, false);
     ig = g.iguanas()[0];
+    // Meet it on open ground: level with it (not down a step or in a dip) and with nothing solid (a
+    // rock, a cactus) within reach of the way round, so only the lizard shapes its path.
+    const obstacles = g.obstacles();
+    const clear = () => {
+      const x = ig.x + Math.sin(ig.yaw) * 0.2;
+      const z = ig.z + Math.cos(ig.yaw) * 0.2;
+      const here = g.groundAt(ig.x, ig.z);
+      const there = g.groundAt(x, z);
+      return here !== null && there !== null && Math.abs(there - here) < 0.015 && obstacles.every((o) => Math.hypot(o.x - x, o.z - z) > o.radius + 0.12);
+    };
+    for (let k = 0; k < 300 && !clear() && ig.activity === 'to_food' && !ig.swimming; k++) {
+      g.advance(1, false);
+      ig = g.iguanas()[0];
+    }
     const dx = Math.sin(ig.yaw);
     const dz = Math.cos(ig.yaw);
     const start = { x: ig.x, z: ig.z };

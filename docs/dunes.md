@@ -100,8 +100,26 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
 ## Props and plants
 
 `props.ts` places basalt boulders, lava cactus, mangroves, bleached driftwood, saltbushes (solid
-woody base, see-through canopy when in the camera's way), eggshells and shell grit, using
-`props.glb` and `dunes.glb` (`assets-src/dunes.py`). `plants.ts` lays out the shared plant kinds for
+woody base, see-through canopy when in the camera's way), eggshells and shell grit, all from
+`dunes.glb` (`assets-src/dunes.py`; the island's `props.glb` is no longer used here). The models
+aim for low poly with natural irregularity rather than geometric shapes:
+
+- Foliage is built from `clump`s (noise-pushed icospheres, smooth-shaded) whose shading normals
+  lean out from the middle of the whole canopy, so under the two-band toon ramp a crown lights as
+  one mass with one shadow edge; `leaves` scatters two-sided oval leaves over the clumps' surface
+  to break up the edge. Both live in `assets-src/props.py` for reuse on other stages.
+- Limbs are `tube`s with `rough` (noise out of round). Mangrove limbs fork at uneven heights and
+  carry the leaf clumps at their tips, so the crown takes its shape from the branching; prop roots
+  arch down from the trunk at random, some forking near the sand, and aerial roots drop from limbs.
+- Boulders are hulls of a noisy ellipsoid with a few random fracture planes cut through it (the
+  hull is still the collider). Driftwood tapers from a root end with broken roots to a snapped tip,
+  out of round, with a stub or two of branch; its collider is the hull of the tapered trunk alone
+  (extras `radius` at the root end, `tip`), underside along the ground.
+- Lava cactus are dense clumps of ribbed columns of every height, the outer ones leaning out and
+  turning up, golden at the young tips and grey-black at the base.
+
+The props draw from seeded generators; the TypeScript placement consumes the same random numbers
+as before, so the layout (and the racers' sightlines the tests depend on) only changes by shape. `plants.ts` lays out the shared plant kinds for
 the dunes through `Plants.load`'s `place` argument: grass tussocks on crests and lee slopes,
 morning-glory runners across hollows, carpetweed along the strand, Tiquilia on lava, with bare lanes
 left open between patches.
