@@ -159,7 +159,7 @@ test('led to a fig at the dead tree, the tortoise knocks the tree down across th
   expect(errors).toEqual([]);
 });
 
-test('the crack is too wide to jump: a lizard that falls in is stuck at the bottom a while, then back up on the rim it went in from; a fig nosed in drops to the bottom', async ({ page }) => {
+test('the crack is too wide to jump: a lizard that falls in lands in the slot at the bottom and is stuck there a while, with the controls off, then back up on the rim it went in from; a fig nosed in drops to the bottom', async ({ page }) => {
   const errors = await bootGame(page);
   const banner = page.locator('.island-banner');
   const fall = await page.evaluate(() => {
@@ -182,20 +182,24 @@ test('the crack is too wide to jump: a lizard that falls in is stuck at the bott
     g.setInput(null);
     g.advance(5, true);
     const fig = g.figs()[0];
-    // Trying to crawl along the bottom, it barely gets anywhere.
+    // Down there the controls do nothing.
     const p0 = g.player();
-    g.setInput({ move: { x: 0, y: 1 } }, 30);
+    g.setInput({ move: { x: 0, y: 1 }, run: true }, 30);
     g.advance(30, false);
     const p1 = g.player();
-    return { run: g.islandRun(), c, deepest, fig, floor: g.terrainHeight(fig.x, fig.z), crawled: Math.hypot(p1.x - p0.x, p1.z - p0.z) };
+    const slot = g.crack(p1.z);
+    return { run: g.islandRun(), c, deepest, fig, floor: g.terrainHeight(fig.x, fig.z), crawled: Math.hypot(p1.x - p0.x, p1.z - p0.z), p: p1, slot };
   });
   expect(fall.deepest).toBeLessThan(-0.1);
   expect(fall.run.falls).toBe(1);
   expect(fall.run.fallen).toBe('stuck');
   await expect(banner).toHaveClass(/show/);
   await expect(banner).toHaveText('Stuck!');
-  // A walk is ~0.1 m in half a second; wedged, it's a fraction of that.
-  expect(fall.crawled).toBeLessThan(0.05);
+  expect(fall.crawled).toBeLessThan(0.005);
+  // It came down the middle, lying along the crack in the slot at its bottom, not into a wall.
+  expect(Math.abs(fall.p.x - fall.slot.x)).toBeLessThan(0.015);
+  expect(Math.abs(Math.sin(fall.p.yaw))).toBeLessThan(0.3);
+  expect(fall.p.grounded).toBe(true);
   // The fig went in too, all the way down, not hanging at the rim.
   expect(fall.fig.state).toBe('lost');
   expect(fall.fig.y).toBeLessThan(fall.floor + 0.03);

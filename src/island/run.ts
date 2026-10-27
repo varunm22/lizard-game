@@ -8,10 +8,9 @@ import type { Snag } from './snag';
 /** The tortoise knocks the dead tree over with its mouth within this of the trunk, or its shell this near its foot (m). */
 const KNOCK_MOUTH = 0.14;
 const KNOCK_SHELL = 0.17;
-/** Feet this far below the rim are down in the crack (m). Down there it's "Stuck!" this long (s), crawling at this share of its speed, then climbs out for this long and is back up where it fell from. */
+/** Feet this far below the rim are down in the crack (m). Down there it's "Stuck!" this long (s), out of the player's hands, then climbs out for this long and is back up where it fell from. */
 const FALLEN = 0.07;
 const STUCK = 2.5;
-const STUCK_SPEED = 0.3;
 const CLIMB_OUT = 1.2;
 /**
  * The lizard's straight physics body can rest its side or one end on the rim with its middle out
@@ -69,9 +68,9 @@ export class IslandRun {
     return this.fallen === 'stuck' ? 'Stuck!' : this.fallen === 'climbing' ? 'Climbing back out…' : null;
   }
 
-  /** Down in the crack it can only squirm about slowly (share of its speed). */
-  get speedScale(): number {
-    return this.fallen ? STUCK_SPEED : 1;
+  /** Down in the crack, stuck and climbing out, the controls do nothing. */
+  get held(): boolean {
+    return this.fallen !== null;
   }
 
   /** What to do, and a hint toward how. */
@@ -116,6 +115,12 @@ export class IslandRun {
         this.down = 0;
         this.falls++;
         this.seen = true;
+        // It drops on down the middle, lying along the crack, so it lands in the slot at the bottom
+        // between the walls rather than across them, whichever way it went over.
+        const slope = (crackX(feet.z + 0.05) - crackX(feet.z - 0.05)) / 0.1;
+        const along = Math.atan2(slope, 1);
+        const yaw = Math.cos(this.player.yaw - along) >= 0 ? along : along + Math.PI;
+        this.player.setFeet(new THREE.Vector3(crackX(feet.z), feet.y, feet.z), yaw);
       }
       this.down += dt;
       if (this.down >= STUCK) this.fallen = 'climbing';

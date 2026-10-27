@@ -217,8 +217,6 @@ async function main() {
     player.feetAt(1, tickFeet);
     // The cold slows it too, on land and in the water.
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw)) * vitals.speedScale;
-    // Wedged down in the lava crack it can only squirm.
-    player.speedScale *= run.speedScale;
     // The tortoise moves first, shoving the lizard out of its way before the lizard's own move.
     tortoise.step(dt, player);
     regrowth.step(dt);
@@ -228,8 +226,8 @@ async function main() {
     crabs.step(dt);
     fishes.step(dt);
     hawk.step(dt);
-    // Knocked down, the lizard lies still whatever the controls say.
-    let input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    // Knocked down, or stuck down in the lava crack, the lizard lies still whatever the controls say.
+    let input = wounds.down || run.held ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
     const out = walkOut.step(dt);
     if (out) input = { ...input, ...out };
     climate.step(dt);
