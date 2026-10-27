@@ -110,6 +110,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       h.update(1);
     },
     tangle: (x, z) => herons.inTangle(x, z),
+    wadeable: (x, z) => herons.wadeable(x, z, x, z),
+    haunts: (i) => herons.list[i].spots.map((p) => ({ ...p })),
     pause: ({ herons: hs, swimmers: ss }) => {
       if (hs !== undefined) herons.list.forEach((h, i) => (h.paused = Array.isArray(hs) ? !hs.includes(i) : hs));
       if (ss !== undefined) swimmers.paused = ss;
@@ -128,7 +130,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       ends: [xyz(log.end(-1, new THREE.Vector3())), xyz(log.end(1, new THREE.Vector3()))],
     }),
     placeLog: (x, z, heading) => log.place(x, z, heading),
-    swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, ...xyz(s.pos) })),
+    swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, state: s.state, pool: s.pool, ...xyz(s.pos), yaw: s.yaw, speed: s.speed, bites: s.bites })),
+    placeSwimmer: (i, x, z, yaw) => swimmers.place(i, x, z, yaw),
     channel: (z) => ({ x: channelX(z), half: channelHalf(z) }),
     current: (x, z) => current(x, z, { x: 0, z: 0 }),
     depth: (x, z) => depthAt(x, z),

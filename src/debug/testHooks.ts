@@ -427,6 +427,9 @@ export interface LagoonTestHooks
   placeHeron(i: number, x: number, z: number, yaw: number): void;
   /** Whether (x, z) is in a red mangrove's root tangle, and whether a heron could wade there. */
   tangle(x: number, z: number): boolean;
+  wadeable(x: number, z: number): boolean;
+  /** Heron `i`'s standing spots. */
+  haunts(i: number): { x: number; z: number; yaw: number }[];
   /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */
   pause(what: { herons?: boolean | number[]; swimmers?: boolean }): void;
   /** The drift log: state, middle (world m), heading, drift speed, and counts. */
@@ -447,8 +450,10 @@ export interface LagoonTestHooks
   };
   /** Put the log floating at (x, z) along `heading`. */
   placeLog(x: number, z: number, heading: number): void;
-  /** Sharks and rays: kind, where each is. */
-  swimmers(): { kind: string; x: number; y: number; z: number }[];
+  /** Sharks and rays: kind, state, home pool, where each is and faces, speed, and a shark's bites. */
+  swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; yaw: number; speed: number; bites: number }[];
+  /** Put swimmer `i` at (x, z) facing `yaw`, calm. */
+  placeSwimmer(i: number, x: number, z: number, yaw: number): void;
   /** The channel's middle and half-width at z, the current there (m/s), and water depth at (x, z). */
   channel(z: number): { x: number; half: number };
   current(x: number, z: number): { x: number; z: number };

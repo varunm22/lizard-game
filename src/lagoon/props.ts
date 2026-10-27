@@ -83,7 +83,9 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   hidden.visible = false;
   const yawQ = (yaw: number) => new THREE.Quaternion().setFromAxisAngle(Y, yaw);
   const inside = (x: number, z: number, r: number) => Math.abs(x) < EDGE - r && Math.abs(z) < EDGE - r;
-  const spots = HERON_HAUNTS.flat();
+  // The first three herons' spots, kept open as the props are scattered; the later herons' spots were
+  // picked in the clearings this leaves, so the scatter (and its random draws) stays as it was.
+  const spots = HERON_HAUNTS.slice(0, 3).flat();
   /** Room for a footprint of radius r at (x, z): clear of what's placed and the spots kept open. */
   const free = (x: number, z: number, r: number) =>
     Math.hypot(x - START.x, z - START.z) > r + 0.35 &&

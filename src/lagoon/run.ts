@@ -4,13 +4,13 @@ import type { PlayerController } from '../player/controller';
 import type { LizardVisual } from '../player/visual';
 import { terrainHeight } from '../world/terrain';
 import type { DriftLog } from './driftLog';
-import type { Heron, HeronPrey, Herons } from './herons';
+import type { HeronPrey, Herons } from './herons';
 import { FINISH, SAFE_POINTS, START } from './layout';
 import type { Swimmers } from './swimmers';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
 
-/** In a heron's bill this long (s) before the lizard is put back. */
+/** In a heron's bill (or bitten by a shark pup) this long (s) before the lizard is put back. */
 export const CAUGHT_TIME = 2.5;
 /** Riding the log while it drifts this long (s) counts for the ride goal. */
 const RIDE = 1;
@@ -44,7 +44,7 @@ export class LagoonRun {
   private slipped = false;
   private feet = new THREE.Vector3();
   onReset: (() => void) | null = null;
-  onCaught: ((by: Heron) => void) | null = null;
+  onCaught: ((by: 'heron' | 'shark') => void) | null = null;
   onHome: (() => void) | null = null;
   onSafe: ((index: number) => void) | null = null;
   onRespawn: ((index: number) => void) | null = null;
@@ -54,7 +54,7 @@ export class LagoonRun {
     private visual: LizardVisual,
     private herons: Herons,
     private log: DriftLog,
-    swimmers: Swimmers,
+    private swimmers: Swimmers,
   ) {
     const free = () => this.state === 'ready' || this.state === 'running';
     this.prey = {
@@ -91,6 +91,8 @@ export class LagoonRun {
 
   get danger(): 'none' | 'watched' | 'chased' {
     if (this.state !== 'running' && this.state !== 'ready') return 'none';
+    // A shark pup tensing to bite, or darting in, is as bad as a heron about to strike.
+    if (this.swimmers.list.some((s) => s.state === 'tense' || s.state === 'bite')) return 'chased';
     return this.herons.danger;
   }
 
@@ -103,7 +105,7 @@ export class LagoonRun {
     return safePointAt(this.feet.x, this.feet.z) >= 0;
   }
 
-  private caught(by: Heron) {
+  private caught(by: 'heron' | 'shark') {
     if (this.state !== 'running' && this.state !== 'ready') return;
     this.state = 'caught';
     this.catches++;
@@ -131,6 +133,7 @@ export class LagoonRun {
     this.player.setFeet(this.feet.set(START.x, terrainHeight(START.x, START.z), START.z), START.yaw);
     this.log.reset();
     this.herons.reset();
+    this.swimmers.calm();
     this.onReset?.();
   }
 

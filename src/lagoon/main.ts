@@ -38,7 +38,9 @@ const TEXT: HudText = {
     '<h2>Mangrove lagoon</h2>' +
     'Cross the lagoon to the <b>lava field</b> beyond the channel, under the <b>golden light</b>.' +
     '<ul><li>Lava herons stalk the shallows and stab fast. Keep moving, and keep out of reach.</li>' +
-    '<li>No heron reaches in among the <b>mangrove roots</b>, or sees you swimming low over <b>deep water</b>.</li>' +
+    '<li>No heron reaches in among the <b>mangrove roots</b>, or sees you swimming low over <b>deep water</b>. ' +
+    'Swim too near one and it strikes without stalking.</li>' +
+    '<li>Shark pups are curious, and sometimes nip. Never turn on one close up.</li>' +
     '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies in a pool by its bank: ' +
     'swim into it to push it, out into the current.</li>' +
     '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
@@ -80,6 +82,7 @@ export async function lagoon() {
   const herons = new Herons(heronKit, scene, world, ground, obstacles, mangroves, player.body);
   const run = new LagoonRun(player, visual, herons, log, swimmers);
   herons.prey = run.prey;
+  swimmers.prey = run.prey;
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: SAFE_POINTS });
 
   const fade = new OccluderFade(world, obstacles);
@@ -97,9 +100,9 @@ export async function lagoon() {
     hud.message(title, detail);
     messageLeft = 3;
   };
-  run.onCaught = () => {
+  run.onCaught = (by) => {
     messageLeft = null;
-    hud.message('Caught by a lava heron!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to the lava coast...');
+    hud.message(by === 'shark' ? 'Bitten by a shark pup!' : 'Caught by a lava heron!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to the lava coast...');
   };
   run.onSafe = (i) => {
     markers.reached(i, true);
@@ -152,7 +155,7 @@ export async function lagoon() {
     herons.step(dt);
     log.step(dt, input.move.y > 0 && player.swimming);
     player.feetAt(1, tickFeet);
-    swimmers.step(dt, tickFeet, player.swimming);
+    swimmers.step(dt);
     // The channel's ebb carries a swimming lizard south.
     if (player.swimming) {
       current(tickFeet.x, tickFeet.z, flow);

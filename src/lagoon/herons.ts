@@ -23,31 +23,41 @@ export interface HeronPrey {
   huntable(): boolean;
   /** Swimming (lying low in the water). */
   swimming(): boolean;
-  caught(by: Heron): void;
+  /** Caught: in a heron's bill, or bitten by a shark pup. */
+  caught(by: 'heron' | 'shark'): void;
 }
 
 /** Heron tuning: distances in m, speeds in m/s, times in s, angles in radians. */
 export const HERON = {
   /** How far it sees, and how wide either side of its bill. */
-  sight: 1.5,
+  sight: 1.7,
   fov: 2.0,
   /** Seconds of seeing the lizard before it starts stalking: sooner if it moves, and the closer it is. */
-  notice: 0.5,
+  notice: 0.4,
   /** Wading: as deep as it goes, how close to a red mangrove's roots, and how far from its spot. */
-  wade: 0.065,
+  wade: 0.07,
   rootClear: 0.06,
   leash: 2.5,
-  /** Crouched stalking walk, and walking between spots. */
-  stalk: 0.07,
-  walk: 0.12,
+  /**
+   * Stalking: its average pace, made of slow careful steps (the body glides on while a foot is up,
+   * all but stops while both are down, and it holds still a beat between steps). Walking between spots.
+   */
+  stalk: 0.075,
+  walk: 0.1,
   turn: 2.2,
   /** Horizontal reach from its shoulders to the lizard that it strikes from, and the most its neck and bill reach. */
-  strikeRange: 0.17,
-  reach: 0.23,
+  strikeRange: 0.2,
+  reach: 0.28,
+  /** How far the neck stretches from its base in a stab (m), and how far the body lunges after it. */
+  neck: 0.17,
+  lunge: 0.035,
   /** Drawn back and still before the stab; the stab; a hit within `bite` of the lizard's body. */
-  aimTime: 0.35,
-  strikeTime: 0.16,
-  bite: 0.035,
+  aimTime: 0.25,
+  strikeTime: 0.075,
+  bite: 0.04,
+  /** A heron that isn't stalking strikes all the same at a lizard that comes this near in view, after only this beat. */
+  ambush: 0.22,
+  snapTime: 0.1,
   /** After a miss, and after a catch. */
   recoverTime: 0.9,
   holdTime: 2.5,
@@ -59,7 +69,7 @@ export const HERON = {
   /** Standing at a spot this long (random between) before moving to another. */
   stay: [14, 24] as const,
   /** Swimming over water deeper than this, the lizard lies too low for a heron to make out. */
-  deep: 0.09,
+  deep: 0.11,
   /** Within this share of a red mangrove's root reach, it's in the tangle: no heron strikes in there. */
   tangle: 0.85,
 };
@@ -68,9 +78,12 @@ export type HeronState = 'wait' | 'walk' | 'stalk' | 'aim' | 'strike' | 'recover
 /** Why a heron lost the lizard: it went into the roots, out over deep water, or got away (out of sight or reach). */
 export type LostReason = 'tangle' | 'deep' | 'away';
 
-const STEP_TIME = 0.32;
-const STRIDE = 0.075;
-const STEP_LIFT = 0.025;
+/** Steps: how long a foot is up, how high it lifts, how far ahead of under the body it goes down; walking, and stalking. */
+const GAIT = {
+  walk: { time: 0.42, lift: 0.016, pause: 0, speed: HERON.walk },
+  stalk: { time: 0.6, lift: 0.014, pause: 0.3, speed: HERON.stalk * 1.5 },
+};
+type Gait = keyof typeof GAIT | 'still';
 /** Heron-space head poses: drawn in at rest, stretched low to stalk, cocked back to aim. */
 const POSE = {
   rest: new THREE.Vector3(0, 0.229, 0.112),
@@ -111,6 +124,16 @@ export class Heron {
   private prevYaw = 0;
   private prevHead = new THREE.Vector3();
   private prevFeet = [new THREE.Vector3(), new THREE.Vector3()];
+  /** The ground under each foot as it goes (no lift), which the body rides on. */
+  private soles = [0, 0];
+  private prevSoles = [0, 0];
+  /** How it's moving its feet: stepping along walking or stalking, or only keeping them under it. */
+  gait: Gait = 'still';
+  /** The beat it holds still between stalking steps (s). */
+  private hold = 0;
+  /** The stance when a stab began, and where the lunge takes the body. */
+  readonly lungeFrom = new THREE.Vector3();
+  readonly lungeTo = new THREE.Vector3();
   /** A paused heron stands still (tests). */
   paused = false;
   /** Strikes and catches, for tests. */
@@ -152,31 +175,56 @@ export class Heron {
       this.body.footHome(i, this.pos, yaw, this.feet[i]);
       this.stepT[i] = -1;
       this.prevFeet[i].copy(this.feet[i]);
+      this.soles[i] = this.prevSoles[i] = this.feet[i].y;
     }
+    this.hold = 0;
     this.prevPos.copy(this.pos);
     this.prevYaw = yaw;
     this.head.copy(POSE.rest);
     this.prevHead.copy(this.head);
   }
 
-  /** Feet: step whichever is furthest from where it should be, one at a time, onto the ground. */
+  /** A foot is up. */
+  get stepping() {
+    return this.stepT[0] >= 0 || this.stepT[1] >= 0;
+  }
+
+  /**
+   * Feet, one at a time. Walking or stalking, the foot furthest back steps as soon as the other is
+   * down (stalking, after a beat held still), reaching ahead as far as the body will have gone by the
+   * time it's down, and half a step more; standing, a foot steps only when the body has turned or
+   * shifted off it. A stalking foot rises quickly and comes down slowly.
+   */
   stepFeet(dt: number, ground: (x: number, z: number, y: number) => number) {
     const home = new THREE.Vector3();
+    const g = GAIT[this.gait === 'still' ? 'walk' : this.gait];
     for (let i = 0; i < 2; i++) {
       if (this.stepT[i] < 0) continue;
-      this.stepT[i] = Math.min(1, this.stepT[i] + dt / STEP_TIME);
+      this.stepT[i] = Math.min(1, this.stepT[i] + dt / g.time);
       const t = this.stepT[i];
       const e = t * t * (3 - 2 * t);
       this.feet[i].lerpVectors(this.stepFrom[i], this.stepTo[i], e);
-      this.feet[i].y += Math.sin(Math.PI * t) * STEP_LIFT;
-      if (t >= 1) this.stepT[i] = -1;
+      this.soles[i] = this.feet[i].y;
+      this.feet[i].y += Math.sin(Math.PI * (this.gait === 'stalk' ? Math.pow(t, 0.6) : t)) * g.lift;
+      if (t >= 1) {
+        this.stepT[i] = -1;
+        this.hold = this.gait === 'stalk' ? g.pause : 0;
+      }
     }
-    if (this.stepT[0] >= 0 || this.stepT[1] >= 0) return;
+    if (this.stepping) return;
+    if (this.hold > 0) {
+      this.hold -= dt;
+      return;
+    }
+    const moving = this.gait !== 'still';
+    const ahead = moving ? g.speed * g.time * 1.5 : 0;
+    const fx = Math.sin(this.yaw) * ahead;
+    const fz = Math.cos(this.yaw) * ahead;
     let worst = -1;
-    let far = 0.02;
+    let far = moving ? 0.012 : 0.02;
     for (let i = 0; i < 2; i++) {
       this.body.footHome(i, this.pos, this.yaw, home);
-      const d = Math.hypot(home.x - this.feet[i].x, home.z - this.feet[i].z);
+      const d = Math.hypot(home.x + fx - this.feet[i].x, home.z + fz - this.feet[i].z);
       if (d > far) {
         far = d;
         worst = i;
@@ -185,14 +233,8 @@ export class Heron {
     if (worst < 0) return;
     const i = worst;
     this.body.footHome(i, this.pos, this.yaw, home);
-    // Step past home along the way it's going, so the other foot's next step is as long.
-    const mx = this.pos.x - this.prevPos.x;
-    const mz = this.pos.z - this.prevPos.z;
-    const ml = Math.hypot(mx, mz);
-    if (ml > 1e-6) {
-      home.x += (mx / ml) * STRIDE * 0.4;
-      home.z += (mz / ml) * STRIDE * 0.4;
-    }
+    home.x += fx;
+    home.z += fz;
     home.y = ground(home.x, home.z, this.pos.y);
     this.stepFrom[i].copy(this.feet[i]);
     this.stepTo[i].copy(home);
@@ -208,11 +250,27 @@ export class Heron {
     b.bill.copy(this.bill);
     for (let i = 0; i < 2; i++) b.feet[i].lerpVectors(this.prevFeet[i], this.feet[i], alpha);
     const crouched = this.state === 'stalk' || this.state === 'aim' || this.state === 'strike';
-    b.crouch += ((crouched ? 0.018 : 0) - b.crouch) * 0.2;
-    b.lean += ((this.state === 'strike' ? 0.45 : this.state === 'stalk' || this.state === 'aim' ? 0.28 : 0.05) - b.lean) * 0.25;
-    // The body rides as high as the planted feet let it.
-    b.at.y = (b.feet[0].y + b.feet[1].y) / 2;
+    // Settling into a crouch and a lean slowly, but thrown forward in a stab.
+    const k = this.state === 'strike' ? 0.6 : 0.08;
+    b.crouch += ((crouched ? 0.02 : 0) - b.crouch) * k;
+    b.lean += ((this.state === 'strike' ? 0.6 : this.state === 'stalk' || this.state === 'aim' ? 0.3 : 0.05) - b.lean) * k;
+    // The body rides level on the ground under the feet, not bobbing with each lifted foot.
+    const sole = (i: number) => this.prevSoles[i] + (this.soles[i] - this.prevSoles[i]) * alpha;
+    b.at.y = (sole(0) + sole(1)) / 2;
     b.pose();
+  }
+
+  /** Keep the head where it was in the world as the body moves on under it, as a stalking heron does. */
+  steadyHead() {
+    const w = new THREE.Vector3();
+    this.body.at.copy(this.prevPos);
+    this.body.yaw = this.prevYaw;
+    this.body.place();
+    this.body.toWorld(this.head, w);
+    this.body.at.copy(this.pos);
+    this.body.yaw = this.yaw;
+    this.body.place();
+    this.body.toLocal(w, this.head);
   }
 
   /** Remember the pose before a step, to draw between steps. */
@@ -220,9 +278,11 @@ export class Heron {
     this.prevPos.copy(this.pos);
     this.prevYaw = this.yaw;
     this.prevHead.copy(this.head);
-    for (let i = 0; i < 2; i++) this.prevFeet[i].copy(this.feet[i]);
+    for (let i = 0; i < 2; i++) {
+      this.prevFeet[i].copy(this.feet[i]);
+      this.prevSoles[i] = this.soles[i];
+    }
   }
-
 }
 
 /**
@@ -451,8 +511,15 @@ export class Herons {
     this.onLose?.(h, why);
   }
 
+  /** In reach from where it stands: draw back and stab, after only a beat if the lizard came so near unawares. */
+  private toAim(h: Heron, toPrey: number) {
+    h.state = 'aim';
+    h.timer = toPrey < HERON.ambush ? HERON.snapTime : HERON.aimTime;
+  }
+
   private stepOne(h: Heron, dt: number) {
     if (h.cool > 0) h.cool -= dt;
+    h.gait = 'still';
     const sees = this.sees(h);
     h.sees = sees;
     this.prey.feet(this.f);
@@ -471,6 +538,7 @@ export class Herons {
           }
         } else {
           this.headTo(h, POSE.rest, 3, dt, false);
+          h.gait = 'walk';
           const moved = this.walkTo(h, h.goal.x, h.goal.z, HERON.walk, dt);
           if (!moved || Math.hypot(h.goal.x - h.pos.x, h.goal.z - h.pos.z) < 0.02) {
             if (!moved) {
@@ -481,7 +549,13 @@ export class Herons {
             h.timer = this.stay();
           }
         }
-        if (sees && h.cool <= 0) {
+        if (sees && h.cool <= 0 && toPrey < HERON.ambush) {
+          // Swum or walked right up to: it strikes without stalking first.
+          this.turnTo(h, Math.atan2(this.f.x - h.pos.x, this.f.z - h.pos.z), dt);
+          this.toAim(h, toPrey);
+          h.seen = 0;
+          this.onStalk?.(h);
+        } else if (sees && h.cool <= 0) {
           const quick = (this.prey.speed() > 0.04 ? 2.5 : 1) * (toPrey < 0.6 ? 2 : 1);
           h.seen += dt * quick;
           if (h.seen >= HERON.notice) {
@@ -499,14 +573,16 @@ export class Herons {
         if (!this.prey.huntable()) return this.toWait(h);
         h.unseen = sees ? 0 : h.unseen + dt;
         if (h.unseen > HERON.lostTime) return this.lose(h, 'away');
-        this.headTo(h, POSE.stalk, 4, dt, true);
+        this.headTo(h, POSE.stalk, 3, dt, true);
         if (toPrey < HERON.strikeRange) {
           this.turnTo(h, Math.atan2(this.f.x - h.pos.x, this.f.z - h.pos.z), dt);
-          h.state = 'aim';
-          h.timer = HERON.aimTime;
+          this.toAim(h, toPrey);
           break;
         }
-        const moved = this.walkTo(h, this.f.x, this.f.z, HERON.stalk, dt);
+        // Slow and careful: the body glides on while a foot is up and all but stops while both are down.
+        h.gait = 'stalk';
+        const moved = this.walkTo(h, this.f.x, this.f.z, h.stepping ? GAIT.stalk.speed : HERON.stalk * 0.12, dt);
+        h.steadyHead();
         h.timer = moved ? 0 : h.timer + dt;
         if (h.timer > HERON.standOff) return this.lose(h, 'away');
         break;
@@ -530,11 +606,23 @@ export class Herons {
           const sp = this.prey.speed();
           const yaw = this.prey.facing();
           h.target.copy(pts[1]);
-          h.target.x += Math.sin(yaw) * sp * HERON.strikeTime * 0.6;
-          h.target.z += Math.cos(yaw) * sp * HERON.strikeTime * 0.6;
+          h.target.x += Math.sin(yaw) * sp * HERON.strikeTime;
+          h.target.z += Math.cos(yaw) * sp * HERON.strikeTime;
           h.headFrom.copy(h.head);
-          // The head goes where the bill's tip lands on the target, as far as the neck reaches.
-          h.body.at.copy(h.pos);
+          // The body lunges a little after the bill, if it can stand there.
+          h.lungeFrom.copy(h.pos);
+          h.lungeTo.copy(h.pos);
+          const lx = h.target.x - h.pos.x;
+          const lz = h.target.z - h.pos.z;
+          const ll = Math.hypot(lx, lz);
+          if (ll > 1e-4) {
+            const go = Math.min(HERON.lunge, Math.max(0, ll - 0.12));
+            const nx = h.pos.x + (lx / ll) * go;
+            const nz = h.pos.z + (lz / ll) * go;
+            if (this.wadeable(nx, nz, h.home.x, h.home.z)) h.lungeTo.set(nx, this.groundAt(nx, nz, h.pos.y), nz);
+          }
+          // The head goes where the bill's tip lands on the target, as far as the neck reaches, from where the lunge ends.
+          h.body.at.copy(h.lungeTo);
           h.body.yaw = h.yaw;
           h.body.place();
           const local = h.body.toLocal(h.target, this.s);
@@ -543,7 +631,7 @@ export class Herons {
           const billLen = h.body.billOffset.length();
           const head = local.clone().addScaledVector(dir, -billLen);
           const neck = head.clone().sub(sh);
-          if (neck.length() > 0.15) head.copy(sh).addScaledVector(neck.normalize(), 0.15);
+          if (neck.length() > HERON.neck) head.copy(sh).addScaledVector(neck.normalize(), HERON.neck);
           h.headTo.copy(head);
           h.bill.copy(dir);
         }
@@ -552,13 +640,15 @@ export class Herons {
       case 'strike': {
         h.timer += dt;
         const t = Math.min(1, h.timer / HERON.strikeTime);
-        h.head.lerpVectors(h.headFrom, h.headTo, 1 - (1 - t) * (1 - t));
+        const e = 1 - (1 - t) * (1 - t);
+        h.head.lerpVectors(h.headFrom, h.headTo, e);
+        h.pos.lerpVectors(h.lungeFrom, h.lungeTo, e);
         const tip = h.billTip(this.s);
         if (this.prey.huntable() && !this.hidden() && this.preyPoints().some((q) => q.distanceTo(tip) < HERON.bite)) {
           h.state = 'hold';
           h.timer = HERON.holdTime;
           h.catches++;
-          this.prey.caught(h);
+          this.prey.caught('heron');
           this.onCatch?.(h);
           break;
         }

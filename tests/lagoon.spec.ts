@@ -27,6 +27,8 @@ test('the lagoon loads: the ground, the mangroves and roots, the herons waiting,
     return {
       worst,
       herons: g.herons(),
+      // Every heron's spots are somewhere it can stand.
+      unwadeable: g.herons().flatMap((_, i) => g.haunts(i)).filter((p) => !g.wadeable(p.x, p.z)),
       heron: g.heronBody(0),
       log: g.log(),
       mangroves: g.mangroves(),
@@ -41,9 +43,11 @@ test('the lagoon loads: the ground, the mangroves and roots, the herons waiting,
   expect(errors).toEqual([]);
   expect(s.worst).toBeLessThan(0.006);
   expect(s.mangroves.filter((m) => !m.sapling).length).toBeGreaterThan(30);
-  expect(s.swimmers.length).toBe(8);
-  expect(s.herons.length).toBe(3);
+  expect(s.swimmers.filter((f) => f.kind === 'shark').length).toBe(3);
+  expect(s.swimmers.filter((f) => f.kind === 'ray').length).toBe(15);
+  expect(s.herons.length).toBe(6);
   for (const h of s.herons) expect(h.state).toBe('wait');
+  expect(s.unwadeable).toEqual([]);
   // Each heron's leg bones reach the feet it stands on; the bill is out ahead of the body.
   const { bones, feet } = s.heron;
   expect(Math.hypot(bones.foot_L.x - feet[0].x, bones.foot_L.z - feet[0].z)).toBeLessThan(0.005);
@@ -96,6 +100,55 @@ test('a heron sees a lizard in the open, stalks it and stabs; the lizard is back
   });
   expect(after.run).toMatchObject({ state: 'ready', attempts: 2, catches: 1, time: 0 });
   expect(Math.hypot(after.player.x - after.start.x, after.player.z - after.start.z)).toBeLessThan(0.02);
+});
+
+test('a stalking heron steps slowly, one foot at a time, its body level; a swimmer that comes near one is struck at once', async ({ page }) => {
+  await bootLagoon(page, { herons: [HERON, 5] });
+  const s = await page.evaluate((hi) => {
+    const g = window.__lagoon!;
+    const h0 = g.herons()[hi];
+    g.placeHeron(hi, h0.x, h0.z, Math.PI);
+    g.teleport(h0.x + 0.05, h0.z - 1.1, 0);
+    // Stalking a still lizard: count steps, and how much the body rises and falls once crouched.
+    const ys: number[] = [];
+    let lifted = 0;
+    let both = 0;
+    let start: { x: number; z: number } | null = null;
+    for (let i = 0; i < 180; i++) {
+      g.advance(1);
+      const h = g.herons()[hi];
+      if (h.state !== 'stalk') continue;
+      start ??= { x: h.x, z: h.z };
+      const b = g.heronBody(hi);
+      const up = b.feet.map((f) => f.y - h.y > 0.002);
+      if (up[0] || up[1]) lifted++;
+      if (up[0] && up[1]) both++;
+      if (i > 90) ys.push(b.bones.body.y - h.y);
+    }
+    const h = g.herons()[hi];
+    const stalk = { lifted, both, bob: Math.max(...ys) - Math.min(...ys), moved: Math.hypot(h.x - start!.x, h.z - start!.z) };
+    // Heron 5 waits at the edge of the north shallows, facing west; the lizard swims slowly up close in front of it.
+    g.placeHeron(5, -1.5, 2.2, -Math.PI / 2);
+    g.teleport(-1.7, 2.1, 0, -0.07);
+    const seen = [g.herons()[5].state];
+    let strikeSteps = 0;
+    for (let i = 0; i < 60 && g.run().state !== 'caught'; i++) {
+      g.setInput({ move: { x: 0, y: 0.25 } }, 1);
+      g.advance(1);
+      const now = g.herons()[5].state;
+      if (now === 'strike') strikeSteps++;
+      if (seen[seen.length - 1] !== now) seen.push(now);
+    }
+    return { stalk, seen, strikeSteps, run: g.run(), swimming: g.player().swimming };
+  }, HERON);
+  expect(s.stalk.lifted).toBeGreaterThan(40);
+  expect(s.stalk.both).toBe(0);
+  expect(s.stalk.bob).toBeLessThan(0.002);
+  expect(s.stalk.moved).toBeGreaterThan(0.1);
+  expect(s.swimming).toBe(true);
+  expect(s.seen.slice(0, 4)).toEqual(['wait', 'aim', 'strike', 'hold']);
+  expect(s.strikeSteps).toBeLessThanOrEqual(6);
+  expect(s.run.state).toBe('caught');
 });
 
 test('a stalking heron gives up on a lizard in the mangrove roots or swimming low over deep water; the safe point is a checkpoint', async ({ page }) => {
@@ -260,4 +313,61 @@ test('shark pups and rays cruise the pools, and swimming beside them ticks their
   for (const d of s.deep) expect(d).toBeGreaterThan(0.08);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
   expect(done).toMatchObject({ shark: true, rays: true });
+});
+
+test('a shark pup comes over to circle a swimmer, bites one that suddenly turns on it, and rays veer off from a swimmer heading at them', async ({ page }) => {
+  await bootLagoon(page, { swimmers: true });
+  const s = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    // Floating still in the west pool, a pup cruising by takes an interest and comes round.
+    g.teleport(-2.6, 1.9, 0, -0.12);
+    g.placeSwimmer(0, -2.0, 1.6, 0);
+    let curious = false;
+    let nearest = Infinity;
+    for (let i = 0; i < 80 && !curious; i++) {
+      g.advance(10);
+      const f = g.swimmers()[0];
+      curious = f.state === 'curious';
+      nearest = Math.min(nearest, Math.hypot(f.x + 2.6, f.z - 1.9));
+    }
+    // It's crossing just ahead: the lizard turns sharply and swims straight at it.
+    g.placeSwimmer(0, -2.37, 1.9, 0);
+    g.advance(2);
+    g.teleport(-2.6, 1.9, Math.PI / 2, -0.12);
+    const seq: string[] = [];
+    let danger = 'none';
+    for (let i = 0; i < 40 && g.run().state !== 'caught'; i++) {
+      g.setInput({ move: { x: 0, y: 1 } }, 2);
+      g.advance(2);
+      const f = g.swimmers()[0];
+      if (f.state === 'bite') danger = g.run().danger;
+      if (seq[seq.length - 1] !== f.state) seq.push(f.state);
+    }
+    const bitten = { run: g.run(), bites: g.swimmers()[0].bites };
+    g.restart();
+    // A ray in the same pool: swim straight at it from 0.3 m.
+    const r = g.swimmers().findIndex((f) => f.kind === 'ray' && f.pool === 0);
+    const ray = g.swimmers()[r];
+    g.placeSwimmer(r, ray.x, ray.z, Math.PI / 2);
+    g.teleport(ray.x - 0.3, ray.z, Math.PI / 2, -0.12);
+    let shy = false;
+    let closest = Infinity;
+    for (let i = 0; i < 10; i++) {
+      g.setInput({ move: { x: 0, y: 1 } }, 6);
+      g.advance(6);
+      const f = g.swimmers()[r];
+      const p = g.player();
+      shy ||= f.state === 'shy';
+      closest = Math.min(closest, Math.hypot(f.x - p.x, f.z - p.z));
+    }
+    return { curious, nearest, seq, danger, bitten, shy, closest };
+  });
+  expect(s.curious).toBe(true);
+  expect(s.nearest).toBeLessThan(0.5);
+  expect(s.seq.slice(0, 2)).toEqual(['cruise', 'bite']);
+  expect(s.danger).toBe('chased');
+  expect(s.bitten.run.state).toBe('caught');
+  expect(s.bitten.bites).toBe(1);
+  expect(s.shy).toBe(true);
+  expect(s.closest).toBeGreaterThan(0.15);
 });

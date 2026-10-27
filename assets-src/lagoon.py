@@ -19,10 +19,11 @@ metres, coloured per vertex, standing on z = 0 at the origin). Objects:
   (`pneumatophore`) stick up out of the mud round it, placed by the game by the hundred.
 - propagule: the pencil-shaped seedling a red mangrove drops, ~13 cm, found floating and stuck
   upright in the mud.
-- shark_pup: a blacktip reef shark pup (Carcharhinus melanopterus), 0.5 m, nose along +Z in glTF.
-  Bronze-grey above, white below, black-tipped fins. The game waves its body side to side.
-- golden_ray: a golden cownose ray (Rhinoptera steindachneri), 0.52 m across, 0.6 m with the
-  tail; nose along +Z in glTF. The game flaps its wings.
+- shark_pup: a newborn blacktip reef shark pup (Carcharhinus melanopterus), 0.38 m and slim, nose
+  along +Z in glTF. Bronze-grey above, white below, black-tipped fins, big eyes. The game sends a
+  wave down its body.
+- golden_ray: a young golden cownose ray (Rhinoptera steindachneri), 0.24 m across, 0.22 m long with the
+  tail; nose along +Z in glTF. The game flaps its wings in a wave and trails its tail.
 """
 
 import math
@@ -55,7 +56,7 @@ C = {
     'pneu_tip': srgb('#a39886'),
     'propagule': srgb('#4f6a2a'),
     'propagule_cap': srgb('#7a5a2a'),
-    'shark_top': srgb('#8b836f'),
+    'shark_top': srgb('#5e5747'),
     'shark_belly': srgb('#ece8de'),
     'fin_tip': srgb('#141414'),
     'ray_top': srgb('#c49a4c'),
@@ -221,14 +222,17 @@ def fin(mb, base, tip_up, chord, thick, colour, tip_colour, sweep):
 
 
 def shark_pup(rng):
-    """Fusiform body along -Y (nose first), round snout, the first dorsal over the pectorals."""
+    """A newborn pup, slim and supple: fusiform body along -Y (nose first), a short rounded snout,
+    big eyes, the first dorsal over the pectorals. Rings every couple of centimetres so the body can
+    bend in a smooth wave from head to tail."""
     mb = MeshBuilder()
-    L = 0.5
+    L = 0.38
     sides = 12
-    # (y from the snout, half width, half height, centre z)
-    loft = [(0.0, 0.002, 0.002, 0.0), (0.015, 0.018, 0.012, 0.0), (0.05, 0.034, 0.028, 0.002), (0.1, 0.042, 0.04, 0.004),
-            (0.16, 0.044, 0.045, 0.005), (0.24, 0.038, 0.04, 0.005), (0.32, 0.026, 0.028, 0.006), (0.38, 0.016, 0.018, 0.008),
-            (0.41, 0.010, 0.014, 0.010), (0.43, 0.004, 0.006, 0.012)]
+    # (y from the snout, half width, half height, centre z): about 7.5 times as long as it is deep.
+    loft = [(0.0, 0.002, 0.002, 0.0), (0.008, 0.011, 0.008, 0.0), (0.02, 0.017, 0.014, 0.001), (0.04, 0.021, 0.019, 0.002),
+            (0.065, 0.024, 0.023, 0.003), (0.095, 0.025, 0.026, 0.003), (0.125, 0.024, 0.026, 0.003), (0.155, 0.022, 0.024, 0.003),
+            (0.185, 0.019, 0.021, 0.003), (0.215, 0.016, 0.018, 0.004), (0.245, 0.012, 0.014, 0.005), (0.27, 0.009, 0.011, 0.006),
+            (0.29, 0.007, 0.009, 0.007), (0.305, 0.005, 0.007, 0.008), (0.318, 0.003, 0.004, 0.009)]
     rings = []
     for y, w, h, cz in loft:
         ring = []
@@ -239,39 +243,42 @@ def shark_pup(rng):
             col = mix(C['shark_belly'], C['shark_top'], min(1.0, max(0.0, up * 1.8 + 0.6)))
             ring.append(mb.vert(co, col))
         rings.append(ring)
-    nose = mb.vert((0, -L / 2 - 0.002, 0), C['shark_top'])
-    tail = mb.vert((0, 0.43 - L / 2 + 0.002, 0.012), C['shark_top'])
+    nose = mb.vert((0, -L / 2 - 0.001, 0), C['shark_top'])
+    tail = mb.vert((0, loft[-1][0] - L / 2 + 0.002, 0.009), C['shark_top'])
+    # Wound to face out (the ring runs from the back over to +x).
     for k in range(sides):
         k2 = (k + 1) % sides
-        mb.face(nose, rings[0][k], rings[0][k2])
-        mb.face(tail, rings[-1][k2], rings[-1][k])
+        mb.face(nose, rings[0][k2], rings[0][k])
+        mb.face(tail, rings[-1][k], rings[-1][k2])
     for ra, rb in zip(rings, rings[1:]):
         for k in range(sides):
             k2 = (k + 1) % sides
-            mb.face(ra[k], rb[k], rb[k2], ra[k2])
+            mb.face(ra[k], ra[k2], rb[k2], rb[k])
     y = lambda s: s - L / 2
-    # Eyes.
+    # Big dark eyes, a pup's.
     for s in (1, -1):
-        blob(mb, Vector((s * 0.022, y(0.04), 0.01)), (0.003, 0.003, 0.003), lambda c, r: C['fin_tip'], rng)
-    fin(mb, Vector((0, y(0.17), 0.045)), Vector((0, 0.025, 0.07)), 0.07, 0.004, C['shark_top'], C['fin_tip'], 0.02)
-    fin(mb, Vector((0, y(0.355), 0.022)), Vector((0, 0.01, 0.022)), 0.03, 0.003, C['shark_top'], C['fin_tip'], 0.006)
-    fin(mb, Vector((0, y(0.35), -0.014)), Vector((0, 0.01, -0.02)), 0.025, 0.003, C['shark_top'], C['fin_tip'], 0.006)
+        blob(mb, Vector((s * 0.0155, y(0.03), 0.007)), (0.0035, 0.0035, 0.0035), lambda c, r: C['fin_tip'], rng)
+    # First dorsal, a little behind the pectorals; the second dorsal and the anal fin small, far back.
+    fin(mb, Vector((0, y(0.125), 0.025)), Vector((0, 0.02, 0.045)), 0.045, 0.0025, C['shark_top'], C['fin_tip'], 0.014)
+    fin(mb, Vector((0, y(0.262), 0.016)), Vector((0, 0.008, 0.014)), 0.02, 0.002, C['shark_top'], C['fin_tip'], 0.004)
+    fin(mb, Vector((0, y(0.258), -0.006)), Vector((0, 0.008, -0.013)), 0.017, 0.002, C['shark_top'], C['fin_tip'], 0.004)
     for s in (1, -1):
-        fin(mb, Vector((s * 0.03, y(0.12), -0.018)), Vector((s * 0.085, 0.04, -0.035)), 0.06, 0.003, C['shark_top'], C['fin_tip'], 0.03)
-        fin(mb, Vector((s * 0.018, y(0.3), -0.02)), Vector((s * 0.03, 0.02, -0.015)), 0.03, 0.002, C['shark_top'], C['shark_top'], 0.01)
+        fin(mb, Vector((s * 0.018, y(0.085), -0.012)), Vector((s * 0.055, 0.03, -0.022)), 0.04, 0.002, C['shark_top'], C['fin_tip'], 0.02)
+        fin(mb, Vector((s * 0.011, y(0.215), -0.012)), Vector((s * 0.02, 0.014, -0.01)), 0.02, 0.0015, C['shark_top'], C['shark_top'], 0.006)
     # The tail: the upper lobe long and swept up, the lower short.
-    fin(mb, Vector((0, y(0.44), 0.016)), Vector((0, 0.07, 0.07)), 0.035, 0.003, C['shark_top'], C['fin_tip'], 0.02)
-    fin(mb, Vector((0, y(0.43), 0.004)), Vector((0, 0.035, -0.045)), 0.03, 0.003, C['shark_top'], C['fin_tip'], 0.01)
+    fin(mb, Vector((0, y(0.322), 0.011)), Vector((0, 0.05, 0.045)), 0.024, 0.002, C['shark_top'], C['fin_tip'], 0.014)
+    fin(mb, Vector((0, y(0.315), 0.003)), Vector((0, 0.024, -0.03)), 0.02, 0.002, C['shark_top'], C['fin_tip'], 0.007)
     return mb
 
 
 def golden_ray(rng):
-    """A flat diamond disc, wider than long, the head a notched lobe in front, a whip tail behind.
-    Built along -Y nose first; wings out along +-X."""
+    """A young ray: a flat diamond disc, wider than long, the head a notched lobe in front, a whip
+    tail behind. Built along -Y nose first; wings out along +-X, with columns enough for the wave
+    that runs back along each wing as it flaps."""
     mb = MeshBuilder()
-    span = 0.26
-    length = 0.3
-    cols, rows = 14, 10
+    span = 0.12
+    length = 0.135
+    cols, rows = 18, 10
     top, bot = [], []
     for i in range(rows + 1):
         v = i / rows  # 0 nose, 1 back
@@ -284,9 +291,9 @@ def golden_ray(rng):
             yback = length * 0.42 - abs(u) * length * 0.38
             yy = yfront + (yback - yfront) * v
             x = u * span * min(1.0, 0.35 + 0.65 * math.sin(math.pi * (0.1 + 0.8 * v)))
-            thick = 0.018 * (1 - abs(u) ** 1.3) * math.sin(math.pi * (0.06 + 0.9 * v)) + 0.0015
+            thick = 0.009 * (1 - abs(u) ** 1.3) * math.sin(math.pi * (0.06 + 0.9 * v)) + 0.001
             co = Vector((x, yy, 0))
-            spot = 0.5 + 0.5 * noise.noise(Vector((x * 30, yy * 30, 3)))
+            spot = 0.5 + 0.5 * noise.noise(Vector((x * 50, yy * 50, 3)))
             ctop = mix(C['ray_top'], C['ray_dark'], 0.25 * spot + 0.3 * abs(u) ** 2)
             rt.append(mb.vert(co + Vector((0, 0, thick)), ctop))
             rb.append(mb.vert(co - Vector((0, 0, thick * 0.6)), C['ray_belly']))
@@ -304,12 +311,12 @@ def golden_ray(rng):
         mb.face(top[i][0], top[i + 1][0], bot[i + 1][0], bot[i][0])
         mb.face(top[i + 1][cols], top[i][cols], bot[i][cols], bot[i + 1][cols])
     # The cownose head lobe and the eyes on its sides.
-    blob(mb, Vector((0, -length * 0.47, 0.004)), (0.035, 0.03, 0.016), lambda c, r: C['ray_top'], rng)
+    blob(mb, Vector((0, -length * 0.47, 0.003)), (0.017, 0.0145, 0.0078), lambda c, r: C['ray_top'], rng)
     for s in (1, -1):
-        blob(mb, Vector((s * 0.03, -length * 0.42, 0.012)), (0.004, 0.004, 0.004), lambda c, r: C['fin_tip'], rng)
-    # Whip tail.
-    tpts = [Vector((0, length * 0.38, 0.004)), Vector((0, length * 0.6, 0.004)), Vector((0, length * 0.9, 0.002)), Vector((0, length * 1.15, 0.0))]
-    tube(mb, tpts, lambda s: 0.005 * (1 - 0.85 * s), lambda co, s: C['ray_dark'], sides=5)
+        blob(mb, Vector((s * 0.0145, -length * 0.42, 0.006)), (0.0024, 0.0024, 0.0024), lambda c, r: C['fin_tip'], rng)
+    # Whip tail, in more pieces so it can trail behind a turn.
+    tpts = [Vector((0, length * (0.38 + 0.1 * k), 0.003 * (1 - k / 8))) for k in range(9)]
+    tube(mb, tpts, lambda s: 0.0027 * (1 - 0.85 * s), lambda co, s: C['ray_dark'], sides=5)
     return mb
 
 
