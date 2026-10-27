@@ -14,35 +14,33 @@ import { COLONY } from './layout';
 /** Adults are this many times the hatchling's size (about 0.65 m, a Fernandina adult's length). */
 const SCALE = 3.4;
 /**
- * Where each lies round the colony's middle (m, x and z off it), which way it faces and its size: two
- * heaps basking side by side toward the sea, either side of an open lane (along z = 0), one across
- * the lane's seaward end, and open rock on the landward side where the hatchlings come in.
+ * Where each lies round the colony's middle (m, x and z off it), which way it faces and its size:
+ * heaped along the shore between the water and an open lane (x = `LANE_X`) that runs south out of
+ * the colony toward the island's forest edge (`grove.ts`), a couple more on its landward side.
  */
 const SPOTS = [
-  // North of the lane.
-  { x: -0.08, z: 0.27, yaw: 1.5, s: 0.95 },
-  { x: 0.22, z: 0.3, yaw: 1.8, s: 1.0 },
-  { x: 0.05, z: 0.45, yaw: 1.25, s: 1.05 },
-  { x: 0.3, z: 0.5, yaw: 2.3, s: 0.9 },
-  // South of it.
-  { x: -0.06, z: -0.27, yaw: 1.7, s: 1.0 },
-  { x: 0.24, z: -0.29, yaw: 1.4, s: 0.95 },
-  { x: 0.08, z: -0.46, yaw: 1.95, s: 1.08 },
-  { x: 0.32, z: -0.5, yaw: 1.0, s: 0.92 },
-  // Across its end, by the water.
-  { x: 0.38, z: 0.0, yaw: 0.1, s: 0.9 },
+  // Seaward of the lane, lying mostly along the shore.
+  { x: 0.06, z: 0.34, yaw: 3.0, s: 0.95 },
+  { x: 0.25, z: 0.2, yaw: 2.6, s: 1.0 },
+  { x: 0.1, z: -0.3, yaw: 3.3, s: 1.05 },
+  { x: 0.28, z: -0.2, yaw: 2.9, s: 1.0 },
+  { x: 0.3, z: -0.62, yaw: 1.7, s: 0.9 },
+  { x: 0.24, z: 0.55, yaw: 1.9, s: 0.92 },
+  // Landward of it.
+  { x: -0.46, z: -0.42, yaw: 3.6, s: 0.95 },
+  { x: -0.5, z: 0.22, yaw: 2.4, s: 0.9 },
 ];
-/** The way in among them, from the lane's mouth to the open spot at its end (m off the middle). */
-export const COLONY_LANE = [
-  { x: -0.45, z: 0 },
-  { x: 0.12, z: 0 },
-];
+/** The open lane's x off the middle, and how far south (z off the middle) the walk-in follows it. */
+export const LANE_X = -0.13;
+export const LANE_END = -0.8;
+/** As far as it goes down the lane when it came in from the south, short of a lava cactus. */
+export const LANE_FAR = -0.95;
 /** Sally Lightfoot crabs picking over the lava between them (m off the middle), at this size. */
 const CRABS = [
-  { x: 0.24, z: 0.1 },
-  { x: 0.4, z: -0.24 },
-  { x: -0.25, z: -0.5 },
-  { x: -0.1, z: 0.62 },
+  { x: 0.18, z: -0.02 },
+  { x: 0.2, z: -0.86 },
+  { x: -0.32, z: -0.12 },
+  { x: -0.3, z: -0.95 },
 ];
 const CRAB_SCALE = 1.8;
 /** Their darker, browner skin than a hatchling's. */

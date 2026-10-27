@@ -1,6 +1,6 @@
 # Nesting dunes (`?level=dunes`)
 
-A second level, opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the island stays the default, and the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
+The first stage and the default load (the island is `?level=island`), also opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
 the goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
 also holds each stage's goal count, `GOAL_COUNT`, checked under `?test`), so a stage reloads with its
 goals as they were left. The picker is off in tests unless the URL has `picker`. The lizard hatches in a
@@ -62,18 +62,26 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
 - `hatchlings.ts`: four nest-mates on the lizard's own controller and drawing, never solid to it.
   They come up from burrows round the nest, dash and freeze toward the colony, freeze while watched,
   dive for a bush when chased, and are replaced after being caught or getting home.
-- `colony.ts`: meant to look like the island's colony, where the hatchling is headed. Nine adults
-  (the lizard model ×3.4, tinted) heaped either side of an open lane (`COLONY_LANE`), one across its
-  seaward end, on a flat of black lava (`COLONY_FLAT` in `layout.ts`) ringed by big boulders
-  (`COLONY_ROCKS`, placed last in `props.ts` so nothing before them moves); they turn their heads and
-  sneeze salt (`SaltSpray`, `sneezeNod` from `iguana.ts`). Four Sally Lightfoot crabs (`crab.glb`,
-  idle and graze clips only). Adults and crabs animate only within 4 m of the camera. Adults are
-  solid (a ball per spine joint) until the walk-in.
-- `arrival.ts`: C on a won run (`runKeys`' `onContinue`) walks the hatchling in among the adults:
-  it steers itself through the player's input (round outside the heaps first when it came in from
-  the north or south), the adults stop being solid, the camera eases up behind it, and after
-  `WALK_IN` s (on the lane's last stretch, at most 4.5 s) the screen fades to black over a second
-  (`hud.fade`), then the next stage loads. Hooks `leave()`, `arrival()` and `colony()`.
+- `colony.ts`: meant to look like the island's colony, where the hatchling is headed. Six adults
+  (the lizard model ×3.4, tinted) heaped along the shore seaward of an open lane running south
+  (`LANE_X`, to `LANE_END`), two more landward of it, on a flat of black lava (`COLONY_FLAT` in
+  `layout.ts`) ringed by big boulders (`COLONY_ROCKS`, placed last in `props.ts` so nothing before
+  them moves); they turn their heads and sneeze salt (`SaltSpray`, `sneezeNod` from `iguana.ts`).
+  Four Sally Lightfoot crabs (`crab.glb`, idle and graze clips only). Adults and crabs animate only
+  within 4 m of the camera. Adults are solid (a ball per spine joint) until the walk-in. Keep the
+  adults within about 0.75 m of the middle: the shore rocks and cactus start beyond that.
+- `grove.ts`: the island's forest edge on the shore south of the colony (`GROVE`): tree daisies and
+  palo santo from the island's `props.glb`, solid trunks, placed after the plants from their own
+  random numbers so nothing else moves, the plants in their trunks removed. It's what the walk-in
+  heads for, so leaving the dunes looks like walking into the island.
+- `arrival.ts`: C on a won run (`runKeys`' `onContinue`) walks the hatchling on: it steers itself
+  through the player's input, always forward, in one smooth bend from the way it's going round to
+  the south (from the north, round by the landward side), joins the lane at no more than 45° and
+  goes down it toward the grove. The adults stop being solid and the finish marker is hidden; the
+  camera eases up behind it and swings round to look straight down the lane at the trees. After
+  `WALK_IN` s (on the lane's last stretch, at most `WALK_MAX` 5 s) the screen fades to black over
+  `FADE_OUT` s (`hud.fade`), then the island loads. Waypoints it has passed close by are skipped,
+  so it never circles back. Hooks `leave()`, `arrival()` and `colony()`.
 - `run.ts`: ready → running (first movement) → caught (2.5 s in the coils) or home. Reaching a safe
   point sets the checkpoint: inside it no snake hunts the lizard (`BodyPrey.huntable`), and a later
   catch puts the lizard back there with the clock still running; caught before the first, it starts
@@ -83,8 +91,9 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   the colony, freeze until a watching racer looks away, outrun one, cross without being chased.
   The warnings are one word ("Freeze!" while watched, "Run!" while chased) and the intro card three
   lines.
-- `markers.ts`: a pale ring at the nest; only a faint teal ring on the ground at each safe point
-  (paler green once reached), so they're found rather than steered by; a golden light column (unfogged, additive, fades as the
+- `markers.ts`: a pale ring at the nest; a faint teal ring on the ground at each safe point
+  (paler green once reached) under a faint 0.6 m column that only fades in as the camera comes
+  within about 3.5 m (`SAFE_COLUMN`), so they're found rather than steered by; a golden light column (unfogged, additive, fades as the
   camera comes in) and ring at the colony. `hud.ts`: intro card, clock and best, distance and arrow
   to the light, danger warning, messages, controls.
 

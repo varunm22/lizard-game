@@ -47,6 +47,8 @@ function column(radius: number, height: number, colour: THREE.ColorRepresentatio
 }
 
 const SAFE_COLOUR = 0x7fe3d4;
+/** A safe point's faint column: this tall (m), at this strength once the camera is within `near` (m), gone past `far`. */
+const SAFE_COLUMN = { height: 0.6, strength: 0.22, near: 1.2, far: 3.5 };
 const SAFE_REACHED = 0xb6f0a0;
 
 /** A glowing ring lying on the ground round a spot, following its rise and fall. */
@@ -102,8 +104,8 @@ function ring(x: number, z: number, radius: number, width: number, colour: THREE
 
 /**
  * The run's start, safe points and finish: a pale ring and a low pillar of light over the nest
- * burrow; only a faint teal ring on the ground at each safe point, paler once reached, so they're
- * found rather than steered by; and a tall golden column of light and a ring round the finish,
+ * burrow; a faint teal ring on the ground at each safe point, paler once reached, under a faint
+ * column that only shows as the camera comes near, so they're found rather than steered by; and a tall golden column of light and a ring round the finish,
  * visible from the start, the one thing to make for. The column dims as the camera comes in under it.
  */
 /** Where a run starts and ends, and its safe points (world m; `r` the radius each counts within). */
@@ -123,6 +125,9 @@ export class Markers {
   private finishColumn: THREE.ShaderMaterial;
   readonly safe: THREE.Group[] = [];
   private safeRings: THREE.ShaderMaterial[] = [];
+  private safeColumns: THREE.ShaderMaterial[] = [];
+  /** How strong each safe point's column is when the camera is near (less once reached). */
+  private safeStrength: number[] = [];
 
   constructor(
     scene: THREE.Scene,
@@ -153,10 +158,14 @@ export class Markers {
       const group = new THREE.Group();
       const r = ring(p.x, p.z, p.r, 0.01, SAFE_COLOUR, ground);
       add(group, r);
+      const c = column(p.r, SAFE_COLUMN.height, SAFE_COLOUR, 0);
+      c.position.set(p.x, ground(p.x, p.z) - 0.02, p.z);
+      add(group, c);
       group.name = `safe-marker-${i}`;
       scene.add(group);
       this.safe.push(group);
       this.safeRings.push(r.material as THREE.ShaderMaterial);
+      this.safeColumns.push(c.material as THREE.ShaderMaterial);
     }
     SAFE_POINTS.forEach((_, i) => this.reached(i, false));
   }
@@ -166,14 +175,23 @@ export class Markers {
     const ring = this.safeRings[i].uniforms;
     ring.colour.value.set(yes ? SAFE_REACHED : SAFE_COLOUR);
     ring.strength.value = yes ? 0.25 : 0.45;
+    this.safeColumns[i].uniforms.colour.value.set(yes ? SAFE_REACHED : SAFE_COLOUR);
+    this.safeStrength[i] = SAFE_COLUMN.strength * (yes ? 0.6 : 1);
   }
 
-  /** Each frame: the shimmer, and the finish column dimmed as the camera comes in under it. */
+  /**
+   * Each frame: the shimmer, the finish column dimmed as the camera comes in under it, and each safe
+   * point's column faded in as the camera nears it.
+   */
   update(dt: number, camera: THREE.Vector3) {
     this.time += dt;
     for (const m of this.shaders) m.uniforms.time.value = this.time;
     const { finish: COLONY } = this.marks;
     const d = Math.hypot(camera.x - COLONY.x, camera.z - COLONY.z);
     this.finishColumn.uniforms.strength.value = 0.75 * THREE.MathUtils.smoothstep(d, COLONY.r + 0.3, COLONY.r + 2.5);
+    for (const [i, p] of this.marks.safe.entries()) {
+      const near = 1 - THREE.MathUtils.smoothstep(Math.hypot(camera.x - p.x, camera.z - p.z), SAFE_COLUMN.near, SAFE_COLUMN.far);
+      this.safeColumns[i].uniforms.strength.value = this.safeStrength[i] * near;
+    }
   }
 }

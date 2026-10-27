@@ -31,7 +31,8 @@ const CSS = `
   background:#fffc;font:600 15px system-ui,sans-serif;color:#3a3326;pointer-events:none;white-space:nowrap}
 .dunes-top .best{font-weight:500;color:#7a6a50}
 .dunes-top .arrow{display:inline-block;color:#c8901a;font-size:18px;line-height:1}
-.dunes-danger{position:fixed;left:50%;top:56px;transform:translateX(-50%);padding:5px 14px;border-radius:9px;font:600 15px system-ui,sans-serif;
+.dunes-danger{position:fixed;left:50%;top:60px;transform:translateX(-50%);padding:8px 26px;border-radius:14px;font:800 30px system-ui,sans-serif;
+  letter-spacing:.02em;box-shadow:0 4px 16px #0003;
   pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap}
 .dunes-danger.watched{opacity:1;background:#fff3c8f0;color:#7a5a00}
 .dunes-danger.chased{opacity:1;background:#ffd6ccf0;color:#9a2a10}
