@@ -54,8 +54,9 @@ drive the herons' tangle and wading rules.
 ## Herons (`herons.ts`, `heronBody.ts`, model in `assets-src/heron.py`)
 
 Six of them, tuning in `HERON`. A heron waits at a spot, head turning, and moves to its next spot
-every 14 to 24 s. It sees the lizard within 1.7 m and ±115° of its bill if nothing solid is between
-(roots and trunks included), then stalks it crouched, wading no deeper than 7 cm, never into a red
+every 14 to 24 s. It sees the lizard within 2.6 m and ±115° of its bill if nothing solid is between
+(roots and trunks included); after 0.4 s of seeing it (sooner if it moves or is near, slower if it
+holds still beyond 1.4 m) it stalks it crouched, wading no deeper than 7 cm, never into a red
 mangrove's roots, the channel or 2.5 m from its spot. Within 20 cm of its shoulders it draws its neck
 back for 0.25 s and stabs (0.075 s) at where the lizard will be, the body lunging up to 3.5 cm after
 the bill; the bill tip within 4 cm of the snout, middle or hips is a hit, which takes
@@ -65,8 +66,12 @@ health leaves the lizard in the heron's bill (`hold`). A heron that isn't
 stalking yet strikes all the same at a lizard that comes within 22 cm in view (`ambush`), after only
 a 0.1 s beat: a lizard swimming slowly past in the shallows gets speared with no stalking warning.
 The lizard is out of reach in a tangle (within 85% of an old mangrove's root reach) or swimming over
-water deeper than 11 cm (`hidden()`); it also gets away by staying out of sight 1.4 s or out of reach
-4 s. `onLose` says which, for the goals.
+water deeper than 11 cm (`hidden()`). A heron keeps track of a lizard it can't see: it remembers
+where it last saw it and how it was going (`last`, `lastVel`), stalks on to where it should be by now
+(up to 1.5 s on), and looks round there; only 5 s without a sight, or 8 s out of reach, ends the hunt.
+`onLose` says which, for the goals. Having lost it, the heron stays where it is for 8 s on the alert
+(`alert`), crouched and facing where the lizard went, and takes up the hunt three times as fast at a
+glimpse of it.
 
 Stalking is slow and careful (`GAIT.stalk`): one foot rises quickly and comes down slowly over 0.6 s
 while the body glides on, then both feet stand still a 0.3 s beat while the body all but stops,

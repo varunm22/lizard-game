@@ -256,6 +256,44 @@ test('a stalking heron steps slowly, one foot at a time, its body level; a swimm
   expect(s.run.state).toBe('caught');
 });
 
+test('a heron spots a moving lizard from over 2 m off, and after losing one stays on the alert and takes up the hunt again at a glimpse', async ({ page }) => {
+  await bootLagoon(page, { herons: [HERON] });
+  const s = await page.evaluate((hi) => {
+    const g = window.__lagoon!;
+    const h0 = g.herons()[hi];
+    const until = (state: string, steps: number) => {
+      for (let i = 0; i < steps; i++) {
+        g.advance(1);
+        if (g.herons()[hi].state === state) return i;
+      }
+      return -1;
+    };
+    // A lizard on the move 2.2 m in front.
+    g.placeHeron(hi, h0.x, h0.z, Math.PI);
+    g.teleport(h0.x, h0.z - 2.2, Math.PI / 2);
+    g.setInput({ move: { x: 0, y: 1 } }, 1);
+    const farSpot = until('stalk', 120);
+    g.setInput(null);
+    // Away into the deep pool: lost, but it stays on the alert, and a glimpse of it back in the open starts the hunt at once.
+    g.teleport(-2.6, 1.9, 0, -0.15);
+    g.advance(5);
+    const lost = g.herons()[hi];
+    g.advance(60);
+    const h1 = g.herons()[hi];
+    // Back in the open, in front of it.
+    const x = h1.x + Math.sin(h1.yaw) * 0.8;
+    const z = h1.z + Math.cos(h1.yaw) * 0.8;
+    g.teleport(x, z, 0);
+    const again = until('stalk', 60);
+    return { farSpot, lost: { state: lost.state, alert: lost.alert }, again };
+  }, HERON);
+  expect(s.farSpot).toBeGreaterThan(0);
+  expect(s.lost.state).toBe('wait');
+  expect(s.lost.alert).toBeGreaterThan(5);
+  expect(s.again).toBeGreaterThanOrEqual(0);
+  expect(s.again).toBeLessThan(20);
+});
+
 test('a stalking heron gives up on a lizard in the mangrove roots or swimming low over deep water; the safe point is a checkpoint', async ({ page }) => {
   await bootLagoon(page, { herons: [HERON] });
   const s = await page.evaluate((hi) => {

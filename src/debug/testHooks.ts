@@ -417,6 +417,9 @@ export interface LagoonTestHooks
     yaw: number;
     bill: { x: number; y: number; z: number };
     sees: boolean;
+    /** Seconds since it last saw the lizard while hunting, and left on the alert after losing it. */
+    unseen: number;
+    alert: number;
     strikes: number;
     catches: number;
     paused: boolean;

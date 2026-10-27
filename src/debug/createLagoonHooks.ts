@@ -96,6 +96,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
         yaw: h.yaw,
         bill: xyz(h.billTip(new THREE.Vector3())),
         sees: h.sees,
+        unseen: h.unseen,
+        alert: h.alert,
         strikes: h.strikes,
         catches: h.catches,
         paused: h.paused,
