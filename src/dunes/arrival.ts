@@ -2,23 +2,24 @@ import * as THREE from 'three';
 import type { InputState } from '../input';
 import { wrapAngle } from '../math/angles';
 import type { PlayerController } from '../player/controller';
-import { COLONY_LANE } from './colony';
+import { LANE_END, LANE_FAR, LANE_X } from './colony';
 import { COLONY } from './layout';
 
 /**
- * Walking in among the adults at least this long (s) before the screen starts to fade, and until it's
- * on the lane's last stretch (come in round the heaps) but no longer than `WALK_MAX`; then the fade.
+ * Walking on at least this long (s) before the screen starts to fade, and until it's on the lane's
+ * last stretch but no longer than `WALK_MAX`; then the fade.
  */
-export const WALK_IN = 2.4;
-const WALK_MAX = 4.5;
-export const FADE_OUT = 1.0;
-/** Come in more than `wedge` (radians) off the lane's line, round past the heaps, it goes round at `r` (m) till it's within that, a waypoint every `step` radians. */
-const AROUND = { wedge: 1.0, r: 0.74, step: 0.3 };
+export const WALK_IN = 3.0;
+const WALK_MAX = 5.0;
+export const FADE_OUT = 1.2;
+/** The bend round into the lane: a waypoint every `step` (m), turning `turn` (radians) each. */
+const BEND = { step: 0.08, turn: 0.45 };
 
 /**
- * Leaving the dunes once the run is won: the hatchling walks on in among the adults, up the open
- * lane between their heaps toward the water, as the screen fades to black; then on to the next
- * stage. It steers itself, through the same input as the player's, so it walks as the player does.
+ * Leaving the dunes once the run is won: the hatchling walks on past the adults, bearing round into
+ * the open lane beside their heaps and down it toward the island's forest edge, as the screen fades
+ * to black; then on to the island. It steers itself, through the same input as the player's, so it
+ * walks as the player does, always forward, the camera following behind.
  */
 export class Arrival {
   /** Seconds since it began, or -1 before it has; and when the fade began, or -1. */
@@ -56,35 +57,41 @@ export class Arrival {
     const z = this.feet.z - COLONY.z;
     this.path = [];
     this.next = 0;
-    // Come in from the north or south, it first steps out clear of the adults and goes round to the
-    // lane's mouth.
-    const from = Math.atan2(z, x);
-    const round = wrapAngle(Math.PI - from);
-    if (Math.abs(round) > AROUND.wedge) {
-      this.path.push({ x: Math.cos(from) * AROUND.r, z: Math.sin(from) * AROUND.r });
-      const left = round - Math.sign(round) * AROUND.wedge;
-      const steps = Math.ceil(Math.abs(left) / AROUND.step);
-      for (let i = 1; i <= steps; i++) {
-        const a = from + (left * i) / steps;
-        this.path.push({ x: Math.cos(a) * AROUND.r, z: Math.sin(a) * AROUND.r });
-      }
+    // A smooth bend from the way it's going round to the south, turning the shorter way (from
+    // the north, round by the landward side, away from the heaps), then down the lane.
+    let yaw = this.player.yaw;
+    let px = x;
+    let pz = z;
+    const left = wrapAngle(Math.PI - yaw);
+    const turn = Math.abs(wrapAngle(yaw)) < 0.4 ? -1 : Math.sign(left);
+    while (Math.abs(wrapAngle(Math.PI - yaw)) > BEND.turn) {
+      yaw += turn * BEND.turn;
+      px += Math.sin(yaw) * BEND.step;
+      pz += Math.cos(yaw) * BEND.step;
+      this.path.push({ x: px, z: pz });
     }
-    // Up the lane, from its mouth unless it's already in it.
-    const inLane = Math.abs(z) < 0.1 && x > COLONY_LANE[0].x;
-    this.path.push(...COLONY_LANE.slice(inLane ? 1 : 0));
+    // Come in from the south, it goes on a little further, short of the cactus beyond the lane's end.
+    const end = Math.max(LANE_FAR, Math.min(LANE_END, pz - 0.3));
+    // Joining the lane at no more than 45 degrees.
+    for (let lz = Math.min(pz - 0.15 - Math.abs(px - LANE_X), 0.3); lz > end; lz -= 0.35) this.path.push({ x: LANE_X, z: lz });
+    this.path.push({ x: LANE_X, z: end });
   }
 
   /**
    * Each frame while walking in, after the follow camera: the camera eases up and back behind the
-   * hatchling, rising to look on over the heaps toward the sea.
+   * hatchling, swinging round to look down the lane, rising and looking up as it goes, down the lane past the heaps to the trees.
    */
   view(camera: THREE.Camera, feet: THREE.Vector3, yaw: number, dt: number) {
     if (this.t < 0) return;
-    const sx = Math.sin(yaw);
-    const sz = Math.cos(yaw);
-    const up = 0.16 + 0.14 * THREE.MathUtils.smoothstep(this.t, 0, WALK_IN + FADE_OUT);
+    // From behind the hatchling round to looking straight down the lane (south), so the view ahead
+    // is the trees whichever way it came in.
+    const along = yaw + wrapAngle(Math.PI - yaw) * THREE.MathUtils.smoothstep(this.t, 0.3, 2);
+    const sx = Math.sin(along);
+    const sz = Math.cos(along);
+    const up = 0.16 + 0.1 * THREE.MathUtils.smoothstep(this.t, 0, WALK_IN + FADE_OUT);
     this.want.set(feet.x - sx * 0.45, feet.y + up, feet.z - sz * 0.45);
-    this.look.lerp(this.aim.set(feet.x + sx * 0.5, feet.y + 0.03, feet.z + sz * 0.5), this.t < dt ? 1 : 1 - Math.exp(-4 * dt));
+    const lift = 0.09 * THREE.MathUtils.smoothstep(this.t, 0.5, WALK_IN);
+    this.look.lerp(this.aim.set(feet.x + sx * 0.5, feet.y + 0.03 + lift, feet.z + sz * 0.5), this.t < dt ? 1 : 1 - Math.exp(-4 * dt));
     camera.position.lerp(this.want, 1 - Math.exp(-2.5 * dt));
     camera.lookAt(this.look);
   }
@@ -100,7 +107,15 @@ export class Arrival {
     }
     this.player.feetAt(1, this.feet);
     let to = this.path[this.next];
-    while (to && Math.hypot(COLONY.x + to.x - this.feet.x, COLONY.z + to.z - this.feet.z) < 0.05) to = this.path[++this.next];
+    // On to the next waypoint once it's there, or once it has gone by one close at hand (behind it),
+    // rather than circling back to it.
+    while (to) {
+      const dx = COLONY.x + to.x - this.feet.x;
+      const dz = COLONY.z + to.z - this.feet.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.05 && (d > 0.2 || Math.abs(wrapAngle(Math.atan2(dx, dz) - this.player.yaw)) < 1.6)) break;
+      to = this.path[++this.next];
+    }
     if (!to) return { move: { x: 0, y: 0 }, run: false, jump: false };
     const off = wrapAngle(Math.atan2(COLONY.x + to.x - this.feet.x, COLONY.z + to.z - this.feet.z) - this.player.yaw);
     // Turning right lowers the yaw; slow up for a sharp turn.

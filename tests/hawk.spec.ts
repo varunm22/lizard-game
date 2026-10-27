@@ -307,8 +307,15 @@ test('moving about beside its kill drives the hawk off; it circles, comes back o
   const r = await page.evaluate(() => {
     const g = window.__game!;
     g.advance(2, false);
+    // This test is about what happens at the kill, not the chase (the one above covers that): if
+    // the crab gets away into the rocks and the hawk gives up or turns to the lizard, set it on the
+    // nearest crab again.
     g.hawkDo('hunt_crab');
-    for (let i = 0; i < 40 * 60 && !g.hawk().feeding; i++) g.advance(1, false);
+    for (let i = 0; i < 40 * 60 && !g.hawk().feeding; i++) {
+      g.advance(1, false);
+      const h = g.hawk();
+      if (!h.feeding && h.quarry?.kind !== 'crab' && h.state !== 'strike') g.hawkDo('hunt_crab');
+    }
     const kill = g.hawk().quarry!;
     const crab = () => g.crabs()[kill.index];
     // Lying still right beside it doesn't bother it.

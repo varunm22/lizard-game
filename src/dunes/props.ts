@@ -19,9 +19,6 @@ import { BURROWS, COLONY, cove, DUNES_EDGE, duneLava, duneSand, duneShoreX, KNOL
  */
 const SEED = 61;
 
-/** Tints over the props' grey rock and bark: black basalt, and driftwood bleached silver by sun and salt. */
-const BASALT = 0x6c6763;
-const DRIFTWOOD = 0xd9d4cc;
 /** A saltbush's woody base: a solid cylinder this wide and high (m) under the canopy's middle. */
 const BUSH_BASE = { radius: 0.03, height: 0.08 };
 
@@ -50,9 +47,8 @@ export interface DunesProps {
   bushes: Bushes;
 }
 
-export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: THREE.Scene, world: RAPIER.World): Promise<DunesProps> {
+export async function buildDuneProps(dunesUrl: string, scene: THREE.Scene, world: RAPIER.World): Promise<DunesProps> {
   const kit: Kit = { geometry: new Map(), extras: new Map() };
-  await loadKit(propsUrl, kit);
   await loadKit(dunesUrl, kit);
   const need = (name: string) => {
     const g = kit.geometry.get(name);
@@ -94,7 +90,7 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   const yawQ = (yaw: number) => new THREE.Quaternion().setFromAxisAngle(Y, yaw);
 
   // Rocks: lava boulders, each a convex hull, sunk a little into the ground.
-  const rockVariants = [...kit.geometry.keys()].filter((n) => n.startsWith('rock_'));
+  const rockVariants = [...kit.geometry.keys()].filter((n) => n.startsWith('basalt_'));
   /** Rocks being placed for a safe point's crevice, which may stand by it. */
   const safeRocks: [number, number][] = [];
   /** A boulder at (x, z) of radius r, if there's room; `placed` puts it there even against others (a crevice, a pile). */
@@ -106,7 +102,7 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
     const sc = r / Math.max(box.max.x, -box.min.x, box.max.z, -box.min.z);
     const rot = yawQ(range(0, 2 * Math.PI));
     const y = lowGround(x, z, r * 0.6) - box.min.y * sc - sink * (box.max.y - box.min.y) * sc;
-    const mesh = new THREE.Mesh(geometry, material(BASALT));
+    const mesh = new THREE.Mesh(geometry, material());
     mesh.position.set(x, y, z);
     mesh.quaternion.copy(rot);
     mesh.scale.setScalar(sc);
@@ -167,26 +163,26 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   });
 
   // Upright plants with a solid stem: lava cactus on the bare lava, mangroves at the back of the cove.
-  const tree = (kind: string, x: number, z: number, tint?: THREE.ColorRepresentation) => {
+  const tree = (kind: string, x: number, z: number) => {
     const geometry = need(kind);
     const { trunk_radius: r, trunk_height: h } = kit.extras.get(kind)!;
     const sc = range(0.85, 1.15);
     const y = lowGround(x, z, r * sc) - 0.01;
-    const mesh = new THREE.Mesh(geometry, material(tint));
+    const mesh = new THREE.Mesh(geometry, material());
     mesh.position.set(x, y, z);
     mesh.quaternion.copy(yawQ(range(0, 2 * Math.PI)));
     mesh.scale.setScalar(sc);
     const half = (h * sc + 0.05) / 2;
-    const cactus = kind === 'lava_cactus';
+    const cactus = kind.startsWith('dune_cactus');
     const desc = RAPIER.ColliderDesc.cylinder(half, r * sc).setTranslation(x, y - 0.05 + half, z).setFriction(0.9);
     if (cactus) desc.setCollisionGroups((CACTUS_GROUP << 16) | 0xffff);
     const collider = world.createCollider(desc);
-    add({ name: `${kind.replace('_', '-')}-${obstacles.length}`, kind: cactus ? 'cactus' : 'tree', position: mesh.position, height: h * sc, radius: r * sc, mesh, collider });
+    add({ name: `${cactus ? 'lava-cactus' : kind}-${obstacles.length}`, kind: cactus ? 'cactus' : 'tree', position: mesh.position, height: h * sc, radius: r * sc, mesh, collider });
   };
   for (let i = 0, placed = 0; i < 5000 && placed < 30; i++) {
     const [x, z] = anywhere();
     if (duneLava(x, z) < 0.8 || terrainHeight(x, z) < WATER_Y + 0.015 || !inside(x, z, 0.06) || !free(x, z, 0.06, 0.03)) continue;
-    tree('lava_cactus', x, z);
+    tree(`dune_cactus_${placed % 2}`, x, z);
     placed++;
   }
   for (let i = 0, placed = 0; i < 800 && placed < 4; i++) {
@@ -201,18 +197,21 @@ export async function buildDuneProps(propsUrl: string, dunesUrl: string, scene: 
   for (let i = 0, placed = 0; i < 3000 && placed < 11; i++) {
     const z = range(-6.4, 6.4);
     const x = duneShoreX(z) - range(0.12, 0.6);
-    const variant = pick(['log_0', 'log_1', 'log_1', 'log_2']);
-    const { radius: r, length } = kit.extras.get(variant)!;
+    const variant = pick(['driftwood_0', 'driftwood_1', 'driftwood_1', 'driftwood_2']);
+    const { radius: r, tip, length } = kit.extras.get(variant)!;
     const yaw = range(-0.6, 0.6) + Math.PI / 2;
     const axis = new THREE.Vector3(length / 2, 0, 0).applyAxisAngle(Y, yaw);
     const ends = [-1, -0.5, 0, 0.5, 1].map((t) => [x + axis.x * t, z + axis.z * t] as const);
     if (!ends.every(([ex, ez]) => inside(ex, ez, r) && free(ex, ez, r, 0.05) && terrainHeight(ex, ez) > WATER_Y + 0.01)) continue;
     const y = Math.min(...ends.map(([ex, ez]) => terrainHeight(ex, ez))) - 0.2 * r;
     const rot = yawQ(yaw);
-    const mesh = new THREE.Mesh(need(variant), material(DRIFTWOOD));
+    const mesh = new THREE.Mesh(need(variant), material());
     mesh.position.set(x, y, z);
     mesh.quaternion.copy(rot);
-    const shape = new THREE.CylinderGeometry(r, r, length, 14).rotateZ(Math.PI / 2).translate(0, r, 0);
+    // The trunk tapers from the root end (-x) to the tip, its underside along the ground.
+    const shape = new THREE.CylinderGeometry(tip, r, length, 14).rotateZ(-Math.PI / 2);
+    const pos = shape.attributes.position;
+    for (let k = 0; k < pos.count; k++) pos.setY(k, pos.getY(k) + r + ((tip - r) * (pos.getX(k) / length + 0.5)));
     const collider = world.createCollider(hull(shape).setTranslation(x, y, z).setRotation(rot).setFriction(0.9));
     add({ name: `driftwood-${obstacles.length}`, kind: 'log', position: mesh.position, height: y + 2 * r - terrainHeight(x, z), radius: r, axis, mesh, collider });
     placed++;
