@@ -5,6 +5,7 @@ import { rng } from '../world/noise';
 import { covers, type Obstacle } from '../world/obstacles';
 import { WATER_Y } from '../world/shore';
 import type { GroundProbe } from '../dunes/ground';
+import { terrainHeight } from '../world/terrain';
 import { HeronBody, type HeronKit } from './heronBody';
 import { acrossChannel, depthAt, HERON_HAUNTS, LAGOON_EDGE } from './layout';
 import type { Mangrove } from './props';
@@ -87,6 +88,9 @@ export const HERON = {
   tangle: 0.85,
 };
 
+/** A foot target this far over the bed (m) is on something: the foot goes down beside it instead. */
+const STEP_OVER = 0.012;
+
 export type HeronState = 'wait' | 'walk' | 'stalk' | 'aim' | 'strike' | 'recover' | 'hold';
 /** Why a heron lost the lizard: it went into the roots, out over deep water, or got away (out of sight or reach). */
 export type LostReason = 'tangle' | 'deep' | 'away';
@@ -148,6 +152,9 @@ export class Heron {
   gait: Gait = 'still';
   /** The beat it holds still between stalking steps (s). */
   private hold = 0;
+  /** Whether the body went forward this step (else the feet only keep under it), and which way it last went round something (+1 left, -1 right). */
+  advanced = false;
+  detour = 0;
   /** The stance when a stab began, and where the lunge takes the body. */
   readonly lungeFrom = new THREE.Vector3();
   readonly lungeTo = new THREE.Vector3();
@@ -252,7 +259,21 @@ export class Heron {
     this.body.footHome(i, this.pos, this.yaw, home);
     home.x += fx;
     home.z += fz;
+    // Step over a log or a stone rather than onto it: a foot goes down on the bed just beyond or short of it.
     home.y = ground(home.x, home.z, this.pos.y);
+    if (home.y > terrainHeight(home.x, home.z) + STEP_OVER) {
+      const sx = Math.sin(this.yaw);
+      const sz = Math.cos(this.yaw);
+      for (const along of [0.02, -0.02, 0.04, -0.04, 0.06, -0.06, 0.08]) {
+        const x = home.x + sx * along;
+        const z = home.z + sz * along;
+        const y = ground(x, z, this.pos.y);
+        if (y <= terrainHeight(x, z) + STEP_OVER) {
+          home.set(x, y, z);
+          break;
+        }
+      }
+    }
     this.stepFrom[i].copy(this.feet[i]);
     this.stepTo[i].copy(home);
     this.stepT[i] = 0;
@@ -273,7 +294,8 @@ export class Heron {
     b.lean += ((this.state === 'strike' ? 0.6 : this.state === 'stalk' || this.state === 'aim' ? 0.3 : 0.05) - b.lean) * k;
     // The body rides level on the ground under the feet, not bobbing with each lifted foot.
     const sole = (i: number) => this.prevSoles[i] + (this.soles[i] - this.prevSoles[i]) * alpha;
-    b.at.y = (sole(0) + sole(1)) / 2;
+    // On the lower foot: a foot up on a log or a stone bends its knee rather than lifting the body.
+    b.at.y = Math.min(sole(0), sole(1));
     b.pose();
   }
 
@@ -483,12 +505,28 @@ export class Herons {
     const off = this.turnTo(h, Math.atan2(dx, dz), dt);
     if (off > 0.6) return true;
     const step = Math.min(d, speed * dt);
-    const nx = h.pos.x + Math.sin(h.yaw) * step;
-    const nz = h.pos.z + Math.cos(h.yaw) * step;
     const s = h.home;
-    if (!this.wadeable(nx, nz, s.x, s.z)) return false;
-    h.pos.set(nx, this.groundAt(nx, nz, h.pos.y), nz);
-    return true;
+    // Straight on if it can wade there; else round whatever's in the way (too deep, roots, a rock),
+    // keeping to the side it went round last so it doesn't dither. Looked at a stride ahead, not a step.
+    const look = Math.max(step, 0.04);
+    const sides = h.detour >= 0 ? [1, -1] : [-1, 1];
+    for (const k of [0, 0.4, 0.8, 1.2, 1.6]) {
+      for (const side of k ? sides : [0]) {
+        const a = h.yaw + side * k;
+        if (!this.wadeable(h.pos.x + Math.sin(a) * look, h.pos.z + Math.cos(a) * look, s.x, s.z)) continue;
+        const nx = h.pos.x + Math.sin(a) * step;
+        const nz = h.pos.z + Math.cos(a) * step;
+        if (!this.wadeable(nx, nz, s.x, s.z)) continue;
+        if (side) {
+          h.detour = side;
+          this.turnTo(h, a, dt);
+        }
+        h.pos.set(nx, this.groundAt(nx, nz, h.pos.y), nz);
+        h.advanced = true;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Head (heron space) easing toward `to`, the bill toward the lizard or ahead and a little down. */
@@ -518,7 +556,10 @@ export class Herons {
     for (const h of this.list) {
       if (h.paused) continue;
       h.keep();
+      h.advanced = false;
       this.stepOne(h, dt);
+      // Held up, it doesn't step on ahead of its body: the feet only keep under it.
+      if (!h.advanced) h.gait = 'still';
       h.stepFeet(dt, (x, z, y) => this.groundAt(x, z, y));
     }
   }

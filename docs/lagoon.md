@@ -78,7 +78,12 @@ while the body glides on, then both feet stand still a 0.3 s beat while the body
 averaging 7.5 cm/s. Each foot reaches as far ahead as the body will have gone by the time it's down,
 and half a step more. The head is held still in the world as the body moves under it
 (`steadyHead`), easing back to the stalking pose. Walking between spots steps the same way without
-the pauses. The body rides on the ground under the feet, not on the lifted foot, so it doesn't bob.
+the pauses. The body rides on the lower planted foot, not on the lifted one, so it doesn't bob or rise
+onto a log. A foot that would come down on driftwood or a stone (over `STEP_OVER` above the bed) goes
+down on the bed just beyond or short of it instead. Something in its way (deeper water, roots, a rock)
+is gone round: `walkTo` tries headings up to 1.6 rad either side, a stride ahead, keeping to the side
+it last went round (`detour`). A heron whose body can't go forward this step (`advanced` false) only
+keeps its feet under it, so it never stands with its feet stepped out ahead of a body held back.
 
 The model has no clips: all bones are unparented and posed each frame. The body leans and crouches,
 the neck is a curve from the shoulders to wherever the head is put, the bill turns to the lizard,
