@@ -61,6 +61,8 @@ export interface LagoonProps {
   mangroves: Mangrove[];
   /** Root colliders by handle, for sight lines that roots block. */
   roots: Set<number>;
+  /** The drawn mangroves (instanced), which shade what's under them. */
+  crowns: THREE.Object3D[];
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -200,8 +202,10 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   }
   for (let i = 0; i < 16; i++) black(range(-5.6, 2.0), (i % 2 ? 1 : -1) * range(5.55, 5.8), true);
 
+  const crowns: THREE.Object3D[] = [];
   for (const [kind, list] of instances) {
     const mesh = new THREE.InstancedMesh(need(kind), material(), list.length);
+    crowns.push(mesh);
     list.forEach((m, k) => mesh.setMatrixAt(k, m));
     mesh.computeBoundingSphere();
     mesh.castShadow = mesh.receiveShadow = true;
@@ -342,5 +346,5 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   propMesh.name = 'propagules';
   scene.add(propMesh);
 
-  return { obstacles, mangroves, roots };
+  return { obstacles, mangroves, roots, crowns };
 }

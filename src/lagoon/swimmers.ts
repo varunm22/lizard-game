@@ -15,7 +15,7 @@ import { depthAt, POOLS } from './layout';
  * A shark pup is curious about a lizard swimming in its pool: now and then it comes over and circles
  * it, closer as it gets bolder, and once in a while, out of mild aggression, it tenses and darts in to
  * bite. A lizard that suddenly turns to swim straight at a pup close by startles it into a bite; one
- * that swims at it steadily just makes it bolt. A bite is a catch, like a heron's.
+ * that swims at it steadily just makes it bolt. A bite takes health, like a heron's stab.
  *
  * The rays gather into loose schools that form and break up again (each ray drifts between keeping
  * company and going its own way) and veer off from a swimming lizard heading at them close.
@@ -349,7 +349,7 @@ export class Swimmers {
           });
         if (hit) {
           s.bites++;
-          prey.caught('shark');
+          prey.struck('shark', Math.sin(s.yaw), Math.cos(s.yaw));
           this.onBite?.(s);
           this.toBolt(s, [SHARK.coolFed, SHARK.coolFed]);
         } else if (s.timer <= 0 || !reachable) this.toBolt(s, SHARK.cool);

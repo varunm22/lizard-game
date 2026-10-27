@@ -428,6 +428,21 @@ export interface LagoonTestHooks
   /** Whether (x, z) is in a red mangrove's root tangle, and whether a heron could wade there. */
   tangle(x: number, z: number): boolean;
   wadeable(x: number, z: number): boolean;
+  /** The island's bars here too: health, warmth, food, air (0 to 1), how they're changing, and whether it's down and why. */
+  vitals(): {
+    health: number;
+    warmth: number;
+    fullness: number;
+    air: number;
+    rate: { health: number; warmth: number };
+    speedScale: number;
+    frozen: boolean;
+    cause: string | null;
+    down: boolean;
+    downBy: string | null;
+  };
+  /** Set bars, or hold them (`frozen`: strikes still land, nothing drifts). */
+  setVitals(v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>): void;
   /** Heron `i`'s standing spots. */
   haunts(i: number): { x: number; z: number; yaw: number }[];
   /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */

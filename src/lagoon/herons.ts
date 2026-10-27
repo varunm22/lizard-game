@@ -23,8 +23,11 @@ export interface HeronPrey {
   huntable(): boolean;
   /** Swimming (lying low in the water). */
   swimming(): boolean;
-  /** Caught: in a heron's bill, or bitten by a shark pup. */
-  caught(by: 'heron' | 'shark'): void;
+  /**
+   * Stabbed by a heron or bitten by a shark pup, the blow travelling along (dx, dz): 'down' if that
+   * took the last of its health, 'hurt' if not, null if it was down already.
+   */
+  struck(by: 'heron' | 'shark', dx: number, dz: number): 'down' | 'hurt' | null;
 }
 
 /** Heron tuning: distances in m, speeds in m/s, times in s, angles in radians. */
@@ -136,7 +139,7 @@ export class Heron {
   readonly lungeTo = new THREE.Vector3();
   /** A paused heron stands still (tests). */
   paused = false;
-  /** Strikes and catches, for tests. */
+  /** Strikes, and stabs that landed, for tests. */
   strikes = 0;
   catches = 0;
 
@@ -645,11 +648,17 @@ export class Herons {
         h.pos.lerpVectors(h.lungeFrom, h.lungeTo, e);
         const tip = h.billTip(this.s);
         if (this.prey.huntable() && !this.hidden() && this.preyPoints().some((q) => q.distanceTo(tip) < HERON.bite)) {
-          h.state = 'hold';
-          h.timer = HERON.holdTime;
-          h.catches++;
-          this.prey.caught('heron');
-          this.onCatch?.(h);
+          // A stab that lands takes health; the last of it and the heron has it in its bill.
+          const hit = this.prey.struck('heron', Math.sin(h.yaw), Math.cos(h.yaw));
+          if (hit) h.catches++;
+          if (hit === 'down') {
+            h.state = 'hold';
+            h.timer = HERON.holdTime;
+            this.onCatch?.(h);
+          } else {
+            h.state = 'recover';
+            h.timer = HERON.recoverTime;
+          }
           break;
         }
         if (t >= 1) {

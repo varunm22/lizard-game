@@ -12,6 +12,8 @@ import type { DriftLog } from '../lagoon/driftLog';
 import type { Swimmers } from '../lagoon/swimmers';
 import type { LagoonRun } from '../lagoon/run';
 import type { Mangrove } from '../lagoon/props';
+import type { Vitals } from '../player/vitals';
+import type { Wounds } from '../player/wounds';
 import { channelHalf, channelX, CREEK, current, depthAt, FINISH, JAM, LOG_POOL, SAFE_POINTS, START } from '../lagoon/layout';
 
 interface LagoonHookContext {
@@ -27,13 +29,15 @@ interface LagoonHookContext {
   log: DriftLog;
   swimmers: Swimmers;
   run: LagoonRun;
+  vitals: Vitals;
+  wounds: Wounds;
   setInput: LagoonTestHooks['setInput'];
   viewFrom: LagoonTestHooks['viewFrom'];
 }
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -110,6 +114,19 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       h.update(1);
     },
     tangle: (x, z) => herons.inTangle(x, z),
+    vitals: () => ({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      rate: { ...vitals.rate },
+      speedScale: vitals.speedScale,
+      frozen: vitals.frozen,
+      cause: vitals.cause,
+      down: wounds.down,
+      downBy: wounds.downBy,
+    }),
+    setVitals: (v) => Object.assign(vitals, v),
     wadeable: (x, z) => herons.wadeable(x, z, x, z),
     haunts: (i) => herons.list[i].spots.map((p) => ({ ...p })),
     pause: ({ herons: hs, swimmers: ss }) => {

@@ -65,10 +65,12 @@ test('the lagoon loads: the ground, the mangroves and roots, the herons waiting,
   await screenshot(page, 'lagoon-start.png');
 });
 
-test('a heron sees a lizard in the open, stalks it and stabs; the lizard is back at the start', async ({ page }) => {
+test('a heron sees a lizard in the open, stalks it and stabs; the last of its health gone, the lizard is back at the start', async ({ page }) => {
   await bootLagoon(page, { herons: [HERON] });
   const s = await page.evaluate((hi) => {
     const g = window.__lagoon!;
+    // Down to its last stab.
+    g.setVitals({ health: 0.3 });
     const h0 = g.herons()[hi];
     g.placeHeron(hi, h0.x, h0.z, Math.PI);
     g.teleport(h0.x, h0.z - 0.45, 0);
@@ -85,21 +87,59 @@ test('a heron sees a lizard in the open, stalks it and stabs; the lizard is back
     const heron = g.herons()[hi];
     g.viewFrom({ x: 0.4, y: 0.12, z: -0.15 }, { x: heron.x, y: heron.y + 0.12, z: heron.z - 0.1 });
     g.advance(1);
-    return { seen, danger, caught, heron };
+    return { seen, danger, caught, heron, vitals: g.vitals() };
   }, HERON);
   expect(s.seen.slice(0, 4)).toEqual(['wait', 'stalk', 'aim', 'strike']);
   expect(s.danger).toBe('chased');
   expect(s.caught.state).toBe('caught');
   expect(s.heron.catches).toBe(1);
+  expect(s.vitals).toMatchObject({ health: 0, down: true, downBy: 'heron' });
   await screenshot(page, 'lagoon-heron.png');
   const after = await page.evaluate(() => {
     const g = window.__lagoon!;
     g.viewFrom(null);
     g.advance(160);
-    return { run: g.run(), player: g.player(), start: g.marks().start };
+    return { run: g.run(), player: g.player(), start: g.marks().start, vitals: g.vitals() };
   });
   expect(after.run).toMatchObject({ state: 'ready', attempts: 2, catches: 1, time: 0 });
+  expect(after.vitals).toMatchObject({ health: 1, down: false });
   expect(Math.hypot(after.player.x - after.start.x, after.player.z - after.start.z)).toBeLessThan(0.02);
+});
+
+test("the lagoon keeps the island's bars: a stab takes health without catching, the water chills and diving costs air, the lava warms", async ({ page }) => {
+  await bootLagoon(page, { herons: [HERON], vitals: true });
+  const s = await page.evaluate((hi) => {
+    const g = window.__lagoon!;
+    const h0 = g.herons()[hi];
+    g.placeHeron(hi, h0.x, h0.z, Math.PI);
+    g.teleport(h0.x, h0.z - 0.45, 0);
+    g.setInput({ move: { x: 0, y: 1 } }, 1);
+    let stabbed = null as null | { health: number; run: string; heron: string };
+    for (let i = 0; i < 80 && !stabbed; i++) {
+      g.advance(5);
+      if (g.herons()[hi].catches > 0) stabbed = { health: g.vitals().health, run: g.run().state, heron: g.herons()[hi].state };
+    }
+    g.pause({ herons: true });
+    // Under water in the west pool, holding still near the bottom.
+    g.setVitals({ health: 1, warmth: 0.7, air: 1 });
+    g.teleport(-2.6, 1.9, 0, -0.2);
+    g.advance(120);
+    const dived = g.vitals();
+    // Lying still in the sun on the lava coast.
+    g.setVitals({ warmth: 0.4, air: 1 });
+    const st = g.marks().start;
+    g.teleport(st.x, st.z, st.yaw);
+    g.advance(180);
+    return { stabbed, dived, swimming: g.player().swimming, basked: g.vitals() };
+  }, HERON);
+  expect(s.stabbed).not.toBeNull();
+  expect(s.stabbed!.health).toBeCloseTo(0.6, 2);
+  expect(s.stabbed!.run).not.toBe('caught');
+  expect(s.stabbed!.heron).toBe('recover');
+  expect(s.dived.air).toBeLessThan(0.95);
+  expect(s.dived.warmth).toBeLessThan(0.7);
+  expect(s.basked.warmth).toBeGreaterThan(0.4);
+  expect(s.basked.down).toBe(false);
 });
 
 test('a stalking heron steps slowly, one foot at a time, its body level; a swimmer that comes near one is struck at once', async ({ page }) => {
@@ -127,7 +167,8 @@ test('a stalking heron steps slowly, one foot at a time, its body level; a swimm
     }
     const h = g.herons()[hi];
     const stalk = { lifted, both, bob: Math.max(...ys) - Math.min(...ys), moved: Math.hypot(h.x - start!.x, h.z - start!.z) };
-    // Heron 5 waits at the edge of the north shallows, facing west; the lizard swims slowly up close in front of it.
+    // Heron 5 waits at the edge of the north shallows, facing west; the lizard (down to its last stab) swims slowly up close in front of it.
+    g.setVitals({ health: 0.3 });
     g.placeHeron(5, -1.5, 2.2, -Math.PI / 2);
     g.teleport(-1.7, 2.1, 0, -0.07);
     const seen = [g.herons()[5].state];
@@ -330,7 +371,8 @@ test('a shark pup comes over to circle a swimmer, bites one that suddenly turns 
       curious = f.state === 'curious';
       nearest = Math.min(nearest, Math.hypot(f.x + 2.6, f.z - 1.9));
     }
-    // It's crossing just ahead: the lizard turns sharply and swims straight at it.
+    // It's crossing just ahead: the lizard, down to its last bite, turns sharply and swims straight at it.
+    g.setVitals({ health: 0.25 });
     g.placeSwimmer(0, -2.37, 1.9, 0);
     g.advance(2);
     g.teleport(-2.6, 1.9, Math.PI / 2, -0.12);

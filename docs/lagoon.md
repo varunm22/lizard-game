@@ -58,7 +58,10 @@ every 14 to 24 s. It sees the lizard within 1.7 m and ±115° of its bill if not
 (roots and trunks included), then stalks it crouched, wading no deeper than 7 cm, never into a red
 mangrove's roots, the channel or 2.5 m from its spot. Within 20 cm of its shoulders it draws its neck
 back for 0.25 s and stabs (0.075 s) at where the lizard will be, the body lunging up to 3.5 cm after
-the bill; the bill tip within 4 cm of the snout, middle or hips is a catch. A heron that isn't
+the bill; the bill tip within 4 cm of the snout, middle or hips is a hit, which takes
+`VITALS.heronHit` (40%) of the lizard's health and throws it aside (`Wounds.strike`). The heron then
+recovers and, if it still sees the lizard, stalks again; only the stab that takes the last of its
+health leaves the lizard in the heron's bill (`hold`). A heron that isn't
 stalking yet strikes all the same at a lizard that comes within 22 cm in view (`ambush`), after only
 a 0.1 s beat: a lizard swimming slowly past in the shallows gets speared with no stalking warning.
 The lizard is out of reach in a tangle (within 85% of an old mangrove's root reach) or swimming over
@@ -92,9 +95,21 @@ each end half sunk in the bank (mud on the west, a crack in the lava on the east
 on and off it. Swept past the south edge it's lost and another lies in the pool. A lizard standing
 on it is carried with it (`player.carry`). `R` puts it back in its pool.
 
+## Vitals
+
+The island's four bars (`src/player/vitals.ts`, drawn by `createVitalsPanel` in `src/hud.ts`, bottom
+right) run here as on the island: warmth from the sun on land (`ClimateSense`, with `lagoonLava` for
+the black lava that warms best, and the instanced mangroves passed to `Cover` so they shade), lost in
+the water and faster under it; air used under water; food burning down (there's nothing to eat in the
+lagoon yet); health mending while fed and warm, drained by freezing, starving or drowning, and taken
+by stabs and bites. At none, `Wounds` lays the lizard down for `CAUGHT_TIME` (2.5 s); then the run puts it back
+(`afterDown`) with full bars. Starting over (R) fills them too. `bootLagoon` holds the bars still
+(`setVitals({ frozen: true })`, strikes still land) unless a test asks for `vitals`.
+
 ## Run and goals (`run.ts`)
 
-As the dunes': the clock starts on the first move; a catch (a heron's, or a shark pup's bite) puts the lizard back at the start, or at
+As the dunes': the clock starts on the first move; going down (a heron's stab or a shark pup's bite
+taking the last of its health, or the cold, hunger or drowning) puts the lizard back at the start, or at
 the safe point once reached; reaching `FINISH` on the lava field wins. Goals: shelter in the roots,
 cross, hide from a stalking heron in the roots, escape one into deep water, slip away from one, float
 the log into the channel, jam it, ride it 1 s, swim beside a shark pup, swim with the rays.
@@ -112,8 +127,9 @@ A shark pup (`SHARK`) takes an interest now and then in a lizard swimming in its
 and comes over to circle it (`curious`), closer as it grows bolder; once close, out of mild
 aggression, it may tense for 0.3 s (`tense`) and dart in to bite (`bite`). A lizard close by that
 suddenly turns (more than 0.7 rad in the last half second) to swim straight at a pup gets bitten out
-of surprise, with no warning; one swimming at it steadily makes it bolt. A bite is a catch like a
-heron's (`prey.caught('shark')`), and a tensing or biting pup shows as `chased` on the HUD.
+of surprise, with no warning; one swimming at it steadily makes it bolt. A bite takes
+`VITALS.sharkBite` (30%) of the lizard's health (`prey.struck('shark', …)`), and a tensing or biting
+pup shows as `chased` on the HUD.
 
 The rays (`RAY`) drift between keeping company and going alone every 4 to 11 s. Keeping company,
 they steer as boids with the others of their pool (in line, toward the middle, spread out when
@@ -124,7 +140,7 @@ heading at a ray within 36 cm, or anywhere within 15 cm, sends it veering off (`
 
 `bootLagoon` holds the herons and the swimmers still unless a test asks for them. Hooks:
 `herons()`, `heronBody(i)`, `placeHeron`, `haunts(i)`, `tangle`, `wadeable`, `log()`, `placeLog`,
-`swimmers()`, `placeSwimmer`, `channel`, `current`, `depth`, `run()`, `restart`, `mangroves()`,
+`swimmers()`, `placeSwimmer`, `vitals()`, `setVitals`, `channel`, `current`, `depth`, `run()`, `restart`, `mangroves()`,
 `marks()`. The hunting tests stand heron 1 at
 its first spot facing south over the open flat. The log test runs the whole gate in about 1,500
 steps: a push, the creek mouth into the channel, a drift into the jam, and the walk across.
