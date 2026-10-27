@@ -142,7 +142,7 @@ test("the lagoon keeps the island's bars: a stab takes health without catching, 
   expect(s.basked.down).toBe(false);
 });
 
-test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the mangrove roots, and a bite of it fills the food bar', async ({ page }) => {
+test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the mangrove roots, and, as on the island, "[F] to eat" shows in reach and a bite fills the food bar', async ({ page }) => {
   await bootLagoon(page, { vitals: true });
   const r = await page.evaluate(() => {
     const g = window.__lagoon!;
@@ -151,17 +151,20 @@ test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the m
     const weed = patches.find((p) => p.kind === 'gutweed')!;
     g.setVitals({ fullness: 0.3 });
     let ate = 0;
+    let prompt = false;
     for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
       g.teleport(weed.x - Math.sin(yaw) * 0.05, weed.z - Math.cos(yaw) * 0.05, yaw);
       g.advance(10);
+      prompt ||= g.feeding().canEat;
       g.bite();
       g.advance(30);
       if ((ate = g.feeding().mouthfuls) > 0) break;
     }
-    return { kinds: [...kinds].sort(), count: patches.length, ate, fullness: g.vitals().fullness };
+    return { kinds: [...kinds].sort(), count: patches.length, ate, prompt, fullness: g.vitals().fullness };
   });
   expect(r.kinds).toEqual(['bostrychia', 'gutweed']);
   expect(r.count).toBeGreaterThan(40);
+  expect(r.prompt).toBe(true);
   expect(r.ate).toBeGreaterThan(0);
   expect(r.fullness).toBeGreaterThan(0.35);
 });

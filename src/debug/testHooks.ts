@@ -447,8 +447,8 @@ export interface LagoonTestHooks
   algae(): { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
   /** Bite, as pressing F does; false while a bite is already under way. */
   bite(): boolean;
-  /** The player's bites so far, and those that got algae. */
-  feeding(): { bites: number; mouthfuls: number };
+  /** The player's bites so far, those that got algae, and whether algae is within a bite now (the "[F] to eat" prompt shows). */
+  feeding(): { bites: number; mouthfuls: number; canEat: boolean };
   /** Heron `i`'s standing spots. */
   haunts(i: number): { x: number; z: number; yaw: number }[];
   /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */

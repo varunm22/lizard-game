@@ -68,3 +68,25 @@ export function createHitFlash(): () => void {
     flash.style.opacity = '0';
   };
 }
+
+/** The "[F] to eat" prompt over the lizard, shown while algae is within a bite; returns its show/hide. */
+export function createEatPrompt(): (show: boolean) => void {
+  // Over the lizard, just above the middle of the view (it's drawn a little below the middle).
+  const eat = document.createElement('div');
+  eat.className = 'eat-prompt';
+  eat.style.cssText =
+    'position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);padding:6px 14px;border-radius:8px;' +
+    'background:#fffd;font:600 17px system-ui,sans-serif;color:#2f3a2a;pointer-events:none;' +
+    'opacity:0;transition:opacity .15s';
+  eat.innerHTML =
+    '<span style="display:inline-block;min-width:1.2em;padding:1px 6px;margin-right:6px;border:2px solid #2f3a2a;' +
+    'border-radius:5px;text-align:center;font-size:15px">F</span>to eat';
+  document.body.appendChild(eat);
+  let shown = false;
+  return (show) => {
+    if (show === shown) return;
+    shown = show;
+    eat.style.opacity = show ? '1' : '0';
+    eat.dataset.shown = show ? '1' : '';
+  };
+}

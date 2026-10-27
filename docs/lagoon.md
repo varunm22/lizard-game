@@ -115,7 +115,8 @@ fringes mangrove prop roots at the waterline, on about half the roots (`rootWate
 `buildLagoonProps`: where each root crosses the surface, pushed out to its bark). `lagoonAlgaeSites`
 places them (seeded, 4.5 cm apart, about half grown at the start) for the island's `Algae`
 (`src/world/algae.ts`, which takes a geometry per kind and optional sites), so patches regrow and
-sprout as there. F bites (`Feeding`), and each mouthful fills food (`vitals.eat`). Hooks: `algae()`,
+sprout as there. As on the island, "[F] to eat" shows while algae is within a bite (`createEatPrompt` in
+`src/vitalsPanel.ts`), F bites (`Feeding`), and each mouthful fills food (`vitals.eat`). Hooks: `algae()`,
 `bite()`, `feeding()`.
 
 ## Run and goals (`run.ts`)

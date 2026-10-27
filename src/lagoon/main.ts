@@ -11,7 +11,7 @@ import { Vitals, type DownCause } from '../player/vitals';
 import { Wounds } from '../player/wounds';
 import { Feeding } from '../player/feeding';
 import { Algae } from '../world/algae';
-import { createHitFlash, createVitalsPanel } from '../vitalsPanel';
+import { createEatPrompt, createHitFlash, createVitalsPanel } from '../vitalsPanel';
 import { CelRenderer } from '../render/cel';
 import { Water } from '../world/water';
 import { Splashes } from '../world/splashes';
@@ -117,6 +117,8 @@ export async function lagoon() {
 
   const hud = createDunesHud(TEXT);
   const vitalsPanel = createVitalsPanel();
+  const eatPrompt = createEatPrompt();
+  let canEat = false;
   wounds.onStrike = createHitFlash();
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
@@ -169,7 +171,7 @@ export async function lagoon() {
   const flow = { x: 0, z: 0 };
 
   const hooks = createLagoonHooks({
-    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding,
+    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -236,6 +238,8 @@ export async function lagoon() {
     herons.update(alpha);
     swimmers.update(alpha, frameDt);
     algae.update(frameDt);
+    canEat = !wounds.down && !!feeding.inReach();
+    eatPrompt(canEat);
     markers.update(frameDt, camera.position);
     if (messageLeft !== null && (messageLeft -= frameDt) <= 0) {
       messageLeft = null;

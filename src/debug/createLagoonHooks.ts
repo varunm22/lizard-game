@@ -35,13 +35,14 @@ interface LagoonHookContext {
   wounds: Wounds;
   algae: Algae;
   feeding: Feeding;
+  canEat: () => boolean;
   setInput: LagoonTestHooks['setInput'];
   viewFrom: LagoonTestHooks['viewFrom'];
 }
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -133,7 +134,7 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
     setVitals: (v) => Object.assign(vitals, v),
     algae: () => algae.all().map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     bite: () => feeding.bite(),
-    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls }),
+    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, canEat: canEat() }),
     wadeable: (x, z) => herons.wadeable(x, z, x, z),
     haunts: (i) => herons.list[i].spots.map((p) => ({ ...p })),
     pause: ({ herons: hs, swimmers: ss }) => {
