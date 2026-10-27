@@ -9,7 +9,7 @@ import { Cover } from '../world/cover';
 import { ClimateSense } from '../player/climate';
 import { Vitals, type DownCause } from '../player/vitals';
 import { Wounds } from '../player/wounds';
-import { createHitFlash, createVitalsPanel } from '../hud';
+import { createHitFlash, createVitalsPanel } from '../vitalsPanel';
 import { CelRenderer } from '../render/cel';
 import { Water } from '../world/water';
 import { Splashes } from '../world/splashes';
