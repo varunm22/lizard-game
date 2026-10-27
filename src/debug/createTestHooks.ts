@@ -31,6 +31,8 @@ import type { OccluderFade } from '../camera/occluderFade';
 import type { GameTestHooks } from './testHooks';
 import type { Figs } from '../island/figs';
 import type { Snag } from '../island/snag';
+import type { WalkOut } from '../island/walkOut';
+import type { LagoonView } from '../island/lagoonView';
 import type { IslandRun } from '../island/run';
 import { CRACK, crackHalf, crackX } from '../island/crack';
 
@@ -64,6 +66,9 @@ interface HookContext {
   figs: Figs;
   snag: Snag;
   run: IslandRun;
+  walkOut: WalkOut;
+  leave: (then: () => void) => void;
+  lagoonView: LagoonView;
   canEat: () => boolean;
   setInput: GameTestHooks['setInput'];
   viewFrom: GameTestHooks['viewFrom'];
@@ -72,9 +77,10 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, canEat,
+  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, walkOut, leave, lagoonView, canEat,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
+  let left = false;
   const jawRest = lizard.root.getObjectByName('jaw')?.quaternion.clone();
   return {
     ready: false,
@@ -186,6 +192,8 @@ export function createTestHooks({
     },
     knockSnag: () => snag.knock(),
     crack: (z) => ({ x: crackX(z), half: crackHalf(z), depth: CRACK.depth }),
+    islandLeave: () => leave(() => (left = true)),
+    islandWalkOut: () => ({ walking: walkOut.walking, fade: walkOut.fade, left, lagoonInView: lagoonView.group.visible, trees: lagoonView.group.children.length - 1 }),
     islandRun: () => ({ state: run.state, progress: run.progress, falls: run.falls, fallen: run.fallen, ...run.objective }),
     crabs: () =>
       crabs.list.map((c) => ({

@@ -10,6 +10,7 @@ import { lagoonColour, lagoonHeight } from '../lagoon/layout';
 import { tunnelsColour, tunnelsHeight } from '../tunnels/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 import { CRACK, crackCut, crackHalf, crackX } from '../island/crack';
+import { basinDip, basinFloor, basinGap } from '../island/basin';
 
 /**
  * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes,
@@ -76,9 +77,13 @@ function islandGround(x: number, z: number): number {
   // The inland rim rises out of the fog; the coast doesn't, the sea runs on past the edge.
   const inland = smoothstep(-0.6, -1.5, shoreDistance(x, z));
   const t = Math.max(0, -x - 3.3, (Math.abs(z) - 3.4) * inland);
-  const bank = t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1);
+  // (Except a gap in the west bank, past the lava crack, where it opens on the mangrove lagoon, `island/basin.ts`.)
+  const bank = (t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1)) * (1 - 0.85 * basinGap(z));
   const land = Math.max(WATER_Y + 0.01, (swell + bumps) * calm + grit + roots + lava + bank);
-  return carveShore(x, z, land);
+  const ground = carveShore(x, z, land);
+  // Out past the west wall, the bank drops into the mangrove lagoon (`island/basin.ts`).
+  const dip = basinDip(x, z);
+  return dip > 0 ? ground + (basinFloor(x, z) - ground) * dip : ground;
 }
 
 /** Ground height for laying out the island's plants: the ground as it was before the crack. */
@@ -102,6 +107,8 @@ const FOREST_MOSS = new THREE.Color(0x5a7834);
 /** Pale coral sand, darker where the waves wet it. */
 const SAND = new THREE.Color(0xe6d8b2);
 const WET_SAND = new THREE.Color(0xbba881);
+/** The lagoon's mud past the west wall. */
+const MUD = new THREE.Color(0x4a3e2c);
 /** Black lava, lighter on its weathered crests and darkest wet. */
 const LAVA = new THREE.Color(0x353130);
 const LAVA_CREST = new THREE.Color(0x544c46);
@@ -130,6 +137,8 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
     tmp.copy(LAVA).lerp(LAVA_CREST, crest).lerp(LAVA_WET, Math.max(wet, 0.6 * pit));
     c.lerp(tmp, lava);
   }
+  const dip = basinDip(x, z);
+  if (dip > 0) c.lerp(MUD, smoothstep(0.1, 0.6, dip));
   // The crack: bare dark basalt along its lips, down its sheer walls and on its floor, darkest at the bottom.
   const lip = Math.abs(x - crackX(z)) - crackHalf(z);
   if (lip < 0.12) {

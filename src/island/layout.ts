@@ -17,6 +17,8 @@ export const SNAG = { x: crackX(SNAG_Z) + crackHalf(SNAG_Z) + SNAG_IN, z: SNAG_Z
 export const TRAIL = { x0: -1.0, z0: 1.62, x1: SNAG.x, z1: SNAG.z, half: 0.2 };
 /** The dead tree's fall line across the crack, kept clear for this far past the snag and this wide (m). */
 const LANDING = { reach: 0.8, half: 0.14 };
+/** The way on from the far rim, west up the bank to the island's edge where the lagoon opens out (`walkOut.ts`), kept clear this wide (m). */
+const WAY_OUT = { x: -3.95, half: 0.22 };
 /** Room round the fig tree (m). */
 const FIG_ROOM = 0.42;
 
@@ -28,7 +30,7 @@ function segmentDistance(x: number, z: number, ax: number, az: number, bx: numbe
   return Math.hypot(x - ax - dx * t, z - az - dz * t);
 }
 
-/** Whether an obstacle would be in the way of the puzzle: in the crack, on the trail, on the dead tree's fall line or by the fig tree. */
+/** Whether an obstacle would be in the way of the puzzle: in the crack, on the trail, on the dead tree's fall line or the way on from it, or by the fig tree. */
 function inTheWay(o: Obstacle): boolean {
   const [x, z] = [o.position.x, o.position.z];
   const reach = o.radius + (o.axis ? Math.hypot(o.axis.x, o.axis.z) : 0);
@@ -41,6 +43,7 @@ function inTheWay(o: Obstacle): boolean {
     if (overCrack(px, pz, o.radius + 0.04)) return true;
     if (segmentDistance(px, pz, TRAIL.x0, TRAIL.z0, TRAIL.x1, TRAIL.z1) < TRAIL.half + o.radius) return true;
     if (segmentDistance(px, pz, SNAG.x, SNAG.z, SNAG.x - LANDING.reach, SNAG.z) < LANDING.half + o.radius) return true;
+    if (segmentDistance(px, pz, SNAG.x - LANDING.reach, SNAG.z, WAY_OUT.x, SNAG.z) < WAY_OUT.half + o.radius) return true;
   }
   return covers(o, FIG_TREE.x, FIG_TREE.z, FIG_ROOM) || covers(o, SNAG.x, SNAG.z, 0.15);
 }

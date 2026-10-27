@@ -39,6 +39,8 @@ import { Feeding } from './player/feeding';
 import { FollowCamera } from './camera/followCamera';
 import { OccluderFade } from './camera/occluderFade';
 import { createHud } from './hud';
+import { LagoonView } from './island/lagoonView';
+import { WalkOut } from './island/walkOut';
 import { Goals } from './goals';
 import { createGoalsPanel } from './goalsPanel';
 import { createTestHooks } from './debug/createTestHooks';
@@ -148,8 +150,17 @@ async function main() {
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
   // The objective: over the crack. Once there, the run's end screen: R from the start, C on.
   const run = new IslandRun(player, tortoise, snag);
-  run.onHome = () => hud.message('Across the crack!', 'The trail out of the colony leads on from here.', endKeys('island'));
-  runKeys('island', run);
+  run.onHome = () => hud.message('Across the crack!', 'Over the bank to the west lies the mangrove lagoon.', endKeys('island'));
+  // Going on (C): the lizard walks on west up the bank to where the mangrove lagoon, the next stage,
+  // opens out below, as the screen fades; then it's the lagoon.
+  const lagoonView = new LagoonView(scene);
+  void lagoonView.load();
+  const walkOut = new WalkOut(player);
+  const leave = (then: () => void) => {
+    hud.message(null);
+    walkOut.start(then);
+  };
+  runKeys('island', run, (go) => leave(go));
   let introShown = true;
   hud.intro(true);
   hud.objective(run.objective.text, run.objective.hint);
@@ -189,7 +200,7 @@ async function main() {
   const STILL: InputState = { move: { x: 0, y: 0 }, run: false, jump: false, look: { yaw: 0, pitch: 0 }, zoom: 0 };
   const hooks = createTestHooks({
     world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-    tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, canEat: () => canEat,
+    tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, walkOut, leave, lagoonView, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -218,7 +229,9 @@ async function main() {
     fishes.step(dt);
     hawk.step(dt);
     // Knocked down, the lizard lies still whatever the controls say.
-    const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    let input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    const out = walkOut.step(dt);
+    if (out) input = { ...input, ...out };
     climate.step(dt);
     const moving = input.move.x !== 0 || input.move.y !== 0;
     // The start card stays up until the player first moves the lizard, as on the dunes.
@@ -292,6 +305,10 @@ async function main() {
       camera.position.copy(at).add(viewOffset);
       camera.lookAt(at);
     }
+    walkOut.view(camera, feet, player.yawAt(alpha), frameDt);
+    hud.fade(walkOut.fade);
+    // Over the crack, the lagoon beyond the west bank comes into view.
+    lagoonView.group.visible = run.state === 'home';
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     // Plants part for the lizard's body, and for the camera so tall stems don't fill the view.
     lizard.updateBodySpheres();

@@ -70,6 +70,8 @@ export function createHud(): {
   objective(text: string, hint: string): void;
   /** A big word at the top of the screen (like the dunes' "Freeze!"), e.g. "Stuck!" down in the lava crack; null hides it. */
   banner(text: string | null): void;
+  /** Fade the screen to black (0 to 1), as the lizard walks out at the end. */
+  fade(amount: number): void;
   /** The end screen: a big message, its line of detail, and keys with what each does; null hides it. */
   message(title: string | null, detail?: string, keys?: [string, string][]): void;
 } {
@@ -97,6 +99,9 @@ export function createHud(): {
   const message = document.createElement('div');
   message.className = 'island-message';
   document.body.appendChild(message);
+  const black = document.createElement('div');
+  black.style.cssText = 'position:fixed;inset:0;z-index:30;background:#000;opacity:0;pointer-events:none';
+  document.body.appendChild(black);
   const shout = document.createElement('div');
   shout.className = 'island-banner';
   document.body.appendChild(shout);
@@ -227,6 +232,10 @@ export function createHud(): {
         void objective.offsetWidth;
         objective.classList.add('new');
       }
+    },
+    fade(amount) {
+      const o = amount.toFixed(3);
+      if (black.style.opacity !== o) black.style.opacity = o;
     },
     banner(text) {
       shout.classList.toggle('show', text !== null);

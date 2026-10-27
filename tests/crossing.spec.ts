@@ -92,7 +92,7 @@ test('the tortoise goes for a fig over a nearer flower, and only eats grass when
   expect(errors).toEqual([]);
 });
 
-test('led to a fig at the dead tree, the tortoise knocks the tree down across the crack, and the lizard walks over it to finish', async ({ page }) => {
+test('led to a fig at the dead tree, the tortoise knocks the tree down across the crack, and the lizard walks over it to finish, then on toward the lagoon', async ({ page }) => {
   const errors = await bootGame(page);
   const knock = await page.evaluate(() => {
     const g = window.__game!;
@@ -138,6 +138,24 @@ test('led to a fig at the dead tree, the tortoise knocks the tree down across th
   await expect(page.locator('.island-message')).toHaveClass(/show/);
   await expect(page.locator('.island-message')).toContainText('next:');
   await screenshot(page, 'crossing-home.png');
+
+  // Going on (C): it walks on west up the bank toward the mangrove lagoon beyond, as the screen fades.
+  const out = await page.evaluate(() => {
+    const g = window.__game!;
+    const from = g.player();
+    g.islandLeave();
+    g.advance(2 * 60, false);
+    const mid = { ...g.islandWalkOut(), x: g.player().x };
+    for (let k = 0; k < 6 * 60 && !g.islandWalkOut().left; k += 30) g.advance(30, false);
+    return { from, mid, end: g.islandWalkOut() };
+  });
+  expect(out.mid.walking).toBe(true);
+  expect(out.mid.lagoonInView).toBe(true);
+  expect(out.mid.fade).toBe(0);
+  expect(out.mid.x).toBeLessThan(out.from.x - 0.2);
+  expect(out.end.left).toBe(true);
+  expect(out.end.fade).toBe(1);
+  await expect(page.locator('.island-message')).not.toHaveClass(/show/);
   expect(errors).toEqual([]);
 });
 

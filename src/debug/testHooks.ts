@@ -149,6 +149,9 @@ export interface GameTestHooks {
   /** The crack at z: its centre line's x, half-width and depth (m). */
   crack: (z: number) => { x: number; half: number; depth: number };
   /** The island's objective: whether the lizard is over the crack ('home'), how far along, falls into the crack, and the objective line. */
+  /** Go on from the island once it's over the crack (C): walk out west up the bank toward the mangrove lagoon as the screen fades. In tests nothing is loaded after; `left` says it would have been. `trees`: the lagoon's trees loaded into the view. */
+  islandLeave: () => void;
+  islandWalkOut: () => { walking: boolean; fade: number; left: boolean; lagoonInView: boolean; trees: number };
   islandRun: () => { state: string; progress: string; falls: number; fallen: 'stuck' | 'climbing' | null; text: string; hint: string };
   /**
    * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
