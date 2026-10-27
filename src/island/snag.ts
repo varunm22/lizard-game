@@ -5,15 +5,13 @@ import { terrainHeight } from '../world/terrain';
 import { hull, type Obstacle } from '../world/obstacles';
 import { crackHalf, crackX } from './crack';
 
-/** The dead tree: length, trunk radius (the collider's; the drawn trunk tapers a little) and how far it already leans out over the crack (radians). */
+/** The dead tree: length, trunk radius (the collider's, as in props.py's `snag`; the drawn trunk tapers a little) and how far it already leans out over the crack (radians). */
 const LENGTH = 0.78;
 const RADIUS = 0.036;
 const LEAN = 0.2;
 /** Knocked, it starts over at this rate (rad/s) and falls like a rod pivoting on its foot. */
 const NUDGE = 0.35;
 const GRAVITY = 9.81;
-/** Bleached dead wood. */
-const WOOD = 0xb3a894;
 
 export type SnagState = 'standing' | 'falling' | 'fallen';
 
@@ -38,31 +36,12 @@ export class Snag {
   /** Called once it has come down across the crack. */
   onFallen: (() => void) | null = null;
 
-  constructor(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }) {
+  constructor(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }, model: THREE.BufferGeometry) {
     // It lies on the ground once down, so it turns about a point a trunk's radius up.
     this.foot = new THREE.Vector3(at.x, terrainHeight(at.x, at.z) + RADIUS, at.z);
     this.restAngle = restingAngle(this.foot);
-    // Drawn from a little below its foot (its broken-off root end) to the tip, with two snapped-off limbs.
-    const trunk = new THREE.CylinderGeometry(RADIUS * 0.75, RADIUS * 1.15, LENGTH + 0.06, 9, 4).translate(0, (LENGTH + 0.06) / 2 - 0.06, 0);
-    const pos = trunk.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) {
-      // Knobbly and a little bent.
-      const y = pos.getY(i);
-      const k = 1 + 0.12 * Math.sin(y * 31 + pos.getX(i) * 90) * Math.cos(pos.getZ(i) * 70);
-      pos.setXYZ(i, pos.getX(i) * k + 0.012 * Math.sin(y * 5), y, pos.getZ(i) * k);
-    }
-    trunk.computeVertexNormals();
-    const material = new THREE.MeshToonMaterial({ color: WOOD, gradientMap: toonGradient() });
-    this.mesh = new THREE.Mesh(trunk, material);
-    for (const [y, a, l] of [
-      [0.42, 1.1, 0.09],
-      [0.6, -2.2, 0.06],
-    ] as const) {
-      const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.014, l, 6).translate(0, l / 2, 0), material);
-      limb.position.set(0, y, 0);
-      limb.rotation.set(Math.sin(a) * 0.9, 0, Math.cos(a) * 0.9);
-      this.mesh.add(limb);
-    }
+    // Drawn from a little below its foot (its broken-off root end) to its snapped top (`snag` in props.glb).
+    this.mesh = new THREE.Mesh(model, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }));
     this.mesh.name = 'snag';
     this.mesh.castShadow = this.mesh.receiveShadow = true;
     this.mesh.position.copy(this.foot);

@@ -13,6 +13,15 @@ const FALLEN = 0.07;
 const STUCK = 2.5;
 const STUCK_SPEED = 0.3;
 const CLIMB_OUT = 1.2;
+/**
+ * The lizard's straight physics body can rest its side or one end on the rim with its middle out
+ * over the drop, which a lizard can't: with its feet (middle) this far past the rim (m), it's tipped
+ * on in at this speed (m/s), whichever way it's facing, unless it's on the fallen tree.
+ */
+const TIP_PAST = 0.004;
+const TIP_SPEED = 0.4;
+/** Feet this near the fallen tree's line are on it (m): its radius and a bit for the lizard's sprawl. */
+const BRIDGE_REACH = 0.06;
 /** It comes back up this far out from the rim, facing away from the crack (m). */
 const RIM_OUT = 0.1;
 /** The lizard has "seen" the crack once it's been this near the rim (m). */
@@ -70,7 +79,7 @@ export class IslandRun {
     const text = 'Cross the lava crack to the west';
     switch (this.progress) {
       case 'start':
-        return { text, hint: "It's too wide to jump. There's a dead tree on its edge." };
+        return { text, hint: "It's too wide to jump. A burnt, dead tree leans out over it." };
       case 'seen':
         return { text, hint: 'Something heavy could knock that dead tree over. Tortoises love figs.' };
       case 'luring':
@@ -94,6 +103,11 @@ export class IslandRun {
     const feet = this.player.feetAt(1, this.feet);
     const near = Math.abs(feet.x - crackX(feet.z)) < crackHalf(feet.z) + SEEN;
     if (near) this.seen = true;
+    // Over the rim, it tips in.
+    const past = crackHalf(feet.z) - Math.abs(feet.x - crackX(feet.z));
+    if (!this.fallen && past > TIP_PAST && !this.onBridge(feet)) {
+      this.player.shove(Math.sign(crackX(feet.z) - feet.x) * TIP_SPEED * dt, 0, this.snag.obstacle.collider);
+    }
     // Down in the crack: wedged at the bottom for a while, then back out where it went in.
     const rim = terrainHeight(feet.x, feet.z) + crackCut(feet.x, feet.z);
     if (this.fallen || (overCrack(feet.x, feet.z) && feet.y < rim - FALLEN)) {
@@ -134,6 +148,17 @@ export class IslandRun {
             : this.seen
               ? 'seen'
               : 'start';
+  }
+
+  /** Whether the feet are on the dead tree, down across the crack. */
+  private onBridge(feet: THREE.Vector3): boolean {
+    if (this.snag.state !== 'fallen') return false;
+    const a = this.snag.position;
+    const b = this.snag.tip;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, ((feet.x - a.x) * dx + (feet.z - a.z) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(feet.x - a.x - dx * t, feet.z - a.z - dz * t) < BRIDGE_REACH;
   }
 
   /** R on the end screen: the stage from the start. */

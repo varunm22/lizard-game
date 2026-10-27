@@ -80,7 +80,7 @@ async function main() {
   // The way out: the crack, kept clear, the fig tree and the dead tree on the rim.
   const kept = clearForPuzzle(props.obstacles, scene, world);
   const figs = new Figs(scene, world, FIG_TREE, props.figTree, (): readonly Obstacle[] => steerRound);
-  const snag = new Snag(scene, world, SNAG);
+  const snag = new Snag(scene, world, SNAG, props.snag);
   const obstacles: Obstacle[] = [...landmarks, ...kept, figs.tree, snag.obstacle];
   // What the tortoise steers round, and figs stop against: all but the dead tree, which it's meant to bump.
   const steerRound: Obstacle[] = obstacles.filter((o) => o !== snag.obstacle);

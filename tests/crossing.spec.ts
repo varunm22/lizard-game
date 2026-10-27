@@ -218,3 +218,36 @@ test('the crack is too wide to jump: a lizard that falls in is stuck at the bott
   expect(out.p.grounded).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('a lizard that stops with its middle out over the rim tips in, whichever way it came at it', async ({ page }) => {
+  const errors = await bootGame(page);
+  const runs = await page.evaluate(() => {
+    const g = window.__game!;
+    const z = -0.2;
+    const c0 = g.crack(z);
+    g.clearPlants(c0.x + c0.half + 0.6, z - 0.5, c0.x, z + 0.5, 0.5);
+    const out: { inside: number; fallen: boolean }[] = [];
+    for (const ang of [0, 0.7, 1.2]) {
+      const c = g.crack(z);
+      g.teleport(c.x + c.half + 0.25, z, -Math.PI / 2 + ang);
+      g.advance(5, false);
+      g.setInput({ move: { x: 0, y: 1 } }, 200);
+      // Stop as soon as its middle is a centimetre past the rim.
+      for (let k = 0; k < 200; k++) {
+        g.advance(1, false);
+        const p = g.player();
+        const cc = g.crack(p.z);
+        if (Math.abs(p.x - cc.x) < cc.half - 0.01 || g.islandRun().fallen) break;
+      }
+      g.setInput(null);
+      g.advance(60, false);
+      const p = g.player();
+      const cc = g.crack(p.z);
+      out.push({ inside: cc.half - Math.abs(p.x - cc.x), fallen: g.islandRun().fallen !== null });
+      g.advance(4 * 60, false);
+    }
+    return out;
+  });
+  for (const r of runs) expect(r.fallen).toBe(true);
+  expect(errors).toEqual([]);
+});

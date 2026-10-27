@@ -19,6 +19,8 @@ object so the game can fade each placed prop on its own. Objects:
 - algae_green, algae_red: sea lettuce and red turf tufts a few cm across, growing up from the origin.
 - fig_tree: the island puzzle's wild fig, ripe figs on its limbs; extras `trunk_radius` and
   `trunk_height` (up to the fork) as for the trees, and `crown_y`, the underside of its leaves.
+- snag: the island puzzle's dead tree, standing on the origin; extras `length` and `radius`, the
+  straight collider it falls as and lies across the lava crack as.
 - slab_0..3: blocky lava slabs for the rock piles, convex, about 2 m across (radius ~1), the top a
   near-flat facet at z = extras `top`, the base at z = extras `bottom`. The game scales them
   unevenly (each slab's top set by the pile's shape, its base pushed down to the ground) and
@@ -81,6 +83,13 @@ C = {
     'fig_leaf': srgb('#2f5f2a'),
     'fig_leaf_light': srgb('#5f8f3c'),
     'fig': srgb('#e0c03a'),
+    'char': srgb('#2b2420'),
+    'char_brown': srgb('#4a3428'),
+    'deadwood': srgb('#d2cbbb'),
+    'deadwood_grey': srgb('#9d968a'),
+    'fungus': srgb('#e9d6a8'),
+    'fungus_rim': srgb('#c8782c'),
+    'usnea': srgb('#bccc96'),
     'fig_green': srgb('#a9b04a'),
 }
 
@@ -726,6 +735,98 @@ def fig_tree(rng):
     return mb, r0 * 1.2, fork, min(p.z for p, _ in clumps) - 0.05
 
 
+def snag(rng):
+    """The island puzzle's dead tree, made to read as dead at a glance and unlike any live tree
+    round it: a fire-scarred trunk, its bark charred near black and falling away in long strips that
+    bare the bleached, silvery wood under it; a jagged snapped-off top; a few crooked bare limbs,
+    every one snapped short to a point; shelf fungus stepping up one side; and pale tufts of beard
+    lichen (Usnea, common on dead wood in the Galapagos highlands) hanging off the limbs. Stands on
+    the origin along +Z, `length` tall, the trunk within `radius` of its axis so the game's straight
+    collider fits. It falls toward -X, so nothing sticks out of its +X side, which ends up on top
+    when it lies across the crack and is walked over."""
+    mb = MeshBuilder()
+    length, radius = 0.78, 0.036
+    seed = rng.random() * 50
+
+    def wood(co, s):
+        co = Vector(co)
+        # Long vertical strips of bark gone, the bleached wood showing.
+        bare = noise.noise(Vector((co.x * 55, co.y * 55, co.z * 3)) + Vector((seed, 2, 1))) * 0.5 + 0.5 + 0.12 * s
+        grain = noise.noise(Vector((co.x * 90, co.y * 90, co.z * 8)) + Vector((1, seed, 3))) * 0.5 + 0.5
+        dead = mix(C['deadwood_grey'], C['deadwood'], grain)
+        burnt = mix(C['char'], C['char_brown'], 0.4 * (noise.noise(co * 25 + Vector((seed, 5, 0))) * 0.5 + 0.5))
+        return mix(burnt, dead, (bare - 0.6) * 10)
+
+    def limb_wood(co, s):
+        # The limbs long since stripped of their bark, bleached silver, charred only where they leave the trunk.
+        grain = noise.noise(Vector(co) * 60 + Vector((seed, 1, 7))) * 0.5 + 0.5
+        return mix(C['char'], mix(C['deadwood_grey'], C['deadwood'], grain), s * 4)
+
+    lean = Vector((rng.uniform(-0.04, 0.0), rng.uniform(-0.04, 0.04), 1))
+    trunk = path((0, 0, -0.06), lean, length + 0.04, 32, rng=rng, wobble=0.015)
+    # Keep the axis within reach of the straight collider.
+    for p in trunk:
+        p.x = max(-0.012, min(0.012, p.x))
+        p.y = max(-0.012, min(0.012, p.y))
+    rings = tube(mb, trunk, flare(radius * 1.0, radius * 0.72, 0.5, 0.05, length), wood, sides=14, cap=False, rough=0.18, seed=seed)
+    # The snapped top: splinters of pale wood standing up round a ragged break.
+    top = trunk[-1]
+    ring = rings[-1]
+    tips = []
+    for k in range(len(ring)):
+        h = rng.uniform(0.02, 0.09) * (1 if rng.random() < 0.5 else 0.3)
+        a = 2 * math.pi * k / len(ring)
+        tips.append(mb.vert(top + Vector((math.cos(a) * radius * 0.45, math.sin(a) * radius * 0.45, h)), C['deadwood'] if h > 0.02 else C['wood_ring']))
+    centre = mb.vert(top + Vector((0, 0, -0.01)), C['wood_ring'])
+    n = len(ring)
+    for k in range(n):
+        mb.face(ring[k], ring[(k + 1) % n], tips[(k + 1) % n], tips[k])
+        mb.face(tips[k], tips[(k + 1) % n], centre)
+    # Bare limbs, crooked and snapped short, out of every side but +X.
+    hang = []
+    for i, (z, a) in enumerate(((0.26, math.pi * 0.62), (0.4, -math.pi * 0.55), (0.5, math.pi * 1.02), (0.6, -math.pi * 0.8), (0.68, math.pi * 0.45))):
+        a += rng.uniform(-0.2, 0.2)
+        d = Vector((math.cos(a), math.sin(a), rng.uniform(0.7, 1.2))).normalized()
+        start = trunk[int(round((z + 0.06) / (length + 0.04) * 32))] + Vector((math.cos(a), math.sin(a), 0)) * radius * 0.5
+        L = rng.uniform(0.18, 0.28)
+        limb = path(start, d, L, 5, bend=Vector((0, 0, 0.4)), rng=rng, wobble=0.35)
+        tube(mb, limb, lambda s, r=radius * rng.uniform(0.4, 0.5): r * (1 - 0.8 * s), limb_wood, sides=6, rough=0.2, seed=seed + i)
+        hang.append(limb[2])
+        # A twig off it, snapped too.
+        f = limb[2]
+        t = (limb[3] - limb[1]).normalized()
+        side = t.cross(Vector((0, 0, 1))).normalized() * rng.choice((-1, 1))
+        twig = path(f, (t + side * 0.9).normalized(), L * 0.45, 2, rng=rng, wobble=0.3)
+        tube(mb, twig, lambda s, r=radius * 0.2: r * (1 - 0.8 * s), lambda co, s: limb_wood(co, 1.0), sides=4, seed=seed + 9 + i)
+        hang.append(limb[-1])
+    # Shelf fungus stepping up the trunk's -Y and -X sides: flat half-discs, cream with an orange rim.
+    for j, (z, a) in enumerate(((0.12, -math.pi * 0.6), (0.17, -math.pi * 0.7), (0.21, -math.pi * 0.55), (0.36, math.pi * 0.9))):
+        out = Vector((math.cos(a), math.sin(a), 0))
+        side = Vector((-out.y, out.x, 0))
+        base = Vector((0, 0, z)) + out * radius * 0.85
+        w = rng.uniform(0.028, 0.04)
+        rim = []
+        for k in range(9):
+            t = math.pi * k / 8
+            rim.append(base + side * math.cos(t) * w + out * math.sin(t) * w * 0.75 + Vector((0, 0, -0.004 * math.sin(t))))
+        top_ids = [mb.vert(p + Vector((0, 0, 0.004)), C['fungus']) for p in rim]
+        bot_ids = [mb.vert(p - Vector((0, 0, 0.004)), C['fungus_rim']) for p in rim]
+        mid_t = mb.vert(base + out * w * 0.3 + Vector((0, 0, 0.006)), C['fungus'])
+        mid_b = mb.vert(base + out * w * 0.3 - Vector((0, 0, 0.005)), C['fungus_rim'])
+        for k in range(8):
+            mb.face(mid_t, top_ids[k + 1], top_ids[k])
+            mb.face(mid_b, bot_ids[k], bot_ids[k + 1])
+            mb.face(top_ids[k], top_ids[k + 1], bot_ids[k + 1], bot_ids[k])
+    # Beard lichen: short pale tufts hanging under the limbs, a few strands each.
+    for p in hang:
+        for _ in range(rng.randint(2, 4)):
+            off = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), 0)) * 0.006
+            drop = rng.uniform(0.025, 0.05)
+            pts = [p + off, p + off + Vector((rng.uniform(-0.004, 0.004), rng.uniform(-0.004, 0.004), -drop * 0.5)), p + off + Vector((rng.uniform(-0.006, 0.006), rng.uniform(-0.006, 0.006), -drop))]
+            tube(mb, pts, lambda s: 0.0035 * (1 - 0.7 * s), lambda co, s: mix(C['usnea'], C['lichen'], s), sides=4)
+    return mb, length, radius
+
+
 def make_object(name, mb, mat, smooth=True, extras=None):
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(mb.verts, [], mb.faces)
@@ -780,6 +881,9 @@ def main():
     # The island puzzle's fig tree, likewise from its own generator.
     mb, r, h, crown_y = fig_tree(random.Random(37))
     objects.append(make_object('fig_tree', mb, mat, extras={'trunk_radius': r, 'trunk_height': h, 'crown_y': crown_y}))
+    # And its dead tree, the same way.
+    mb, length, radius = snag(random.Random(43))
+    objects.append(make_object('snag', mb, mat, extras={'length': length, 'radius': radius}))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 
