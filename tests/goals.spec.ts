@@ -90,7 +90,7 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => localStorage.setItem('lizard-goals-dunes', JSON.stringify(['freeze', 'shore'])));
-  await page.goto('/?test&picker');
+  await page.goto('/?level=island&test&picker');
   await page.waitForFunction(() => window.__game?.ready === true);
   await page.evaluate(() => window.__game!.completeGoal('tortoise'));
 

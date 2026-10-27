@@ -22,7 +22,6 @@ import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
 import lizardUrl from '../assets/lizard.glb?url';
 import snakeUrl from '../assets/snake.glb?url';
 import crabUrl from '../assets/crab.glb?url';
-import propsUrl from '../assets/props.glb?url';
 import dunesUrl from '../assets/dunes.glb?url';
 import { loadSnakeKit } from './snakeBody';
 import { buildDuneProps } from './props';
@@ -38,6 +37,7 @@ import { Markers } from './markers';
 import { DuneRun } from './run';
 import { clock, createDunesHud, endKeys, runKeys } from './hud';
 import { Arrival } from './arrival';
+import { buildGrove } from './grove';
 
 /** The nesting dunes level (`?level=dunes`): hatch, and run for the shore past the racer snakes. */
 export async function dunes() {
@@ -48,10 +48,16 @@ export async function dunes() {
   const cel = new CelRenderer(renderer, sky, sun);
   cel.waterY = WATER_Y;
   buildTerrain(scene, world);
-  const { obstacles, bushes } = await buildDuneProps(propsUrl, dunesUrl, scene, world);
+  const { obstacles, bushes } = await buildDuneProps(dunesUrl, scene, world);
   // Plants grow anywhere a rock, log, tree or a bush's woody base isn't.
   const open = (x: number, z: number) => !obstacles.some((o) => covers(o, x, z, 0.015));
   const plants = await Plants.load(plantsUrl, scene, world, open, NEST, dunePlants);
+  // The island's forest edge past the colony, where the hatchling heads at the end; nothing grows in its trunks.
+  const before = obstacles.length;
+  await buildGrove(scene, world, obstacles);
+  for (const t of obstacles.slice(before)) {
+    for (const p of [...plants.near(t.position.x, t.position.z, t.radius + 0.02)]) plants.eat(p);
+  }
   const water = new Water(scene);
   const splashes = new Splashes(water);
 
@@ -119,6 +125,8 @@ export async function dunes() {
   const walkIntoColony = (then: () => void) => {
     hud.message(null);
     colony.solid = false;
+    // The finish ring would cut across the view down the lane.
+    markers.finish.visible = false;
     arrival.start(then);
   };
   runKeys('dunes', run, (go) => walkIntoColony(go));

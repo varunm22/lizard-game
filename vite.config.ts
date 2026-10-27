@@ -13,5 +13,18 @@ export default defineConfig(({ mode }) => ({
     // for hosts that only serve web file types (the claude.ai preview link).
     assetsInlineLimit: mode === 'preview' ? Infinity : 4096,
     outDir: mode === 'preview' ? 'dist-preview' : 'dist',
+    // The preview host caps each file at 16 MB, so the inlined models go in chunks of their own
+    // beside the game's script: the tunnels', and everything else.
+    rolldownOptions:
+      mode === 'preview'
+        ? {
+            output: {
+              manualChunks: (id: string) => (id.includes('/src/assets/') ? (id.includes('/tunnels') ? 'models-tunnels' : 'models') : undefined),
+              // Fixed names, so each publish replaces the same files.
+              entryFileNames: 'assets/game.js',
+              chunkFileNames: 'assets/[name].js',
+            },
+          }
+        : {},
   },
 }));

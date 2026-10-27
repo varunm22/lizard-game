@@ -1,11 +1,12 @@
 /**
- * Which level this page plays: the island (the default), the nesting dunes (`?level=dunes`), the
- * mangrove lagoon (`?level=lagoon`) or the lava tunnels (`?level=tunnels`).
+ * Which level this page plays: the nesting dunes (the default, where the game begins), the island
+ * (`?level=island`), the mangrove lagoon (`?level=lagoon`) or the lava tunnels (`?level=tunnels`).
  */
 export type Level = 'island' | 'dunes' | 'lagoon' | 'tunnels';
 
 /** The stages, in the order they're played. */
-export const LEVELS: readonly Level[] = ['island', 'dunes', 'lagoon', 'tunnels'];
+// The hatchling crosses the dunes to the island's colony, then goes on from there.
+export const LEVELS: readonly Level[] = ['dunes', 'island', 'lagoon', 'tunnels'];
 
 export const LEVEL_NAMES: Record<Level, string> = {
   island: 'Galápagos island',
@@ -17,7 +18,7 @@ export const LEVEL_NAMES: Record<Level, string> = {
 /** The stage after `level`; after the last, back to the first. */
 export const nextLevel = (level: Level): Level => LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length];
 
-const known = (name: string | null): Level => (LEVELS as readonly (string | null)[]).includes(name) ? (name as Level) : 'island';
+const known = (name: string | null): Level => (LEVELS as readonly (string | null)[]).includes(name) ? (name as Level) : LEVELS[0];
 
 const KEY = 'lizard-level';
 
@@ -28,7 +29,7 @@ function chosen(): Level {
   try {
     return known(sessionStorage.getItem(KEY));
   } catch {
-    return 'island';
+    return LEVELS[0];
   }
 }
 

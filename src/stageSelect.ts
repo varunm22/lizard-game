@@ -7,8 +7,8 @@ import tunnelsTile from './assets/stages/tunnels.jpg';
 
 /** The stages, in the order the picker shows them, each with a still from the game. */
 const STAGES: { id: Level; name: string; blurb: string; image: string }[] = [
-  { id: 'island', name: LEVEL_NAMES.island, blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
   { id: 'dunes', name: LEVEL_NAMES.dunes, blurb: 'Hatch, then cross the dunes to the colony past the racer snakes.', image: dunesTile },
+  { id: 'island', name: LEVEL_NAMES.island, blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
   { id: 'lagoon', name: LEVEL_NAMES.lagoon, blurb: 'Slip past the lava herons and float a log across the channel.', image: lagoonTile },
   { id: 'tunnels', name: LEVEL_NAMES.tunnels, blurb: 'Find the way through two floors of lava tubes: drop through holes, climb the rubble.', image: tunnelsTile },
 ];
