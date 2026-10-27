@@ -7,6 +7,7 @@ import { WATER_Y } from '../world/shore';
 import { terrainHeight } from '../world/terrain';
 import { covers, type Obstacle } from '../world/obstacles';
 import { COLONY, duneShoreX, RACER_HOMES } from './layout';
+import propsUrl from '../assets/props.glb?url';
 
 /** Its own random numbers, so it moves nothing else. */
 const SEED = 83;
@@ -22,8 +23,8 @@ const ROOT_DEPTH = 0.05;
  * from the colony at the end of the run looks like walking into the island, the next stage. Solid
  * trunks, like the island's; added after everything else is placed, so nothing else moves.
  */
-export async function buildGrove(url: string, scene: THREE.Scene, world: RAPIER.World, obstacles: Obstacle[]) {
-  const gltf = await loadGltf(url);
+export async function buildGrove(scene: THREE.Scene, world: RAPIER.World, obstacles: Obstacle[]) {
+  const gltf = await loadGltf(propsUrl);
   const kit = new Map<string, { geometry: THREE.BufferGeometry; extras: Record<string, number> }>();
   gltf.scene.traverse((o) => {
     const mesh = o as THREE.Mesh;

@@ -55,7 +55,7 @@ export async function dunes() {
   const plants = await Plants.load(plantsUrl, scene, world, open, NEST, dunePlants);
   // The island's forest edge past the colony, where the hatchling heads at the end; nothing grows in its trunks.
   const before = obstacles.length;
-  await buildGrove(propsUrl, scene, world, obstacles);
+  await buildGrove(scene, world, obstacles);
   for (const t of obstacles.slice(before)) {
     for (const p of [...plants.near(t.position.x, t.position.z, t.radius + 0.02)]) plants.eat(p);
   }
