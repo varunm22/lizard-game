@@ -150,6 +150,7 @@ async function main() {
   const run = new IslandRun(player, tortoise, snag);
   run.onHome = () => hud.message('Across the crack!', 'The trail out of the colony leads on from here.', endKeys('island'));
   runKeys('island', run);
+  let introShown = true;
   hud.intro(true);
   hud.objective(run.objective.text, run.objective.hint);
   goals.onDone = (goal) => goalsPanel.done(goal);
@@ -218,6 +219,11 @@ async function main() {
     const input = wounds.down ? STILL : forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
     climate.step(dt);
     const moving = input.move.x !== 0 || input.move.y !== 0;
+    // The start card stays up until the player first moves the lizard, as on the dunes.
+    if (introShown && moving) {
+      introShown = false;
+      hud.intro(false);
+    }
     basking = player.grounded && !moving && player.horizontalSpeed < 0.02 && !wounds.down;
     vitals.step(dt, climate.now, {
       still: player.grounded && !moving && player.horizontalSpeed < 0.02,
@@ -236,10 +242,7 @@ async function main() {
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
     const state = states.update(movementFacts(player), dt);
-    if (state !== lastState && state !== 'idle') {
-      hud.hideHint();
-      hud.intro(false);
-    }
+    if (state !== lastState && state !== 'idle') hud.hideHint();
     lastState = state;
     world.timestep = dt;
     world.step();

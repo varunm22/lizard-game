@@ -11,6 +11,9 @@ test('the start card says what the bars are, and goes once the lizard moves; the
   await expect(intro).toContainText('Air');
   await expect(intro).not.toHaveClass(/hidden/);
   await expect(page.locator('.objective')).toContainText('Cross the lava crack');
+  // Left alone for a while it stays: it goes only once the player moves the lizard.
+  await page.evaluate(() => window.__game!.advance(180, false));
+  await expect(intro).not.toHaveClass(/hidden/);
   await page.evaluate(() => {
     const g = window.__game!;
     g.setInput({ move: { x: 0, y: 1 } }, 30);
