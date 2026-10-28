@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
 import type { PlayerController } from '../player/controller';
-import type { LizardVisual } from '../player/visual';
+import { VITALS, type DownCause, type Vitals } from '../player/vitals';
+import type { Wounds } from '../player/wounds';
 import { terrainHeight } from '../world/terrain';
 import type { DriftLog } from './driftLog';
-import type { Heron, HeronPrey, Herons } from './herons';
+import type { Wrack } from './wrack';
+import type { HeronPrey, Herons } from './herons';
 import { FINISH, SAFE_POINTS, START } from './layout';
 import type { Swimmers } from './swimmers';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
 
-/** In a heron's bill this long (s) before the lizard is put back. */
+/** Down (in a heron's bill, or out of health any other way) this long (s) before the lizard is put back. */
 export const CAUGHT_TIME = 2.5;
 /** Riding the log while it drifts this long (s) counts for the ride goal. */
 const RIDE = 1;
@@ -22,10 +24,13 @@ export function safePointAt(x: number, z: number): number {
 
 /**
  * One go at the lagoon: from the lava coast to the lava field across the channel. The clock starts
- * as the lizard first moves. Halfway is a safe point among old mangrove roots: once the lizard has
- * reached it, a heron's catch puts it back there (the clock still running); caught before that, it's
- * back at the start. Reaching the field wins it. R starts over at any time, the log back in its pool.
- * Also keeps the lagoon's goals, ticked off for good the first time each is met.
+ * as the lizard first moves. A heron's stab or a shark pup's bite takes health (the island's bars:
+ * health, warmth, food and air, `Vitals`), and so do the cold, hunger and running out of air; at
+ * none the lizard is down. Halfway is a safe point among old mangrove roots: once the lizard has
+ * reached it, going down puts it back there (the clock still running); down before that, it's back
+ * at the start. Its bars are full again either way. Reaching the field wins it. R starts over at any
+ * time, the log back in its pool. Also keeps the lagoon's goals, ticked off for good the first time
+ * each is met.
  */
 export class LagoonRun {
   state: RunState = 'ready';
@@ -35,7 +40,6 @@ export class LagoonRun {
   catches = 0;
   finishes = 0;
   checkpoint = -1;
-  private caughtLeft = 0;
   readonly prey: HeronPrey;
   readonly goals: Goals;
   /** Things the goals wait on, set by the herons' callbacks. */
@@ -44,17 +48,21 @@ export class LagoonRun {
   private slipped = false;
   private feet = new THREE.Vector3();
   onReset: (() => void) | null = null;
-  onCaught: ((by: Heron) => void) | null = null;
+  /** Down, and what took the last of its health; and a blow that only hurt it. */
+  onCaught: ((by: DownCause) => void) | null = null;
+  onHurt: ((by: 'heron' | 'shark') => void) | null = null;
   onHome: (() => void) | null = null;
   onSafe: ((index: number) => void) | null = null;
   onRespawn: ((index: number) => void) | null = null;
 
   constructor(
     private player: PlayerController,
-    private visual: LizardVisual,
+    private wounds: Wounds,
+    private vitals: Vitals,
     private herons: Herons,
     private log: DriftLog,
-    swimmers: Swimmers,
+    private wrack: Wrack,
+    private swimmers: Swimmers,
   ) {
     const free = () => this.state === 'ready' || this.state === 'running';
     this.prey = {
@@ -63,11 +71,16 @@ export class LagoonRun {
       speed: () => player.horizontalSpeed,
       swimming: () => player.swimming,
       huntable: () => {
-        if (!free()) return false;
+        if (!free() || wounds.down) return false;
         player.feetAt(1, this.feet);
         return safePointAt(this.feet.x, this.feet.z) < 0;
       },
-      caught: (by) => this.caught(by),
+      struck: (by, dx, dz) => {
+        if (!free() || !wounds.strike(dx, dz, by === 'heron' ? VITALS.heronHit : VITALS.sharkBite, by)) return null;
+        if (wounds.down) return 'down';
+        this.onHurt?.(by);
+        return 'hurt';
+      },
     };
     herons.onLose = (_h, why) => {
       if (why === 'tangle') this.hid = true;
@@ -80,8 +93,10 @@ export class LagoonRun {
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
       { id: 'deep', label: 'Escape a heron into deep water', met: () => this.dove },
       { id: 'slip', label: 'Slip away from a stalking heron', met: () => this.slipped },
+      { id: 'dam', label: 'Clear the wrack dam from the creek', met: () => wrack.cleared },
+      { id: 'free', label: 'Work the stuck log loose', met: () => log.state !== 'aground' },
       { id: 'channel', label: 'Float the driftwood out into the channel', met: () => log.reachedChannel > 0 },
-      { id: 'bridge', label: 'Jam the log across the narrows', met: () => log.state === 'jammed' },
+      { id: 'bridge', label: 'Catch the log across the channel', met: () => log.state === 'jammed' },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
       { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
@@ -91,11 +106,13 @@ export class LagoonRun {
 
   get danger(): 'none' | 'watched' | 'chased' {
     if (this.state !== 'running' && this.state !== 'ready') return 'none';
+    // A shark pup tensing to bite, or darting in, is as bad as a heron about to strike.
+    if (this.swimmers.list.some((s) => s.state === 'tense' || s.state === 'bite')) return 'chased';
     return this.herons.danger;
   }
 
   get held() {
-    return this.state === 'caught';
+    return this.wounds.down;
   }
 
   get safe() {
@@ -103,19 +120,15 @@ export class LagoonRun {
     return safePointAt(this.feet.x, this.feet.z) >= 0;
   }
 
-  private caught(by: Heron) {
-    if (this.state !== 'running' && this.state !== 'ready') return;
-    this.state = 'caught';
-    this.catches++;
-    this.caughtLeft = CAUGHT_TIME;
-    this.visual.downed = true;
-    this.onCaught?.(by);
+  /** Back on its feet after going down (the wounds' countdown ran out, its bars full again): at the safe point if reached, else from the start. */
+  afterDown() {
+    if (this.checkpoint >= 0) this.respawn();
+    else this.restart();
   }
 
   private respawn() {
     const p = SAFE_POINTS[this.checkpoint];
     this.state = 'running';
-    this.visual.downed = false;
     this.player.setFeet(this.feet.set(p.x, terrainHeight(p.x, p.z), p.z), p.yaw);
     this.herons.callOff();
     this.onRespawn?.(this.checkpoint);
@@ -127,10 +140,13 @@ export class LagoonRun {
     this.time = 0;
     this.attempts++;
     this.checkpoint = -1;
-    this.visual.downed = false;
+    this.wounds.reset();
+    this.vitals.reset();
     this.player.setFeet(this.feet.set(START.x, terrainHeight(START.x, START.z), START.z), START.yaw);
     this.log.reset();
+    this.wrack.reset();
     this.herons.reset();
+    this.swimmers.calm();
     this.onReset?.();
   }
 
@@ -153,12 +169,12 @@ export class LagoonRun {
         this.onHome?.();
       }
     }
-    if (this.state === 'caught') {
-      this.caughtLeft -= dt;
-      if (this.caughtLeft <= 0) {
-        if (this.checkpoint >= 0) this.respawn();
-        else this.restart();
-      }
+    // Out of health, whatever took the last of it: down until the wounds' countdown brings it back (`afterDown`).
+    if ((this.state === 'running' || this.state === 'ready') && this.wounds.down) {
+      this.state = 'caught';
+      this.catches++;
+      this.herons.callOff();
+      this.onCaught?.(this.wounds.downBy ?? 'heron');
     }
     this.goals.step(dt);
   }
