@@ -61,6 +61,12 @@ export interface LagoonProps {
   mangroves: Mangrove[];
   /** Root colliders by handle, for sight lines that roots block. */
   roots: Set<number>;
+  /** The drawn mangroves (instanced), which shade what's under them. */
+  crowns: THREE.Object3D[];
+  /** Where each prop root standing in the water meets the waterline, and which way it faces out: where Bostrychia grows. */
+  rootWaterline: { position: THREE.Vector3; normal: THREE.Vector3 }[];
+  /** The same roots where they stand in the water, as upright posts (centre and radius, m): what the fry weave between. */
+  rootPosts: { x: number; z: number; r: number }[];
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -79,11 +85,15 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   const obstacles: Obstacle[] = [];
   const mangroves: Mangrove[] = [];
   const roots = new Set<number>();
+  const rootWaterline: LagoonProps['rootWaterline'] = [];
+  const rootPosts: LagoonProps['rootPosts'] = [];
   const hidden = material();
   hidden.visible = false;
   const yawQ = (yaw: number) => new THREE.Quaternion().setFromAxisAngle(Y, yaw);
   const inside = (x: number, z: number, r: number) => Math.abs(x) < EDGE - r && Math.abs(z) < EDGE - r;
-  const spots = HERON_HAUNTS.flat();
+  // The first three herons' spots, kept open as the props are scattered; the later herons' spots were
+  // picked in the clearings this leaves, so the scatter (and its random draws) stays as it was.
+  const spots = HERON_HAUNTS.slice(0, 3).flat();
   /** Room for a footprint of radius r at (x, z): clear of what's placed and the spots kept open. */
   const free = (x: number, z: number, r: number) =>
     Math.hypot(x - START.x, z - START.z) > r + 0.35 &&
@@ -126,6 +136,18 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
       const rFoot = root[root.length - 1] * scale;
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(root[i * 3], root[i * 3 + 1], root[i * 3 + 2]).applyMatrix4(place));
+      // Where the root, arching down from the trunk, goes into the water, if that's out over water.
+      const line = WATER_Y - 0.004;
+      for (let i = 0; i + 1 < n; i++) {
+        if (pts[i].y < line || pts[i + 1].y >= line) continue;
+        const at = pts[i].clone().lerp(pts[i + 1], (pts[i].y - line) / (pts[i].y - pts[i + 1].y));
+        if (depthAt(at.x, at.z) > 0.012) {
+          rootPosts.push({ x: at.x, z: at.z, r: (rTop + rFoot) / 2 });
+          const out = new THREE.Vector3(at.x - x, 0, at.z - z).normalize();
+          rootWaterline.push({ position: at.addScaledVector(out, (rTop + rFoot) * 0.4), normal: out.add(new THREE.Vector3(0, 0.6, 0)).normalize() });
+        }
+        break;
+      }
       const idx = [0, 2, 4, n - 1].filter((v, k, arr) => v < n && arr.indexOf(v) === k);
       for (let k = 0; k + 1 < idx.length; k++) {
         a.copy(pts[idx[k]]);
@@ -198,8 +220,10 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   }
   for (let i = 0; i < 16; i++) black(range(-5.6, 2.0), (i % 2 ? 1 : -1) * range(5.55, 5.8), true);
 
+  const crowns: THREE.Object3D[] = [];
   for (const [kind, list] of instances) {
     const mesh = new THREE.InstancedMesh(need(kind), material(), list.length);
+    crowns.push(mesh);
     list.forEach((m, k) => mesh.setMatrixAt(k, m));
     mesh.computeBoundingSphere();
     mesh.castShadow = mesh.receiveShadow = true;
@@ -340,5 +364,5 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   propMesh.name = 'propagules';
   scene.add(propMesh);
 
-  return { obstacles, mangroves, roots };
+  return { obstacles, mangroves, roots, crowns, rootWaterline, rootPosts };
 }
