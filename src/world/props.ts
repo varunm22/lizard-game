@@ -8,6 +8,7 @@ import { rockyShore, WATER_Y } from './shore';
 import { CACTUS_GROUP, TERRAIN_SIZE, terrainHeight } from './terrain';
 import { covers, hull, type Obstacle } from './obstacles';
 import { buildRockPiles } from './rockPiles';
+import { basinDip } from '../island/basin';
 
 /**
  * Scatters the island's props from assets-src/props.py: trees through the forest and along the back
@@ -33,6 +34,10 @@ export interface PropsResult {
   obstacles: Obstacle[];
   /** The algae meshes, for `Algae` to grow on the rocks. */
   algae: { green: THREE.BufferGeometry; red: THREE.BufferGeometry };
+  /** The island puzzle's manzanillo, for `Apples` to plant, with its extras (trunk_radius, trunk_height, crown_y). */
+  appleTree: { geometry: THREE.BufferGeometry; extras: Record<string, number> };
+  /** The island puzzle's dead tree, for `Snag`. */
+  snag: THREE.BufferGeometry;
 }
 
 export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.World, landmarks: readonly Obstacle[]): Promise<PropsResult> {
@@ -138,7 +143,10 @@ export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.
     tree(cover > 0.6 ? (rand() < 0.6 ? 'scalesia' : 'palo_santo') : rand() < 0.6 ? 'opuntia' : 'palo_santo', x, z, false, backdrop);
     placed++;
   }
-  for (const [variant, list] of backdrop) {
+  for (const [variant, all] of backdrop) {
+    // (Not out in the mangrove lagoon past the west wall, `island/basin.ts`: dropped after placing, so the rest stay put.)
+    const list = all.filter((m) => basinDip(m.elements[12], m.elements[14]) < 0.2);
+    if (list.length === 0) continue;
     const mesh = new THREE.InstancedMesh(need(variant), material(), list.length);
     list.forEach((m, k) => mesh.setMatrixAt(k, m));
     mesh.computeBoundingSphere();
@@ -255,7 +263,7 @@ export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.
     placed++;
   }
 
-  return { obstacles, algae: { green: need('algae_green'), red: need('algae_red') } };
+  return { obstacles, algae: { green: need('algae_green'), red: need('algae_red') }, appleTree: { geometry: need('manzanillo'), extras: kit.extras.get('manzanillo')! }, snag: need('snag') };
 }
 
 const Y = new THREE.Vector3(0, 1, 0);

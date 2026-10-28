@@ -32,6 +32,8 @@ const CAM = {
   /** Never closer than this to the ground directly under the camera. */
   groundClearance: 0.012,
 };
+/** Looking down from overhead (while the lizard is stuck down in the lava crack): the pitch it swings to (radians, near straight down) and how fast (per second). */
+const OVERHEAD = { pitch: 1.4, rate: 5 };
 /** A shake when the lizard is struck: strength (radians), how long it lasts (s) and how fast it shakes (Hz). */
 const SHAKE = { strength: 0.035, time: 0.35, rate: 18 };
 
@@ -57,6 +59,9 @@ export class FollowCamera {
   /** Feet height at the last grounded frame; the camera doesn't rise with jumps above it. */
   private groundY = 0;
   private skip: (c: RAPIER.Collider) => boolean;
+  /** Set while the view should look straight down on the lizard (stuck in the lava crack), instead of along the ground at a wall. */
+  overhead = false;
+  private overheadMix = 0;
   /** A shake under way: its strength (radians) and how long it has run (s). */
   private shaking = { strength: 0, t: Infinity };
 
@@ -115,9 +120,11 @@ export class FollowCamera {
       this.target.y += (goalY - this.target.y) * (1 - Math.exp(-rate * dt));
     }
 
-    // Direction from the camera toward the target.
-    const cp = Math.cos(this.pitch);
-    this.dir.set(cp * Math.sin(this.yaw), -Math.sin(this.pitch), cp * Math.cos(this.yaw));
+    // Direction from the camera toward the target, swung up overhead when asked (the player's own pitch is kept for after).
+    this.overheadMix += ((this.overhead ? 1 : 0) - this.overheadMix) * (1 - Math.exp(-OVERHEAD.rate * dt));
+    const pitch = this.pitch + (Math.max(this.pitch, OVERHEAD.pitch) - this.pitch) * this.overheadMix;
+    const cp = Math.cos(pitch);
+    this.dir.set(cp * Math.sin(this.yaw), -Math.sin(pitch), cp * Math.cos(this.yaw));
 
     // Sweep a small sphere from the target back along the arm; stop short of the first hit.
     let allowed = this.distance;
@@ -137,7 +144,8 @@ export class FollowCamera {
       this.ignoreBody,
       this.skip,
     );
-    if (hit) allowed = Math.max(CAM.minArm, hit.time_of_impact);
+    // (Overhead it looks straight down out of the crack, which is clear; the sweep would only catch on the wall the lizard is wedged against.)
+    if (hit && this.overheadMix < 0.5) allowed = Math.max(CAM.minArm, hit.time_of_impact);
     // Pull in instantly, ease back out.
     this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
 

@@ -9,6 +9,8 @@ import { duneColour, duneHeight } from '../dunes/layout';
 import { lagoonColour, lagoonHeight } from '../lagoon/layout';
 import { tunnelsColour, tunnelsHeight } from '../tunnels/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
+import { CRACK, crackCut, crackHalf, crackX } from '../island/crack';
+import { basinDip, basinFloor, basinGap } from '../island/basin';
 
 /**
  * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes,
@@ -56,6 +58,14 @@ export const terrainHeight: (x: number, z: number) => number =
  * bank at the island's inland rim, and the coast carved in.
  */
 function islandHeight(x: number, z: number): number {
+  return islandGround(x, z) - crackCut(x, z);
+}
+
+/**
+ * The island's ground before the grieta (`island/crack.ts`) is cut into it. The plants are laid out
+ * over this, so the crack leaves every plant's place and random draws as they were.
+ */
+function islandGround(x: number, z: number): number {
   const r = Math.hypot(x, z);
   const swell = valueNoise(x / 1.3 + 11, z / 1.3 - 4) * 0.05;
   const bumps = valueNoise(x / 0.35 - 7, z / 0.35 + 3) * 0.012;
@@ -67,10 +77,17 @@ function islandHeight(x: number, z: number): number {
   // The inland rim rises out of the fog; the coast doesn't, the sea runs on past the edge.
   const inland = smoothstep(-0.6, -1.5, shoreDistance(x, z));
   const t = Math.max(0, -x - 3.3, (Math.abs(z) - 3.4) * inland);
-  const bank = t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1);
+  // (Except a gap in the west bank, past the lava crack, where it opens on the mangrove lagoon, `island/basin.ts`.)
+  const bank = (t < 1 ? 0.3 * t * t : 0.3 + 0.6 * (t - 1)) * (1 - 0.85 * basinGap(z));
   const land = Math.max(WATER_Y + 0.01, (swell + bumps) * calm + grit + roots + lava + bank);
-  return carveShore(x, z, land);
+  const ground = carveShore(x, z, land);
+  // Out past the west wall, the bank drops into the mangrove lagoon (`island/basin.ts`).
+  const dip = basinDip(x, z);
+  return dip > 0 ? ground + (basinFloor(x, z) - ground) * dip : ground;
 }
+
+/** Ground height for laying out the island's plants: the ground as it was before the crack. */
+export const plantingHeight: (x: number, z: number) => number = LEVEL === 'island' ? islandGround : terrainHeight;
 
 /** Approximate surface normal from the height function, for colouring. */
 function slopeAt(x: number, z: number): number {
@@ -90,6 +107,8 @@ const FOREST_MOSS = new THREE.Color(0x5a7834);
 /** Pale coral sand, darker where the waves wet it. */
 const SAND = new THREE.Color(0xe6d8b2);
 const WET_SAND = new THREE.Color(0xbba881);
+/** The lagoon's mud past the west wall. */
+const MUD = new THREE.Color(0x4a3e2c);
 /** Black lava, lighter on its weathered crests and darkest wet. */
 const LAVA = new THREE.Color(0x353130);
 const LAVA_CREST = new THREE.Color(0x544c46);
@@ -117,6 +136,16 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
     const pit = smoothstep(0.35, 0.8, valueNoise(x / 0.06 + 9, z / 0.06 - 2, 33));
     tmp.copy(LAVA).lerp(LAVA_CREST, crest).lerp(LAVA_WET, Math.max(wet, 0.6 * pit));
     c.lerp(tmp, lava);
+  }
+  const dip = basinDip(x, z);
+  if (dip > 0) c.lerp(MUD, smoothstep(0.1, 0.6, dip));
+  // The crack: bare dark basalt along its lips, down its sheer walls and on its floor, darkest at the bottom.
+  const lip = Math.abs(x - crackX(z)) - crackHalf(z);
+  if (lip < 0.12) {
+    const cut = crackCut(x, z);
+    const rough = smoothstep(0.35, 0.8, valueNoise(x / 0.05 + 9, z / 0.05 - 2, 33));
+    tmp.copy(LAVA_CREST).lerp(LAVA, 0.5 * rough).lerp(LAVA_WET, smoothstep(0, CRACK.depth * 0.7, cut));
+    c.lerp(tmp, smoothstep(0.12 + 0.04 * valueNoise(x / 0.1, z / 0.1, 34), 0.02, lip));
   }
 }
 const tmp = new THREE.Color();

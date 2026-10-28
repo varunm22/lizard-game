@@ -121,12 +121,38 @@ export interface GameTestHooks {
     ridden: boolean;
     /** Times it has walked onto the lizard and trampled it. */
     tramples: number;
+    /** How far it has walked in all (m). */
     along: number;
+    /** The point 0.3 m straight ahead of it, and where its mouth reaches the ground. */
     ahead: { x: number; z: number };
+    mouth: { x: number; z: number };
+    /** What it's making for: an apple, a plant or a spot in its meadow, and where. */
+    heading: { kind: 'apple' | 'plant' | 'wander'; x: number; z: number } | null;
+    /** Seconds since it last ate. */
+    sinceMeal: number;
+    /** Its meadow (an oval: centre and half-axes). */
     route: { x: number; z: number; rx: number; rz: number };
   };
-  /** Make the tortoise lie down for a rest now, or eat the next plant its mouth comes to. */
-  tortoiseDo: (action: 'eat' | 'rest') => void;
+  /** Make the tortoise lie down for a rest now, eat the next plant it comes to, or wander off toward a spot. */
+  tortoiseDo: (action: 'eat' | 'rest' | { x: number; z: number }) => void;
+  /** Stand the tortoise at (x, z) facing `yaw`, walking, and say how long since it ate. */
+  tortoisePlace: (x: number, z: number, yaw: number, sinceMeal?: number) => void;
+  /** The apples from the manzanillo: where each is, whether it's falling, floating, lying, lost in the crack or eaten, how often the lizard has pushed it, and whether it nosed it ashore. */
+  apples: () => { x: number; y: number; z: number; state: string; pushed: number; landed: boolean }[];
+  /** Lay apple `i` (making more if there are fewer) at (x, z): on the ground, or afloat if that's in the sea. */
+  applePlace: (i: number, x: number, z: number) => void;
+  appleTree: () => { x: number; z: number };
+  /** The dead tree on the crack's rim: standing, falling or fallen, its foot, how far over it is (radians) and its tip. */
+  snag: () => { state: string; x: number; y: number; z: number; angle: number; tip: { x: number; y: number; z: number } };
+  /** Knock the dead tree over now. */
+  knockSnag: () => void;
+  /** The crack at z: its centre line's x, half-width and depth (m). */
+  crack: (z: number) => { x: number; half: number; depth: number };
+  /** The island's objective: whether the lizard is over the crack ('home'), how far along, falls into the crack, and the objective line. */
+  /** Go on from the island once it's over the crack (C): walk out west up the bank toward the mangrove lagoon as the screen fades. In tests nothing is loaded after; `left` says it would have been. `trees`: the lagoon's trees loaded into the view. */
+  islandLeave: () => void;
+  islandWalkOut: () => { walking: boolean; fade: number; left: boolean; lagoonInView: boolean; trees: number };
+  islandRun: () => { state: string; progress: string; falls: number; fallen: 'stuck' | 'climbing' | null; text: string; hint: string };
   /**
    * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
    * sideways), what it's doing and the clip playing, whether it lives on a rock pile, how many hops
