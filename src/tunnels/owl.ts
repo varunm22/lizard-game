@@ -22,6 +22,11 @@ const CATCH = 0.065;
 const GROUNDED_TIME = 1.1;
 const RETURN_TIME = 0.9;
 const DEAF_TIME = 1.2;
+/**
+ * The owl's size against its real one (owl.py builds it life size). The game's lizard grows from
+ * stage to stage, and by the tunnels it should feel a match for an owl, not prey for a giant.
+ */
+export const OWL_SIZE = 0.6;
 
 /** The lizard as the owls hear and hunt it, each physics step. */
 export interface Prey {
@@ -188,7 +193,7 @@ export class Owl {
       let rel = Math.atan2(dx, dz) - this.yaw;
       rel = Math.atan2(Math.sin(rel), Math.cos(rel));
       wantYaw = THREE.MathUtils.clamp(rel, -2.4, 2.4);
-      wantPitch = THREE.MathUtils.clamp(Math.atan2(this.at.y + 0.22 - this.lookAt.y, Math.hypot(dx, dz)) * 0.8, -0.3, 1.0);
+      wantPitch = THREE.MathUtils.clamp(Math.atan2(this.at.y + 0.22 * OWL_SIZE - this.lookAt.y, Math.hypot(dx, dz)) * 0.8, -0.3, 1.0);
     }
     if (flying || s === 'mantle') {
       wantYaw = 0;
@@ -236,7 +241,7 @@ export class Owl {
     va.copy(pivot).applyQuaternion(qb).sub(pivot).negate().applyQuaternion(qa);
     vb.copy(this.at).add(va);
     vb.y -= crouch;
-    rig.place(vb, rot);
+    rig.place(vb, rot, OWL_SIZE);
     const id = new THREE.Quaternion();
     rig.part('body', id);
     rig.part('tail', qa.setFromAxisAngle(X, flying ? -0.25 : 0));

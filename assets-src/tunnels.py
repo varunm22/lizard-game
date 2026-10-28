@@ -64,17 +64,20 @@ TUBES = [
     # Upper floor: from the start east to the first fork.
     {'floor': 1, 'name': 'entry', 'pts': [(-3.9, 0.0), (-2.5, 0.0)]},
     {'floor': 1, 'name': 'entry-side', 'pts': [(-3.2, 0.0), (-3.2, 1.3)]},
-    # North from the fork, then east along the gap.
-    {'floor': 1, 'name': 'north', 'pts': [(-2.5, 0.0), (-2.5, -1.9), (0.6, -1.9), (1.8, -1.9)]},
+    # North from the fork, then east over the gap to where the roof has fallen in: the way on is
+    # down the hole in front of the collapse.
+    {'floor': 1, 'name': 'north', 'pts': [(-2.5, 0.0), (-2.5, -1.9), (0.45, -1.9)]},
     {'floor': 1, 'name': 'north-end', 'pts': [(-2.5, -1.9), (-2.5, -3.3)]},
     # An alcove off the north tube over the gap's rubble pile.
     {'floor': 1, 'name': 'gap-alcove', 'pts': [(-1.7, -1.9), (-1.7, -1.05)]},
-    # From the second fork: a dead end ending in a hole, and east and south to the last chamber.
+    # Past the collapse (reached from below, up the south rubble pile): a dead end ending in a hole,
+    # and east and south to the last chamber.
+    {'floor': 1, 'name': 'north-east', 'pts': [(1.2, -1.9), (1.8, -1.9)]},
     {'floor': 1, 'name': 'pocket', 'pts': [(1.8, -1.9), (1.8, -3.45)]},
     {'floor': 1, 'name': 'east', 'pts': [(1.8, -1.9), (3.4, -1.9), (3.4, -0.5)]},
     # An alcove off the east tube over the south network's rubble pile.
     {'floor': 1, 'name': 'south-alcove', 'pts': [(1.2, -1.9), (1.2, -0.22)]},
-    # South from the first fork to a sunny chamber with a hole in its floor.
+    # South from the first fork to a sunny dead-end chamber, the owl's.
     {'floor': 1, 'name': 'south', 'pts': [(-2.5, 0.0), (-2.5, 2.0), (-1.0, 2.0)]},
     # Lower floor: under the gap, back west to its rubble pile.
     {'floor': 0, 'name': 'under-gap', 'pts': [(-0.6, -2.15), (-0.6, -0.7), (-1.7, -0.7), (-1.7, -1.8)]},
@@ -82,10 +85,10 @@ TUBES = [
     {'floor': 0, 'name': 'under-pocket', 'pts': [(1.8, -3.0), (1.8, -3.45), (2.7, -3.45), (2.7, -1.2), (3.55, -0.3)]},
     # From the last chamber's hole south to the jameo.
     {'floor': 0, 'name': 'last', 'pts': [(3.55, -0.3), (3.55, 1.7), (3.3, 2.6)]},
-    # Under the south chamber's hole: east to a fork; north to the rubble pile, south through the flooded stretch.
-    {'floor': 0, 'name': 'under-south', 'pts': [(-0.75, 2.2), (0.9, 2.2)]},
-    {'floor': 0, 'name': 'south-up', 'pts': [(0.9, 2.2), (1.2, 1.1), (1.2, -1.15)]},
-    {'floor': 0, 'name': 'flooded', 'pts': [(0.9, 2.2), (0.9, 3.4), (2.5, 3.4), (3.3, 2.6)]},
+    # Under the hole before the collapse: south, then east and back north up the south rubble pile.
+    {'floor': 0, 'name': 'under-collapse', 'pts': [(0.25, -2.05), (0.25, 0.45), (1.2, 0.45), (1.2, -1.15)]},
+    # Off the jameo, west through the flooded stretch to a dead end.
+    {'floor': 0, 'name': 'flooded', 'pts': [(0.9, 2.55), (0.9, 3.4), (2.5, 3.4), (3.3, 2.6)]},
 ]
 
 ROOMS = [
@@ -100,7 +103,7 @@ HOLES = [
     # The gap across the north tube, along the tube below it.
     {'kind': 'gap', 'name': 'gap', 'a': (-0.6, -2.2), 'b': (-0.6, -1.6), 'r': 0.1},
     {'kind': 'drop', 'name': 'pocket', 'x': 1.8, 'z': -3.27, 'r': 0.14},
-    {'kind': 'drop', 'name': 'south', 'x': -0.72, 'z': 2.2, 'r': 0.13},
+    {'kind': 'drop', 'name': 'collapse', 'x': 0.22, 'z': -1.9, 'r': 0.13},
     {'kind': 'drop', 'name': 'last', 'x': 3.55, 'z': -0.22, 'r': 0.13},
 ]
 
@@ -124,7 +127,7 @@ SKYLIGHTS = [
 JAMEO = {'x': 3.3, 'z': 2.6, 'r': 0.62}
 # The flooded stretch: a dip in the lower floor (centre, radius across and along the tube, bed depth below the water),
 # its banks gentle enough to walk in and out.
-POOLS = [{'x': 0.9, 'z': 2.85, 'rx': 0.3, 'rz': 0.65, 'depth': 0.065}]
+POOLS = [{'x': 0.9, 'z': 3.0, 'rx': 0.3, 'rz': 0.5, 'depth': 0.065}]
 
 # The way out: from the jameo a big tube runs south-east and opens in a sea cliff onto a small cove,
 # where the tube's flooded end (the sea pool, see layout.ts) runs out into the sea. The cove's back
@@ -158,8 +161,10 @@ for _name in ('south', 'last'):
 KEEP_CLEAR = [
     (1, (-3.95, 0.0), (-3.6, 0.0), 0.2),
     (1, (-1.8, -1.9), (0.3, -1.9), 0.16),
+    (0, (0.25, -2.0), (0.25, 0.45), 0.16),
+    (0, (0.25, 0.45), (1.2, 0.45), 0.16),
     (1, (3.4, -0.7), (3.55, -0.2), 0.16),
-    (0, (0.9, 2.0), (0.9, 3.7), 0.2),
+    (0, (0.9, 2.5), (0.9, 3.7), 0.2),
     (0, (3.55, 1.2), (3.3, 2.7), 0.18),
     (0, (4.3, 3.7), (4.5, 4.4), 0.25),
     (0, (2.5, 3.4), (3.3, 2.6), 0.16),

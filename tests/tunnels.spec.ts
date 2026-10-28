@@ -119,6 +119,48 @@ test('a rubble pile climbs from the lower tubes up through the roof onto the upp
   expect(s.run.goals.find((goal) => goal.id === 'climb')!.done).toBe(true);
 });
 
+test('past the gap the roof has fallen in: the way on is down its hole, round below and back up the south rubble pile', async ({ page }) => {
+  await bootTunnels(page);
+  const s = await page.evaluate((facingSrc) => {
+    const facing = new Function(`return ${facingSrc}`)();
+    const g = window.__tunnels!;
+    const L = g.layout();
+    const [lower, upper] = L.floors;
+    const ramp = L.ramps.find((r) => r.name === 'south')!;
+    // East along the north tube, past the gap, into the hole before the collapse.
+    g.teleport(-0.25, -1.9, Math.PI / 2, upper);
+    g.advance(10);
+    g.setInput({ move: { x: 0, y: 1 } });
+    for (let i = 0; i < 60 && g.player().y > lower + 0.03; i++) g.advance(5);
+    const landed = g.player();
+    // Then run the tube below: turning on the spot at each bend, south, east, and up the pile.
+    const legs = [
+      [0.25, 0.45],
+      [ramp.foot.x, 0.45],
+      [ramp.top.x, ramp.top.z - 0.15],
+    ];
+    for (const [tx, tz] of legs) {
+      const p = g.player();
+      g.teleport(p.x, p.z, facing(p.x, p.z, tx, tz), p.y);
+      g.setInput({ move: { x: 0, y: 1 }, run: true });
+      for (let i = 0; i < 300; i++) {
+        g.advance(2);
+        const q = g.player();
+        if (Math.hypot(q.x - tx, q.z - tz) < 0.08) break;
+      }
+    }
+    g.setInput(null);
+    g.advance(20);
+    return { landed, end: g.player(), run: g.run(), floors: L.floors };
+  }, facing.toString());
+  expect(s.run.drops).toEqual(['collapse']);
+  expect(s.landed.y).toBeLessThan(s.floors[0] + 0.03);
+  // Up on the far side of the collapse, in the tubes east of it.
+  expect(Math.abs(s.end.y - s.floors[1])).toBeLessThan(0.01);
+  expect(s.end.x).toBeGreaterThan(0.9);
+  expect(s.run.climbs).toBe(1);
+});
+
 test('the gap is cleared by a running jump; walked or run into, it drops the lizard below', async ({ page }) => {
   await bootTunnels(page);
   const s = await page.evaluate(() => {
@@ -165,7 +207,7 @@ test('the flooded stretch is swum, and the beach past the sea mouth is the way o
     const g = window.__tunnels!;
     const L = g.layout();
     const pool = L.pools[0];
-    g.teleport(pool.x, pool.z - pool.rz - 0.1, 0, L.floors[0]);
+    g.teleport(pool.x, pool.z - pool.rz, 0, L.floors[0]);
     g.advance(10);
     g.setInput({ move: { x: 0, y: 1 } });
     let swam = false;
@@ -261,7 +303,7 @@ test('pushing into the walls round the flooded pool and the cove never gets the 
     // From the pool's banks and the beach under the cliff, run and jump at the walls all round, the
     // ways that used to climb in under the maze: out of the water onto ground behind a wall, and in
     // under a low lip of rock.
-    const starts = [[0.86, 2.43], [0.84, 3.24], [0.86, 3.37], [0.9, 2.85], [3.2, 4.3], [3.1, 4.5]];
+    const starts = [[0.9, 2.62], [0.84, 3.24], [0.86, 3.37], [0.9, 2.85], [3.2, 4.3], [3.1, 4.5]];
     const out: number[][] = [];
     for (const [x, z] of starts) {
       for (let k = 0; k < 8; k++) {

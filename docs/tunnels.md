@@ -3,8 +3,8 @@
 The fourth stage, opened with `?level=tunnels` or from the "Select stage" picker (`src/stageSelect.ts`;
 the still is `src/assets/stages/tunnels.jpg`). It's the lava tube area of the progression plan,
 built as a maze with a vertical side: small lava tubes on two floors under a lava field. Holes in
-the upper floor drop the lizard into the tubes below, sometimes into a dead end and sometimes onto
-a shortcut; rubble piles under holes in the lower tubes' roofs climb back up. Skylights let the sun
+the upper floor drop the lizard into the tubes below, and the way through needs both floors;
+rubble piles under holes in the lower tubes' roofs climb back up. Skylights let the sun
 in. Past the jameo, a wide collapse open to the sky in the south-east, the tube runs on into a sea
 mouth: a flooded tube end opening onto a cove, and the run ends on the cove's beach, looking across
 the water at the outer islet where Galapagos sea lions bask (the final stage, not built yet). Barn
@@ -99,13 +99,19 @@ outside (`outside()`, by the camera); underwater it goes from dark green to the 
 
 ## The maze
 
-Upper floor: the start chamber (skylight) east to a fork. North: a dead end with a skylight; east
-along the north tube over **the gap** to a second fork, where a dead end ends in the `pocket` drop
-hole and the east tube runs to the last chamber (skylight), whose `last` hole drops into the tube to
-the jameo. South from the first fork: a sunny chamber whose `south` hole drops into the lower tubes,
-which fork: north to a rubble pile up into an alcove off the east tube, or south through the flooded
-stretch to the jameo. The `pocket` drop leads to the last tube too, a shortcut; falling in the gap
-leads back to the `gap` rubble pile, a setback.
+Every way to the finish goes across the gap, down, back up and down again (the user's rule: the
+maze must need both floors, up and down at least once, and the gap). Keep it that way when changing
+the layout; `tests/tunnels.spec.ts` walks the middle of it.
+
+Upper floor: the start chamber (skylight) east to a fork. North: a dead end with a skylight. South:
+a sunny dead-end chamber (skylight, an owl). East along the north tube over **the gap**, to where
+the roof has fallen in and the tube ends: the `collapse` hole in front of it is the only way on.
+Falling in the gap leads to `under-gap` and back up the `gap` rubble pile to the near side, a
+setback. Below the collapse, `under-collapse` runs south, east and back north up the `south` rubble
+pile into an alcove off the tubes past the collapse (`north-east`), where a dead end ends in the
+`pocket` drop hole and the east tube runs to the last chamber (skylight), whose `last` hole drops
+into the tube to the jameo. The `pocket` drop leads to the last tube too. The flooded stretch is a
+dead end off the jameo, not a way round.
 
 The way out: from the jameo the `mouth` tube widens and drops into a sea pool (the lizard swims it,
 or climbs out onto the rock), opening south onto the cove. `FINISH` is on the cove's beach; across
@@ -118,7 +124,7 @@ They're `FreeRig`s (`src/render/freeRig.ts`): GLBs from `assets-src/owl.py`, `wh
 bones are unparented joints the game places part by part, as the heron does. Each has its joints in
 the armature's extras.
 
-- **Barn owls** (`owl.ts`, Galapagos barn owl). One sits on a ledge high in the shady side of the
+- **Barn owls** (`owl.ts`, Galapagos barn owl), drawn at `OWL_SIZE` (0.6) of life size: the lizard has grown since the lagoon and should feel a match for one. One sits on a ledge high in the shady side of the
   `south` and `last` skylight shafts (`ROOSTS`, a block in `make_blocks`), head turning after sounds.
   It hears the lizard on the floor under the skylight: running or a jump/landing within 0.9 m, a walk
   only within 0.16 m, standing still never (`HEARING`). Heard within `REACH` (0.55 m) it stirs
