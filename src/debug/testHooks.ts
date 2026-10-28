@@ -417,6 +417,9 @@ export interface LagoonTestHooks
     yaw: number;
     bill: { x: number; y: number; z: number };
     sees: boolean;
+    /** Seconds since it last saw the lizard while hunting, and left on the alert after losing it. */
+    unseen: number;
+    alert: number;
     strikes: number;
     catches: number;
     paused: boolean;
@@ -443,6 +446,12 @@ export interface LagoonTestHooks
   };
   /** Set bars, or hold them (`frozen`: strikes still land, nothing drifts). */
   setVitals(v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>): void;
+  /** The juvenile fish among the mangrove roots: which shoal, species, where each is and how fast it's going (m/s). */
+  fry(): { shoal: number; species: string; x: number; y: number; z: number; speed: number }[];
+  /** The fry shoals: species, home, and the roots standing in the water round it (centre and radius). */
+  fryShoals(): { species: string; x: number; z: number; roots: { x: number; z: number; r: number }[] }[];
+  /** Darts so far, all fry together. */
+  fryDarts(): number;
   /** The lagoon's algae patches: gutweed on the lava, Bostrychia on the mangrove roots, and how grown each is (0 to 1). */
   algae(): { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
   /** Bite, as pressing F does; false while a bite is already under way. */

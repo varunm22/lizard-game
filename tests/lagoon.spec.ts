@@ -169,6 +169,43 @@ test('lagoon algae: gutweed on the lava at the waterline and Bostrychia on the m
   expect(r.fullness).toBeGreaterThan(0.35);
 });
 
+test('juvenile fish shoal among the mangrove roots: they dart between the roots, never through one or out of the water, and bolt from a lizard', async ({ page }) => {
+  await bootLagoon(page);
+  const r = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    const shoals = g.fryShoals();
+    const start = g.fry();
+    let peak = 0;
+    let bad = 0;
+    for (let i = 0; i < 120; i++) {
+      g.advance(1);
+      for (const f of g.fry()) {
+        peak = Math.max(peak, f.speed);
+        const s = shoals[f.shoal];
+        if (s.roots.some((q) => Math.hypot(f.x - q.x, f.z - q.z) < q.r) || g.depth(f.x, f.z) < 0.02 || f.y > g.terrainHeight(f.x, f.z) + g.depth(f.x, f.z) - 0.004) bad++;
+      }
+    }
+    const moved = g.fry().filter((f, i) => Math.hypot(f.x - start[i].x, f.z - start[i].z) > 0.02).length;
+    // The lizard drops in beside a shoal: the fry near it get away.
+    const mine = () => g.fry().filter((f) => f.shoal === 0);
+    const c = mine();
+    const x = c.reduce((a, f) => a + f.x, 0) / c.length + 0.05;
+    const z = c.reduce((a, f) => a + f.z, 0) / c.length;
+    const near = () => mine().filter((f) => Math.hypot(f.x - x, f.z - z) < 0.08).length;
+    const before = near();
+    g.teleport(x, z, 0);
+    g.advance(30);
+    return { shoals: shoals.length, count: start.length, peak, bad, moved, before, after: near(), kinds: [...new Set(shoals.map((s) => s.species))].sort() };
+  });
+  expect(r.shoals).toBeGreaterThanOrEqual(8);
+  expect(r.count).toBeGreaterThan(60);
+  expect(r.kinds).toEqual(['mullet', 'snapper']);
+  expect(r.peak).toBeGreaterThan(0.25);
+  expect(r.moved).toBeGreaterThan(r.count / 2);
+  expect(r.bad).toBe(0);
+  expect(r.after).toBeLessThan(Math.max(1, r.before));
+});
+
 test('a stalking heron steps slowly, one foot at a time, its body level; a swimmer that comes near one is struck at once', async ({ page }) => {
   await bootLagoon(page, { herons: [HERON, 5] });
   const s = await page.evaluate((hi) => {
@@ -217,6 +254,111 @@ test('a stalking heron steps slowly, one foot at a time, its body level; a swimm
   expect(s.seen.slice(0, 4)).toEqual(['wait', 'aim', 'strike', 'hold']);
   expect(s.strikeSteps).toBeLessThanOrEqual(6);
   expect(s.run.state).toBe('caught');
+});
+
+test('a heron spots a moving lizard from over 2 m off, and after losing one stays on the alert and takes up the hunt again at a glimpse', async ({ page }) => {
+  await bootLagoon(page, { herons: [HERON] });
+  const s = await page.evaluate((hi) => {
+    const g = window.__lagoon!;
+    const h0 = g.herons()[hi];
+    const until = (state: string, steps: number) => {
+      for (let i = 0; i < steps; i++) {
+        g.advance(1);
+        if (g.herons()[hi].state === state) return i;
+      }
+      return -1;
+    };
+    // A lizard on the move 2.2 m in front.
+    g.placeHeron(hi, h0.x, h0.z, Math.PI);
+    g.teleport(h0.x, h0.z - 2.2, Math.PI / 2);
+    g.setInput({ move: { x: 0, y: 1 } }, 1);
+    const farSpot = until('stalk', 120);
+    g.setInput(null);
+    // Away into the deep pool: lost, but it stays on the alert, and a glimpse of it back in the open starts the hunt at once.
+    g.teleport(-2.6, 1.9, 0, -0.15);
+    g.advance(5);
+    const lost = g.herons()[hi];
+    g.advance(60);
+    const h1 = g.herons()[hi];
+    // Back in the open, in front of it.
+    const x = h1.x + Math.sin(h1.yaw) * 0.8;
+    const z = h1.z + Math.cos(h1.yaw) * 0.8;
+    g.teleport(x, z, 0);
+    const again = until('stalk', 60);
+    return { farSpot, lost: { state: lost.state, alert: lost.alert }, again };
+  }, HERON);
+  expect(s.farSpot).toBeGreaterThan(0);
+  expect(s.lost.state).toBe('wait');
+  expect(s.lost.alert).toBeGreaterThan(5);
+  expect(s.again).toBeGreaterThanOrEqual(0);
+  expect(s.again).toBeLessThan(20);
+});
+
+test('a stalking heron goes round a mangrove in its way instead of standing stuck with its feet ahead, and steps over driftwood', async ({ page }) => {
+  await bootLagoon(page, { herons: [HERON] });
+  const s = await page.evaluate((hi) => {
+    const g = window.__lagoon!;
+    const h0 = g.herons()[hi];
+    // The heron one side of an old mangrove, the lizard the other: the straight way runs through the roots.
+    const m = g.mangroves().filter((t) => !t.sapling).sort((a, b) => Math.hypot(a.x - h0.x, a.z - h0.z) - Math.hypot(b.x - h0.x, b.z - h0.z))[0];
+    let pair: { hx: number; hz: number; lx: number; lz: number } | null = null;
+    for (let a = 0; a < 6.28 && !pair; a += 0.3) {
+      const r = m.reach + 0.12;
+      const hx = m.x + Math.sin(a) * r;
+      const hz = m.z + Math.cos(a) * r;
+      const lx = m.x - Math.sin(a) * r;
+      const lz = m.z - Math.cos(a) * r;
+      if (g.wadeable(hx, hz) && !g.tangle(lx, lz) && g.depth(lx, lz) < 0.05) pair = { hx, hz, lx, lz };
+    }
+    const p = pair!;
+    g.placeHeron(hi, p.hx, p.hz, Math.atan2(p.lx - p.hx, p.lz - p.hz));
+    g.teleport(p.lx, p.lz, 0);
+    let still = 0;
+    let longest = 0;
+    let path = 0;
+    let ahead = 0;
+    let { x, z } = g.herons()[hi];
+    for (let i = 0; i < 360; i++) {
+      g.advance(1);
+      const h = g.herons()[hi];
+      const moved = Math.hypot(h.x - x, h.z - z);
+      path += moved;
+      x = h.x;
+      z = h.z;
+      still = moved < 1e-5 && h.state === 'stalk' ? still + 1 : 0;
+      longest = Math.max(longest, still);
+      for (const f of g.heronBody(hi).feet) ahead = Math.max(ahead, (f.x - h.x) * Math.sin(h.yaw) + (f.z - h.z) * Math.cos(h.yaw));
+    }
+    // Over a low driftwood log: its feet go down on the bed either side, never up on the log. The lowest
+    // log with wadeable ground on one side and open ground on the other.
+    const logs = g.obstacles().filter((o) => o.kind === 'log').sort((a, b) => a.height - b.height);
+    let log = logs[0];
+    let foot = -1;
+    for (const o of logs) {
+      for (let a = 0; a < 6.28 && foot < 0; a += 0.5) {
+        const hx = o.x + Math.sin(a) * 0.3;
+        const hz = o.z + Math.cos(a) * 0.3;
+        const lx = o.x - Math.sin(a) * 0.5;
+        const lz = o.z - Math.cos(a) * 0.5;
+        if (!g.wadeable(hx, hz) || g.tangle(lx, lz) || g.depth(lx, lz) > 0.05) continue;
+        log = o;
+        foot = 0;
+        g.placeHeron(hi, hx, hz, Math.atan2(lx - hx, lz - hz));
+        g.teleport(lx, lz, 0);
+        for (let i = 0; i < 300; i++) {
+          g.advance(1);
+          for (const f of g.heronBody(hi).feet) foot = Math.max(foot, f.y - g.terrainHeight(f.x, f.z));
+        }
+      }
+      if (foot >= 0) break;
+    }
+    return { longest, path, ahead, foot, logHeight: log.height };
+  }, HERON);
+  expect(s.longest).toBeLessThan(30);
+  expect(s.path).toBeGreaterThan(0.3);
+  expect(s.ahead).toBeLessThan(0.09);
+  expect(s.foot).toBeGreaterThanOrEqual(0);
+  expect(s.foot).toBeLessThan(s.logHeight * 0.7);
 });
 
 test('a stalking heron gives up on a lizard in the mangrove roots or swimming low over deep water; the safe point is a checkpoint', async ({ page }) => {

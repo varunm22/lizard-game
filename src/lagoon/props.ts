@@ -65,6 +65,8 @@ export interface LagoonProps {
   crowns: THREE.Object3D[];
   /** Where each prop root standing in the water meets the waterline, and which way it faces out: where Bostrychia grows. */
   rootWaterline: { position: THREE.Vector3; normal: THREE.Vector3 }[];
+  /** The same roots where they stand in the water, as upright posts (centre and radius, m): what the fry weave between. */
+  rootPosts: { x: number; z: number; r: number }[];
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -84,6 +86,7 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   const mangroves: Mangrove[] = [];
   const roots = new Set<number>();
   const rootWaterline: LagoonProps['rootWaterline'] = [];
+  const rootPosts: LagoonProps['rootPosts'] = [];
   const hidden = material();
   hidden.visible = false;
   const yawQ = (yaw: number) => new THREE.Quaternion().setFromAxisAngle(Y, yaw);
@@ -139,6 +142,7 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
         if (pts[i].y < line || pts[i + 1].y >= line) continue;
         const at = pts[i].clone().lerp(pts[i + 1], (pts[i].y - line) / (pts[i].y - pts[i + 1].y));
         if (depthAt(at.x, at.z) > 0.012) {
+          rootPosts.push({ x: at.x, z: at.z, r: (rTop + rFoot) / 2 });
           const out = new THREE.Vector3(at.x - x, 0, at.z - z).normalize();
           rootWaterline.push({ position: at.addScaledVector(out, (rTop + rFoot) * 0.4), normal: out.add(new THREE.Vector3(0, 0.6, 0)).normalize() });
         }
@@ -360,5 +364,5 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
   propMesh.name = 'propagules';
   scene.add(propMesh);
 
-  return { obstacles, mangroves, roots, crowns, rootWaterline };
+  return { obstacles, mangroves, roots, crowns, rootWaterline, rootPosts };
 }

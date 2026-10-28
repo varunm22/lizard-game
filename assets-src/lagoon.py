@@ -27,6 +27,9 @@ metres, coloured per vertex, standing on z = 0 at the origin). Objects:
   waterline, a ~3 cm cushion. Both grow up along +Y in glTF; the game places them as algae to eat.
 - golden_ray: a young golden cownose ray (Rhinoptera steindachneri), 0.24 m across, 0.22 m long with the
   tail; nose along +Z in glTF. The game flaps its wings in a wave and trails its tail.
+- fry_mullet, fry_snapper: the juvenile fish the mangrove roots shelter. Mullet fry (the Galápagos
+  mullets' young), 2.8 cm, slim and silver with a dark grey-green back; a young snapper, 3 cm, sandy brown with
+  pale bars and a yellow tail. Built by reef.py's `fish`, nose along +Z in glTF, extras `length`.
 """
 
 import math
@@ -40,6 +43,7 @@ from mathutils import Vector, noise
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import srgb  # noqa: E402
 from props import MeshBuilder, blob, make_object, mix, path, tube  # noqa: E402
+from reef import fish  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'assets', 'lagoon.glb')
 
@@ -545,6 +549,41 @@ def drowned_trunk(rng):
     return mb, {'segments': segs}
 
 
+def mullet_fry(u, v):
+    """Mullet fry: silver flanks, a grey-green back, a white belly."""
+    if v > 0.15:
+        return mix(srgb('#7c8884'), srgb('#2e3a36'), min(1.0, (v - 0.15) / 0.45))
+    return mix(srgb('#eef0ec'), srgb('#b8c2c4'), (v + 1) / 1.15)
+
+
+def snapper_fry(u, v):
+    """Young snapper: sandy brown, darker above, four pale bars, a dark stripe through the eye."""
+    base = mix(srgb('#d8ccb4'), srgb('#7a6448'), max(0.0, (v + 0.4) / 1.4))
+    if u < 0.16 and abs(v - 0.15) < 0.12:
+        return srgb('#3a2c22')
+    if v > -0.5 and any(abs(u - c) < 0.035 for c in (0.34, 0.5, 0.66, 0.8)):
+        return mix(base, srgb('#efe6d2'), 0.75)
+    return base
+
+
+FRY = {
+    'fry_mullet': dict(
+        v_edges=(0.15,),
+        length=0.028, deep=0.55, wide=1.05, colour=mullet_fry, dorsal=(0.38, 0.55, 0.1), anal=(0.62, 0.8, 0.07),
+        tail=0.2, fork=0.7,
+        fin=lambda t, e: mix(srgb('#9aa4a2'), srgb('#d6dcda'), e), tail_colour=lambda t, e: mix(srgb('#7c8684'), srgb('#c4cac8'), t),
+        pectoral=lambda e: srgb('#d6dcda'),
+    ),
+    'fry_snapper': dict(
+        u_edges=tuple(c + s * 0.035 for c in (0.34, 0.5, 0.66, 0.8) for s in (-1, 1)) + (0.16,), v_edges=(0.27, 0.03, -0.5),
+        length=0.03, deep=0.8, colour=snapper_fry, dorsal=(0.25, 0.85, 0.11), anal=(0.6, 0.86, 0.08),
+        tail=0.22, fork=0.35,
+        fin=lambda t, e: mix(srgb('#a08868'), srgb('#e2d6bc'), e), tail_colour=lambda t, e: mix(srgb('#d8b040'), srgb('#f0d878'), t),
+        pectoral=lambda e: srgb('#e8dcc0'),
+    ),
+}
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rng = random.Random(71)
@@ -574,6 +613,8 @@ def main():
         objects.append(make_object(f'wrack_stick_{i}', mb, mat, extras=ex))
     mb, ex = drowned_trunk(drng)
     objects.append(make_object('drowned_trunk', mb, mat, extras=ex))
+    for name, spec in FRY.items():
+        objects.append(make_object(name, fish(spec), mat, extras={'length': spec['length']}))
     for i, obj in enumerate(objects):
         obj.location.x = i * 2.0  # spread out for inspection in Blender; the game ignores placement
 

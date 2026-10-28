@@ -62,8 +62,9 @@ drive the herons' tangle and wading rules.
 ## Herons (`herons.ts`, `heronBody.ts`, model in `assets-src/heron.py`)
 
 Six of them, tuning in `HERON`. A heron waits at a spot, head turning, and moves to its next spot
-every 14 to 24 s. It sees the lizard within 1.7 m and ±115° of its bill if nothing solid is between
-(roots and trunks included), then stalks it crouched, wading no deeper than 7 cm, never into a red
+every 14 to 24 s. It sees the lizard within 2.6 m and ±115° of its bill if nothing solid is between
+(roots and trunks included); after 0.4 s of seeing it (sooner if it moves or is near, slower if it
+holds still beyond 1.4 m) it stalks it crouched, wading no deeper than 7 cm, never into a red
 mangrove's roots, the channel or 2.5 m from its spot. Within 20 cm of its shoulders it draws its neck
 back for 0.25 s and stabs (0.075 s) at where the lizard will be, the body lunging up to 3.5 cm after
 the bill; the bill tip within 4 cm of the snout, middle or hips is a hit, which takes
@@ -73,15 +74,24 @@ health leaves the lizard in the heron's bill (`hold`). A heron that isn't
 stalking yet strikes all the same at a lizard that comes within 22 cm in view (`ambush`), after only
 a 0.1 s beat: a lizard swimming slowly past in the shallows gets speared with no stalking warning.
 The lizard is out of reach in a tangle (within 85% of an old mangrove's root reach) or swimming over
-water deeper than 11 cm (`hidden()`); it also gets away by staying out of sight 1.4 s or out of reach
-4 s. `onLose` says which, for the goals.
+water deeper than 11 cm (`hidden()`). A heron keeps track of a lizard it can't see: it remembers
+where it last saw it and how it was going (`last`, `lastVel`), stalks on to where it should be by now
+(up to 1.5 s on), and looks round there; only 5 s without a sight, or 8 s out of reach, ends the hunt.
+`onLose` says which, for the goals. Having lost it, the heron stays where it is for 8 s on the alert
+(`alert`), crouched and facing where the lizard went, and takes up the hunt three times as fast at a
+glimpse of it.
 
 Stalking is slow and careful (`GAIT.stalk`): one foot rises quickly and comes down slowly over 0.6 s
 while the body glides on, then both feet stand still a 0.3 s beat while the body all but stops,
 averaging 7.5 cm/s. Each foot reaches as far ahead as the body will have gone by the time it's down,
 and half a step more. The head is held still in the world as the body moves under it
 (`steadyHead`), easing back to the stalking pose. Walking between spots steps the same way without
-the pauses. The body rides on the ground under the feet, not on the lifted foot, so it doesn't bob.
+the pauses. The body rides on the lower planted foot, not on the lifted one, so it doesn't bob or rise
+onto a log. A foot that would come down on driftwood or a stone (over `STEP_OVER` above the bed) goes
+down on the bed just beyond or short of it instead. Something in its way (deeper water, roots, a rock)
+is gone round: `walkTo` tries headings up to 1.6 rad either side, a stride ahead, keeping to the side
+it last went round (`detour`). A heron whose body can't go forward this step (`advanced` false) only
+keeps its feet under it, so it never stands with its feet stepped out ahead of a body held back.
 
 The model has no clips: all bones are unparented and posed each frame. The body leans and crouches,
 the neck is a curve from the shoulders to wherever the head is put, the bill turns to the lizard,
@@ -176,6 +186,19 @@ The rays (`RAY`) drift between keeping company and going alone every 4 to 11 s. 
 they steer as boids with the others of their pool (in line, toward the middle, spread out when
 close), taking up the first one's goal, so schools form, wander and break up. A swimming lizard
 heading at a ray within 36 cm, or anywhere within 15 cm, sends it veering off (`shy`).
+
+## Juvenile fish (`fry.ts`, models in `assets-src/lagoon.py`)
+
+The mangrove roots are the lagoon's nursery: about a dozen shoals (`FRY`) of mullet fry and young
+snapper, 6 to 10 fish each, each at home where at least four prop roots stand in water together
+(`rootPosts` from `buildLagoonProps`: each root where it crosses the surface, as an upright post).
+The models come from reef.py's `fish` and share its swimming shader (`swimMaterial` in
+`src/creatures/fish.ts`). A fry hangs nearly still, then darts for 0.06 to 0.14 s to a spot beside a
+root or in the gap between two and glides to a stop; shoal-mates within 10 cm often dart after it. Fry
+slide round the posts rather than through them, keep out of water under 2.2 cm and stay just under the
+surface. The lizard or a shark pup within 17 cm sends the fry it nears bolting into the roots on the
+far side. Drawn only, with their own random numbers; cheap, so tests leave them swimming. Hooks:
+`fry()`, `fryShoals()`, `fryDarts()`.
 
 ## Tests (`tests/lagoon.spec.ts`, `tests/helpers/bootLagoon.ts`)
 

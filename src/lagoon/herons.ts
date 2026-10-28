@@ -5,6 +5,7 @@ import { rng } from '../world/noise';
 import { covers, type Obstacle } from '../world/obstacles';
 import { WATER_Y } from '../world/shore';
 import type { GroundProbe } from '../dunes/ground';
+import { terrainHeight } from '../world/terrain';
 import { HeronBody, type HeronKit } from './heronBody';
 import { acrossChannel, depthAt, HERON_HAUNTS, LAGOON_EDGE } from './layout';
 import type { Mangrove } from './props';
@@ -33,10 +34,14 @@ export interface HeronPrey {
 /** Heron tuning: distances in m, speeds in m/s, times in s, angles in radians. */
 export const HERON = {
   /** How far it sees, and how wide either side of its bill. */
-  sight: 1.7,
+  sight: 2.6,
   fov: 2.0,
-  /** Seconds of seeing the lizard before it starts stalking: sooner if it moves, and the closer it is. */
+  /**
+   * Seconds of seeing the lizard before it starts stalking: sooner if it moves, and the closer it is;
+   * beyond `far` a still lizard takes longer to make out than a moving one.
+   */
   notice: 0.4,
+  far: 1.4,
   /** Wading: as deep as it goes, how close to a red mangrove's roots, and how far from its spot. */
   wade: 0.07,
   rootClear: 0.06,
@@ -64,11 +69,17 @@ export const HERON = {
   /** After a miss, and after a catch. */
   recoverTime: 0.9,
   holdTime: 2.5,
-  /** Losing sight this long ends a stalk; then it won't take up the same hunt again for a while. */
-  lostTime: 1.4,
-  cooldown: 3,
+  /**
+   * Out of sight, it stalks on to where the lizard should be by now (where it was last seen, carried on
+   * at the speed it was going, for up to `guess` s), and gives up only after `lostTime` without a sight.
+   */
+  lostTime: 5,
+  guess: 1.5,
+  /** Having lost the lizard, it stands there `alert` s facing where it went, and takes up the hunt again at a glimpse. */
+  alert: 8,
+  cooldown: 0.6,
   /** Out of reach and watching, it gives up after this long. */
-  standOff: 4,
+  standOff: 8,
   /** Standing at a spot this long (random between) before moving to another. */
   stay: [14, 24] as const,
   /** Swimming over water deeper than this, the lizard lies too low for a heron to make out. */
@@ -76,6 +87,9 @@ export const HERON = {
   /** Within this share of a red mangrove's root reach, it's in the tangle: no heron strikes in there. */
   tangle: 0.85,
 };
+
+/** A foot target this far over the bed (m) is on something: the foot goes down beside it instead. */
+const STEP_OVER = 0.012;
 
 export type HeronState = 'wait' | 'walk' | 'stalk' | 'aim' | 'strike' | 'recover' | 'hold';
 /** Why a heron lost the lizard: it went into the roots, out over deep water, or got away (out of sight or reach). */
@@ -107,8 +121,12 @@ export class Heron {
   /** Seconds it has seen the lizard (toward noticing), and since it last saw it. */
   seen = 0;
   unseen = 0;
-  /** Seconds before it takes up a hunt again. */
+  /** Seconds before it takes up a hunt again, and left on the alert after losing the lizard. */
   cool = 0;
+  alert = 0;
+  /** Where it last saw the lizard (world, on the ground) and how it was going then (m/s). */
+  readonly last = new THREE.Vector3();
+  readonly lastVel = new THREE.Vector3();
   /** Whether it has the lizard in view this step. */
   sees = false;
   /** The point the stab aims for (world) and the head's pose either end of it (heron space). */
@@ -134,6 +152,9 @@ export class Heron {
   gait: Gait = 'still';
   /** The beat it holds still between stalking steps (s). */
   private hold = 0;
+  /** Whether the body went forward this step (else the feet only keep under it), and which way it last went round something (+1 left, -1 right). */
+  advanced = false;
+  detour = 0;
   /** The stance when a stab began, and where the lunge takes the body. */
   readonly lungeFrom = new THREE.Vector3();
   readonly lungeTo = new THREE.Vector3();
@@ -238,7 +259,21 @@ export class Heron {
     this.body.footHome(i, this.pos, this.yaw, home);
     home.x += fx;
     home.z += fz;
+    // Step over a log or a stone rather than onto it: a foot goes down on the bed just beyond or short of it.
     home.y = ground(home.x, home.z, this.pos.y);
+    if (home.y > terrainHeight(home.x, home.z) + STEP_OVER) {
+      const sx = Math.sin(this.yaw);
+      const sz = Math.cos(this.yaw);
+      for (const along of [0.02, -0.02, 0.04, -0.04, 0.06, -0.06, 0.08]) {
+        const x = home.x + sx * along;
+        const z = home.z + sz * along;
+        const y = ground(x, z, this.pos.y);
+        if (y <= terrainHeight(x, z) + STEP_OVER) {
+          home.set(x, y, z);
+          break;
+        }
+      }
+    }
     this.stepFrom[i].copy(this.feet[i]);
     this.stepTo[i].copy(home);
     this.stepT[i] = 0;
@@ -259,7 +294,8 @@ export class Heron {
     b.lean += ((this.state === 'strike' ? 0.6 : this.state === 'stalk' || this.state === 'aim' ? 0.3 : 0.05) - b.lean) * k;
     // The body rides level on the ground under the feet, not bobbing with each lifted foot.
     const sole = (i: number) => this.prevSoles[i] + (this.soles[i] - this.prevSoles[i]) * alpha;
-    b.at.y = (sole(0) + sole(1)) / 2;
+    // On the lower foot: a foot up on a log or a stone bends its knee rather than lifting the body.
+    b.at.y = Math.min(sole(0), sole(1));
     b.pose();
   }
 
@@ -426,6 +462,7 @@ export class Herons {
       h.timer = this.stay();
       h.seen = 0;
       h.cool = 0;
+      h.alert = 0;
     }
   }
 
@@ -436,6 +473,7 @@ export class Herons {
       if (h.state !== 'wait' && h.state !== 'walk') this.toWait(h);
       h.seen = 0;
       h.cool = HERON.cooldown;
+      h.alert = 0;
     }
   }
 
@@ -467,12 +505,28 @@ export class Herons {
     const off = this.turnTo(h, Math.atan2(dx, dz), dt);
     if (off > 0.6) return true;
     const step = Math.min(d, speed * dt);
-    const nx = h.pos.x + Math.sin(h.yaw) * step;
-    const nz = h.pos.z + Math.cos(h.yaw) * step;
     const s = h.home;
-    if (!this.wadeable(nx, nz, s.x, s.z)) return false;
-    h.pos.set(nx, this.groundAt(nx, nz, h.pos.y), nz);
-    return true;
+    // Straight on if it can wade there; else round whatever's in the way (too deep, roots, a rock),
+    // keeping to the side it went round last so it doesn't dither. Looked at a stride ahead, not a step.
+    const look = Math.max(step, 0.04);
+    const sides = h.detour >= 0 ? [1, -1] : [-1, 1];
+    for (const k of [0, 0.4, 0.8, 1.2, 1.6]) {
+      for (const side of k ? sides : [0]) {
+        const a = h.yaw + side * k;
+        if (!this.wadeable(h.pos.x + Math.sin(a) * look, h.pos.z + Math.cos(a) * look, s.x, s.z)) continue;
+        const nx = h.pos.x + Math.sin(a) * step;
+        const nz = h.pos.z + Math.cos(a) * step;
+        if (!this.wadeable(nx, nz, s.x, s.z)) continue;
+        if (side) {
+          h.detour = side;
+          this.turnTo(h, a, dt);
+        }
+        h.pos.set(nx, this.groundAt(nx, nz, h.pos.y), nz);
+        h.advanced = true;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Head (heron space) easing toward `to`, the bill toward the lizard or ahead and a little down. */
@@ -502,7 +556,10 @@ export class Herons {
     for (const h of this.list) {
       if (h.paused) continue;
       h.keep();
+      h.advanced = false;
       this.stepOne(h, dt);
+      // Held up, it doesn't step on ahead of its body: the feet only keep under it.
+      if (!h.advanced) h.gait = 'still';
       h.stepFeet(dt, (x, z, y) => this.groundAt(x, z, y));
     }
   }
@@ -510,7 +567,10 @@ export class Herons {
   private lose(h: Heron, why: LostReason) {
     h.cool = HERON.cooldown;
     h.seen = 0;
-    this.toWait(h);
+    // It stays put on the alert, watching where the lizard went, rather than wandering home.
+    h.state = 'wait';
+    h.alert = HERON.alert;
+    h.timer = Math.max(h.timer, HERON.alert);
     this.onLose?.(h, why);
   }
 
@@ -522,17 +582,29 @@ export class Herons {
 
   private stepOne(h: Heron, dt: number) {
     if (h.cool > 0) h.cool -= dt;
+    if (h.alert > 0) h.alert -= dt;
     h.gait = 'still';
     const sees = this.sees(h);
     h.sees = sees;
     this.prey.feet(this.f);
+    if (sees) {
+      // Keep track of where it is and how it's going, to follow it when it slips out of view.
+      if (dt > 0 && h.unseen === 0 && h.last.lengthSq() > 0) {
+        this.t.set((this.f.x - h.last.x) / dt, 0, (this.f.z - h.last.z) / dt);
+        if (this.t.length() > 0.6) this.t.setLength(0.6);
+        h.lastVel.lerp(this.t, 1 - Math.exp(-6 * dt));
+      } else h.lastVel.set(0, 0, 0);
+      h.last.set(this.f.x, 0, this.f.z);
+    }
     const shoulders = h.shoulders(this.p);
     const toPrey = Math.hypot(this.f.x - shoulders.x, this.f.z - shoulders.z);
     switch (h.state) {
       case 'wait':
       case 'walk': {
         if (h.state === 'wait') {
-          this.headTo(h, POSE.rest, 3, dt, false);
+          this.headTo(h, h.alert > 0 ? POSE.stalk : POSE.rest, 3, dt, false);
+          // On the alert, it keeps facing where the lizard went.
+          if (h.alert > 0) this.turnTo(h, Math.atan2(h.last.x - h.pos.x, h.last.z - h.pos.z), dt);
           h.timer -= dt;
           if (h.timer <= 0) {
             h.spot = (h.spot + 1) % h.spots.length;
@@ -559,12 +631,14 @@ export class Herons {
           h.seen = 0;
           this.onStalk?.(h);
         } else if (sees && h.cool <= 0) {
-          const quick = (this.prey.speed() > 0.04 ? 2.5 : 1) * (toPrey < 0.6 ? 2 : 1);
+          const moving = this.prey.speed() > 0.04;
+          const quick = (moving ? 2.5 : 1) * (toPrey < 0.6 ? 2 : toPrey > HERON.far && !moving ? 0.5 : 1) * (h.alert > 0 ? 3 : 1);
           h.seen += dt * quick;
           if (h.seen >= HERON.notice) {
             h.state = 'stalk';
             h.timer = 0;
             h.unseen = 0;
+            h.alert = 0;
             this.onStalk?.(h);
           }
         } else h.seen = Math.max(0, h.seen - dt);
@@ -576,6 +650,19 @@ export class Herons {
         if (!this.prey.huntable()) return this.toWait(h);
         h.unseen = sees ? 0 : h.unseen + dt;
         if (h.unseen > HERON.lostTime) return this.lose(h, 'away');
+        if (!sees) {
+          // Out of view: on to where it should be by now, then look round there.
+          const ahead = Math.min(h.unseen, HERON.guess);
+          const gx = h.last.x + h.lastVel.x * ahead;
+          const gz = h.last.z + h.lastVel.z * ahead;
+          this.headTo(h, POSE.stalk, 3, dt, false);
+          h.gait = 'stalk';
+          const there = Math.hypot(gx - h.pos.x, gz - h.pos.z) < HERON.strikeRange;
+          if (there) this.turnTo(h, h.yaw + 1, dt * 0.5);
+          else this.walkTo(h, gx, gz, h.stepping ? GAIT.stalk.speed : HERON.stalk * 0.12, dt);
+          h.steadyHead();
+          break;
+        }
         this.headTo(h, POSE.stalk, 3, dt, true);
         if (toPrey < HERON.strikeRange) {
           this.turnTo(h, Math.atan2(this.f.x - h.pos.x, this.f.z - h.pos.z), dt);
@@ -672,7 +759,7 @@ export class Herons {
         this.headTo(h, h.state === 'hold' ? POSE.rest : POSE.stalk, 3, dt, false);
         h.timer -= dt;
         if (h.timer <= 0) {
-          if (h.state === 'recover' && sees) {
+          if (h.state === 'recover' && this.prey.huntable() && !this.hidden() && (sees || h.unseen < HERON.lostTime)) {
             h.state = 'stalk';
             h.unseen = 0;
           } else this.toWait(h);
