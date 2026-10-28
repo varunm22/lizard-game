@@ -54,7 +54,8 @@ test('the tunnels load: the lizard on the upper floor at the start; holes and ru
   expect(s.run.goals.length).toBe(9);
   for (const h of s.holes) expect(Math.abs(h.floor! - h.ground), h.name).toBeLessThan(0.01);
   for (const treads of s.ramps) {
-    expect(Math.abs(treads[0] - s.L.floors[0])).toBeLessThan(0.01);
+    // The lower floor has shallow sags, up to a centimetre or so.
+    expect(Math.abs(treads[0] - s.L.floors[0])).toBeLessThan(0.015);
     expect(Math.abs(treads[treads.length - 1] - s.L.floors[1])).toBeLessThan(0.01);
     // Every riser is one the lizard can scramble up.
     for (let i = 1; i < treads.length; i++) {
@@ -250,4 +251,21 @@ test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', 
   // The other pup, further out, sleeps on.
   expect(s.later[1].state).toBe('rest');
   expect(s.run.goals.find((goal) => goal.id === 'shark')!.done).toBe(true);
+});
+
+test('a lizard that somehow ends up inside the rock, under the tubes, is put back', async ({ page }) => {
+  await bootTunnels(page);
+  const s = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    g.advance(10);
+    const before = g.run();
+    // Solid rock between the tubes, on the lower floor's ground.
+    g.teleport(-3, 3, 0, 0);
+    g.advance(10);
+    return { before, after: g.run(), player: g.player() };
+  });
+  const cp = s.before.checkpoint;
+  expect(Math.hypot(s.player.x - cp.x, s.player.z - cp.z)).toBeLessThan(0.02);
+  expect(Math.abs(s.player.y - cp.y)).toBeLessThan(0.02);
+  expect(s.after.state).toBe(s.before.state);
 });

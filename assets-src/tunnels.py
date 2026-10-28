@@ -487,6 +487,12 @@ def build_field():
     cliff = (cove_z(X) - 0.1 * smoothstep(0.1, TOP, Y) + 0.06 * vnoise(X / 0.22, Y / 0.18, Z / 0.22, 61)
              + 0.02 * vnoise(X / 0.07, Y / 0.07, Z / 0.07, 62)) - Z
     stamp(G, sl, cliff.astype(np.float32), 0.08)
+    # The box's sides: the rock ends in a rough outer face a few centimetres in, not an open cut,
+    # so nothing can walk or swim in under the tubes from the sea round the outside.
+    X, Y, Z = coords(sl := (slice(None), slice(None), slice(None)))
+    edge = np.minimum(np.minimum(X - X0, X1 - X), np.minimum(Z - X0, X1 - Z))
+    side = edge - (0.07 + 0.035 * vnoise(X / 0.2, Y / 0.16, Z / 0.2, 63) + 0.012 * vnoise(X / 0.06, Y / 0.06, Z / 0.06, 64))
+    G = smin(G, side, 0.04).astype(np.float32)
     # Rubble piles: a stair of fallen slabs from the lower floor up to flush with the upper one, each
     # riser low enough for the lizard to scramble up and each tread deep enough to lie on (the body
     # capsule stays level, so it can't stand on a steep slope). Each step is two or three slabs side
@@ -708,6 +714,24 @@ def layout(light_meta):
     }
 
 
+def floor_air(G):
+    """Where the lower floor is open (in a tube, a room, the jameo or the cove), as a bit grid: air
+    anywhere from just above the floor up to under the upper floor (over a rubble pile), spread one
+    cell so a wall's foot counts. The game puts back a lizard that somehow ends up anywhere else down
+    there (inside the rock)."""
+    import base64
+    js = [int(round((FLOOR[0] + y - Y0) / CELL)) for y in (0.04, 0.1, 0.16, 0.22, 0.28, 0.34)]
+    air = np.zeros((nx, nx), bool)
+    for j in js:
+        air |= G[:, j, :] < 0
+    air = air | shift(air, 1, 0) | shift(air, -1, 0) | shift(air, 1, 1) | shift(air, -1, 1)
+    step = 2
+    a = air[::step, ::step]
+    # Row by row along z (k), each row x (i) fastest.
+    bits = np.packbits(a.T.reshape(-1), bitorder='little')
+    return {'origin': [X0, X0], 'cell': CELL * step, 'size': list(a.shape), 'bits': base64.b64encode(bits.tobytes()).decode()}
+
+
 def main():
     global BLOCKS
     BLOCKS = make_blocks()
@@ -719,7 +743,7 @@ def main():
     light.tofile(OUT_LIGHT)
     print('wrote', os.path.abspath(OUT_LIGHT), light.nbytes, 'bytes', meta)
     with open(OUT_JSON, 'w') as f:
-        json.dump(layout(meta), f, indent=1)
+        json.dump({**layout(meta), 'floorAir': floor_air(G)}, f, indent=1)
     verts, faces = mesh(G)
     export(verts, faces, 160_000, G)
 

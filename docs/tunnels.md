@@ -65,6 +65,14 @@ the rock mesh at `FLOORS[1]` (0.42 m, on a grid plane so it's exactly flat). The
   lumps and blocks read even unlit. The collider is the indexed mesh, a trimesh
   (`FIX_INTERNAL_EDGES`), so the lizard stands on exactly what is drawn. It also adds the sunbeams,
   slanted additive cylinders under each skylight and into the jameo.
+- Camera: the follow camera's arm passes through the rock (its collider is in the pass-through
+  set), so it keeps its distance instead of jerking in and out on every lump. `cutaway.ts` draws
+  the rock inside a cone from the camera to the lizard as a faint ghost instead (floors below the
+  lizard excepted): the solid rock discards those fragments and a second, see-through draw of the
+  same geometry shows only them.
+- The rock's sides are closed a few centimetres inside the square, and `floor_air` in the generator
+  marks where the lower floor is open. A lizard found grounded or swimming on the lower floor
+  anywhere else (inside the rock, under the tubes) is put back at its checkpoint (`onLost`).
 - Lighting: nothing underground casts live shadows. Each frame the hemisphere and sun intensities
   follow the baked light at the lizard's feet, and a weak point light on the camera keeps the dark
   lizard readable against dark rock. The fog is dark and close inside and eases to the sky's far fog

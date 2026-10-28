@@ -29,6 +29,7 @@ import sealionUrl from '../assets/sealion.glb?url';
 import { loadFreeRigKit } from '../render/freeRig';
 import { FINISH, lightAt, outside, setLight, START, START_Y, terrainOrUpper } from './layout';
 import { buildRock, buildSunbeams } from './rock';
+import { RockCutaway } from './cutaway';
 import { TunnelsRun } from './run';
 import { HEARING, Owls } from './owl';
 import { Sharks } from './sharks';
@@ -75,7 +76,8 @@ export async function tunnels() {
   camera.add(fill);
   scene.add(camera);
   buildTerrain(scene, world);
-  await buildRock(rockUrl, scene, world);
+  const rock = await buildRock(rockUrl, scene, world);
+  const cutaway = new RockCutaway(rock.mesh, scene);
   const beams = buildSunbeams(scene, SUN_OFFSET);
   const water = new Water(scene);
   const splashes = new Splashes(water);
@@ -99,7 +101,8 @@ export async function tunnels() {
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
   const fade = new OccluderFade(world, []);
-  const followCam = new FollowCamera(camera, world, player.body, fade.handles);
+  // The camera keeps its distance through the rock; the rock in the way is cut away instead.
+  const followCam = new FollowCamera(camera, world, player.body, new Set([...fade.handles, rock.collider.handle]));
   followCam.yaw = START.yaw;
   const input = new Input(renderer.domElement);
 
@@ -132,6 +135,7 @@ export async function tunnels() {
     owls.callOff();
     followCam.yaw = run.checkpoint.yaw;
   };
+  run.onLost = () => flashMessage('Lost in the rock', 'Back to where you last changed floors.');
   run.onCaught = () => flashMessage('Caught by a barn owl!', 'Back to where you last changed floors.');
   owls.onCatch = () => run.caught();
   owls.onHeard = () => flashMessage('The owl heard you!', 'Slip out from under it quietly.');
@@ -222,6 +226,7 @@ export async function tunnels() {
       camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
+    cutaway.update(camera.position, viewOffset ? (viewTarget ?? feet) : followCam.target);
     lizard.updateBodySpheres();
     owls.pose(frameDt);
     sharks.pose();

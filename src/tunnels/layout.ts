@@ -55,6 +55,23 @@ export const START_Y = FLOORS[1];
 export const FINISH = LAYOUT.finish as { x: number; z: number; r: number };
 export const JAMEO = LAYOUT.jameo as { x: number; z: number; r: number };
 export const HOLES = LAYOUT.holes as Hole[];
+
+/** Where the lower floor is open (`floor_air` in the generator): one bit a cell, rows along z, x fastest. */
+const FLOOR_AIR = (LAYOUT as unknown as { floorAir: { origin: [number, number]; cell: number; size: [number, number]; bits: string } }).floorAir;
+const floorAirBits = Uint8Array.from(atob(FLOOR_AIR.bits), (ch) => ch.charCodeAt(0));
+
+/**
+ * Whether (x, z) is somewhere open on the lower floor: a tube, a room, the jameo or the cove, not
+ * inside the rock between them. Outside the rock's square, open.
+ */
+export function floorOpen(x: number, z: number): boolean {
+  const [sx, sz] = FLOOR_AIR.size;
+  const i = Math.round((x - FLOOR_AIR.origin[0]) / FLOOR_AIR.cell);
+  const k = Math.round((z - FLOOR_AIR.origin[1]) / FLOOR_AIR.cell);
+  if (i < 0 || k < 0 || i >= sx || k >= sz) return true;
+  const n = k * sx + i;
+  return (floorAirBits[n >> 3] & (1 << (n & 7))) !== 0;
+}
 export const RAMPS = LAYOUT.ramps as Ramp[];
 /** A rubble pile's steps: how many, each riser's height and each tread's depth (m). */
 export const STEPS = LAYOUT.steps as { count: number; riser: number; tread: number };
