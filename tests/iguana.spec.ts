@@ -385,8 +385,8 @@ async function openGround(page: Page) {
     const { waterY } = g.ocean();
     const others = g.iguanas().slice(1);
     const obstacles = g.obstacles();
-    // Not on the beach round the fig tree, cleared for the island's puzzle, where its figs wash up.
-    const fig = g.figTree();
+    // Not on the beach round the manzanillo, cleared for the island's puzzle, where its apples wash up.
+    const apple = g.appleTree();
     let best: { x: number; z: number; yaw: number; room: number } | null = null;
     for (let z = -2.5; z < 3.5; z += 0.05) {
       for (const up of [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]) {
@@ -398,7 +398,7 @@ async function openGround(page: Page) {
             return Math.abs(g.groundAt(qx, qz)! - g.terrainHeight(qx, qz)) < 0.003 && g.terrainHeight(qx, qz) > waterY + 0.01;
           }),
         );
-        if (Math.hypot(x - fig.x, z - fig.z) < 0.6) continue;
+        if (Math.hypot(x - apple.x, z - apple.z) < 0.6) continue;
         if (!flat || g.plants({ x, z, r: 0.3 }).some((p) => p.solid) || others.some((o) => Math.hypot(o.x - x, o.z - z) < 0.4)) continue;
         const room = Math.min(...obstacles.map((o) => Math.hypot(o.x - x, o.z - z) - o.radius));
         if (!best || room > best.room) best = { x, z, yaw, room };

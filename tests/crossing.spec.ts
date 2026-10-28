@@ -23,42 +23,42 @@ test('the start card says what the bars are, and goes once the lizard moves; the
   expect(errors).toEqual([]);
 });
 
-test('walking into a fig noses it along the ground ahead of the snout', async ({ page }) => {
+test('walking into an apple noses it along the ground ahead of the snout', async ({ page }) => {
   const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     g.clearPlants(0.1, 0.05, 0.1, -0.7, 0.15);
     g.teleport(0.1, 0.05, Math.PI);
-    g.figPlace(0, 0.105, -0.03);
+    g.applePlace(0, 0.105, -0.03);
     g.advance(10, false);
     g.setInput({ move: { x: 0, y: 1 } }, 90);
     g.advance(90, false);
-    return { fig: g.figs()[0], snout: g.lizard().snout };
+    return { apple: g.apples()[0], snout: g.lizard().snout };
   });
   // It went the way the lizard walked (-Z), most of the way it walked, and is still just ahead of it.
-  expect(run.fig.state).toBe('lying');
-  expect(run.fig.pushed).toBeGreaterThan(30);
-  expect(run.fig.z).toBeLessThan(-0.25);
-  expect(run.fig.z).toBeLessThan(run.snout.z);
-  expect(Math.abs(run.fig.x - run.snout.x)).toBeLessThan(0.02);
+  expect(run.apple.state).toBe('lying');
+  expect(run.apple.pushed).toBeGreaterThan(30);
+  expect(run.apple.z).toBeLessThan(-0.25);
+  expect(run.apple.z).toBeLessThan(run.snout.z);
+  expect(Math.abs(run.apple.x - run.snout.x)).toBeLessThan(0.02);
   expect(errors).toEqual([]);
 });
 
-test('the fig tree drops its figs into the sea, where they float off the beach; a swimming lizard noses one ashore and it lies on the sand', async ({ page }) => {
+test('the manzanillo drops its apples into the sea, where they float off the beach; a swimming lizard noses one ashore and it lies on the sand', async ({ page }) => {
   const errors = await bootGame(page);
   const sea = await page.evaluate(() => {
     const g = window.__game!;
-    const t = g.figTree();
+    const t = g.appleTree();
     g.advance(600, false);
-    const afloat = g.figs().map((f) => ({ ...f, depth: f.y - g.terrainHeight(f.x, f.z), off: Math.hypot(f.x - t.x, f.z - t.z) }));
+    const afloat = g.apples().map((f) => ({ ...f, depth: f.y - g.terrainHeight(f.x, f.z), off: Math.hypot(f.x - t.x, f.z - t.z) }));
     // Swimming in from offshore, behind the first one, toward the beach (-X).
-    const f = g.figs()[0];
+    const f = g.apples()[0];
     g.teleport(f.x + 0.12, f.z, -Math.PI / 2);
     g.advance(20, false);
     const swimming = g.player().swimming;
     g.setInput({ move: { x: 0, y: 1 } }, 160);
     g.advance(160, false);
-    return { afloat, swimming, fig: g.figs()[0], ground: g.terrainHeight(g.figs()[0].x, g.figs()[0].z), run: g.islandRun() };
+    return { afloat, swimming, apple: g.apples()[0], ground: g.terrainHeight(g.apples()[0].x, g.apples()[0].z), run: g.islandRun() };
   });
   // Afloat at the surface, over water, still off the tree's seaward side.
   expect(sea.afloat.length).toBeGreaterThanOrEqual(2);
@@ -70,24 +70,24 @@ test('the fig tree drops its figs into the sea, where they float off the beach; 
   }
   expect(sea.swimming).toBe(true);
   // Washed up: on the sand, brought ashore, and the objective moves on.
-  expect(sea.fig.state).toBe('lying');
-  expect(sea.fig.landed).toBe(true);
+  expect(sea.apple.state).toBe('lying');
+  expect(sea.apple.landed).toBe(true);
   expect(sea.ground).toBeGreaterThan(-0.07);
   expect(sea.run.progress).toBe('landed');
   expect(sea.run.hint).toContain('beach path');
   expect(errors).toEqual([]);
 });
 
-test('the tortoise goes for a fig over a nearer flower, and only eats grass when hungry', async ({ page }) => {
+test('the tortoise goes for an apple over a nearer flower, and only eats grass when hungry', async ({ page }) => {
   const errors = await bootGame(page);
-  const fig = await page.evaluate(() => {
+  const apple = await page.evaluate(() => {
     const g = window.__game!;
-    // Out in its meadow, facing +X: a flower a little to its left, a fig further off to its right.
+    // Out in its meadow, facing +X: a flower a little to its left, an apple further off to its right.
     const [x, z] = [-0.3, 2.1];
     g.clearPlants(x - 0.9, z, x + 0.9, z, 0.6);
     g.tortoisePlace(x, z, Math.PI / 2, 20);
     g.sprout('lecocarpus', x + 0.2, z + 0.25, true);
-    g.figPlace(0, x + 0.45, z - 0.6);
+    g.applePlace(0, x + 0.45, z - 0.6);
     g.advance(20, false);
     const first = g.tortoise().heading;
     const d0 = Math.hypot(g.tortoise().x - (x + 0.45), g.tortoise().z - (z - 0.6));
@@ -95,8 +95,8 @@ test('the tortoise goes for a fig over a nearer flower, and only eats grass when
     const t = g.tortoise();
     return { first, d0, d1: Math.hypot(t.x - (x + 0.45), t.z - (z - 0.6)) };
   });
-  expect(fig.first?.kind).toBe('fig');
-  expect(fig.d1).toBeLessThan(fig.d0 - 0.12);
+  expect(apple.first?.kind).toBe('apple');
+  expect(apple.d1).toBeLessThan(apple.d0 - 0.12);
 
   const grass = await page.evaluate(() => {
     const g = window.__game!;
@@ -126,13 +126,13 @@ test('the tortoise goes for a fig over a nearer flower, and only eats grass when
   expect(errors).toEqual([]);
 });
 
-test('led to a fig at the dead tree, the tortoise knocks the tree down across the crack, and the lizard walks over it to finish, then on toward the lagoon', async ({ page }) => {
+test('led to an apple at the dead tree, the tortoise knocks the tree down across the crack, and the lizard walks over it to finish, then on toward the lagoon', async ({ page }) => {
   const errors = await bootGame(page);
   const knock = await page.evaluate(() => {
     const g = window.__game!;
     const s = g.snag();
-    // A fig at the foot of the dead tree, the tortoise coming up the trail toward it.
-    g.figPlace(0, s.x + 0.07, s.z);
+    // An apple at the foot of the dead tree, the tortoise coming up the trail toward it.
+    g.applePlace(0, s.x + 0.07, s.z);
     g.tortoisePlace(s.x + 0.55, s.z + 0.12, -Math.PI / 2 - 0.2, 10);
     const states: string[] = [];
     for (let k = 0; k < 24 && g.snag().state !== 'fallen'; k++) {
@@ -193,7 +193,7 @@ test('led to a fig at the dead tree, the tortoise knocks the tree down across th
   expect(errors).toEqual([]);
 });
 
-test('the crack is too wide to jump: a lizard that falls in lands in the slot at the bottom and is stuck there a while, with the controls off, then back up on the rim it went in from; a fig nosed in drops to the bottom', async ({ page }) => {
+test('the crack is too wide to jump: a lizard that falls in lands in the slot at the bottom and is stuck there a while, with the controls off, then back up on the rim it went in from; an apple nosed in drops to the bottom', async ({ page }) => {
   const errors = await bootGame(page);
   const banner = page.locator('.island-banner');
   const fall = await page.evaluate(() => {
@@ -202,8 +202,8 @@ test('the crack is too wide to jump: a lizard that falls in lands in the slot at
     const c = g.crack(z);
     g.clearPlants(c.x + c.half + 0.6, z, c.x, z, 0.1);
     g.teleport(c.x + c.half + 0.35, z, -Math.PI / 2);
-    // A fig on the rim, in the lizard's way: it's nosed over the edge first.
-    g.figPlace(0, c.x + c.half + 0.08, z);
+    // An apple on the rim, in the lizard's way: it's nosed over the edge first.
+    g.applePlace(0, c.x + c.half + 0.08, z);
     g.advance(20, false);
     // A running jump at it.
     g.setInput({ move: { x: 0, y: 1 }, run: true }, 2 * 60);
@@ -215,14 +215,14 @@ test('the crack is too wide to jump: a lizard that falls in lands in the slot at
     }
     g.setInput(null);
     g.advance(5, true);
-    const fig = g.figs()[0];
+    const apple = g.apples()[0];
     // Down there the controls do nothing.
     const p0 = g.player();
     g.setInput({ move: { x: 0, y: 1 }, run: true }, 30);
     g.advance(30, false);
     const p1 = g.player();
     const slot = g.crack(p1.z);
-    return { run: g.islandRun(), c, deepest, fig, floor: g.terrainHeight(fig.x, fig.z), crawled: Math.hypot(p1.x - p0.x, p1.z - p0.z), p: p1, slot };
+    return { run: g.islandRun(), c, deepest, apple, floor: g.terrainHeight(apple.x, apple.z), crawled: Math.hypot(p1.x - p0.x, p1.z - p0.z), p: p1, slot };
   });
   expect(fall.deepest).toBeLessThan(-0.1);
   expect(fall.run.falls).toBe(1);
@@ -234,10 +234,10 @@ test('the crack is too wide to jump: a lizard that falls in lands in the slot at
   expect(Math.abs(fall.p.x - fall.slot.x)).toBeLessThan(0.015);
   expect(Math.abs(Math.sin(fall.p.yaw))).toBeLessThan(0.3);
   expect(fall.p.grounded).toBe(true);
-  // The fig went in too, all the way down, not hanging at the rim.
-  expect(fall.fig.state).toBe('lost');
-  expect(fall.fig.y).toBeLessThan(fall.floor + 0.03);
-  expect(Math.abs(fall.fig.x - fall.c.x)).toBeLessThan(fall.c.half);
+  // The apple went in too, all the way down, not hanging at the rim.
+  expect(fall.apple.state).toBe('lost');
+  expect(fall.apple.y).toBeLessThan(fall.floor + 0.03);
+  expect(Math.abs(fall.apple.x - fall.c.x)).toBeLessThan(fall.c.half);
 
   const out = await page.evaluate(() => {
     const g = window.__game!;

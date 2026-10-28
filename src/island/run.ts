@@ -4,7 +4,7 @@ import type { PlayerController } from '../player/controller';
 import type { Tortoise } from '../creatures/tortoise';
 import { crackCut, crackHalf, crackSide, crackX, overCrack } from './crack';
 import type { Snag } from './snag';
-import type { Figs } from './figs';
+import type { Apples } from './apples';
 
 /** The tortoise knocks the dead tree over with its mouth within this of the trunk, or its shell this near its foot (m). */
 const KNOCK_MOUTH = 0.14;
@@ -36,8 +36,8 @@ export type Step = 'start' | 'seen' | 'landed' | 'luring' | 'bridged' | 'home';
 /**
  * The island's objective, step by step: get across the crack. It's too wide to jump; a lizard that
  * falls in slides down into the narrow bottom and is stuck there a while, then climbs back out where
- * it went over. The fig tree on the beach drops its figs into the sea, so the lizard has to swim out
- * and nose one ashore before it can roll it up to the tortoise. The tortoise reaching for a fig at
+ * it went over. The manzanillo on the beach drops its apples into the sea, so the lizard has to swim out
+ * and nose one ashore before it can roll it up to the tortoise. The tortoise reaching for an apple at
  * the dead tree's foot knocks the tree down across the crack, and once the lizard is over on the far side the stage
  * is done. Also says what to try next, for the objective line in the corner.
  */
@@ -61,7 +61,7 @@ export class IslandRun {
     private player: PlayerController,
     private tortoise: Tortoise,
     private snag: Snag,
-    private figs: Figs,
+    private apples: Apples,
   ) {
     player.feetAt(1, this.safe);
   }
@@ -83,11 +83,11 @@ export class IslandRun {
       case 'start':
         return { text, hint: "It's too wide to jump. A burnt, dead tree leans out over it." };
       case 'seen':
-        return { text, hint: 'Something heavy could knock that dead tree over. Tortoises love figs, but the fig tree on the beach drops them in the sea.' };
+        return { text, hint: 'Something heavy could knock that dead tree over. Tortoises love manzanillo apples, and the tree on the beach drops them in the sea.' };
       case 'landed':
-        return { text, hint: 'A fig on the sand! Roll it up the beach path to the tortoise.' };
+        return { text, hint: 'An apple on the sand! Roll it up the beach path to the tortoise.' };
       case 'luring':
-        return { text, hint: 'The tortoise is after that fig. Lead it to the dead tree.' };
+        return { text, hint: 'The tortoise is after that apple. Lead it to the dead tree.' };
       case 'bridged':
         return { text, hint: 'The tree fell across the crack. Walk over on it!' };
       case 'home':
@@ -153,9 +153,9 @@ export class IslandRun {
         ? 'home'
         : this.snag.state !== 'standing'
           ? 'bridged'
-          : t.aim?.kind === 'fig' && t.aim.fig.pushed > 0
+          : t.aim?.kind === 'apple' && t.aim.apple.pushed > 0
             ? 'luring'
-            : this.figs.list.some((f) => f.landed && f.state === 'lying')
+            : this.apples.list.some((f) => f.landed && f.state === 'lying')
               ? 'landed'
               : this.seen
                 ? 'seen'

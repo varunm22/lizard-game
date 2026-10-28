@@ -17,7 +17,7 @@ export type SnagState = 'standing' | 'falling' | 'fallen';
 
 /**
  * A dead tree standing on the east rim of the crack, leaning out over it. The lizard can't move it,
- * but something heavy bumping it (the tortoise, reaching for a fig at its foot) knocks it over: it
+ * but something heavy bumping it (the tortoise, reaching for an apple at its foot) knocks it over: it
  * topples west and comes to rest across the crack, a log bridge to the far side. The fall is scripted,
  * a rod pivoting on its foot, on a kinematic body; once down it stays put.
  */

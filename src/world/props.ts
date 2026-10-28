@@ -34,8 +34,8 @@ export interface PropsResult {
   obstacles: Obstacle[];
   /** The algae meshes, for `Algae` to grow on the rocks. */
   algae: { green: THREE.BufferGeometry; red: THREE.BufferGeometry };
-  /** The island puzzle's fig tree, for `Figs` to plant, with its extras (trunk_radius, trunk_height, crown_y). */
-  figTree: { geometry: THREE.BufferGeometry; extras: Record<string, number> };
+  /** The island puzzle's manzanillo, for `Apples` to plant, with its extras (trunk_radius, trunk_height, crown_y). */
+  appleTree: { geometry: THREE.BufferGeometry; extras: Record<string, number> };
   /** The island puzzle's dead tree, for `Snag`. */
   snag: THREE.BufferGeometry;
 }
@@ -263,7 +263,7 @@ export async function buildProps(url: string, scene: THREE.Scene, world: RAPIER.
     placed++;
   }
 
-  return { obstacles, algae: { green: need('algae_green'), red: need('algae_red') }, figTree: { geometry: need('fig_tree'), extras: kit.extras.get('fig_tree')! }, snag: need('snag') };
+  return { obstacles, algae: { green: need('algae_green'), red: need('algae_red') }, appleTree: { geometry: need('manzanillo'), extras: kit.extras.get('manzanillo')! }, snag: need('snag') };
 }
 
 const Y = new THREE.Vector3(0, 1, 0);

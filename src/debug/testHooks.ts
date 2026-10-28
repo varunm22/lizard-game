@@ -126,8 +126,8 @@ export interface GameTestHooks {
     /** The point 0.3 m straight ahead of it, and where its mouth reaches the ground. */
     ahead: { x: number; z: number };
     mouth: { x: number; z: number };
-    /** What it's making for: a fig, a plant or a spot in its meadow, and where. */
-    heading: { kind: 'fig' | 'plant' | 'wander'; x: number; z: number } | null;
+    /** What it's making for: an apple, a plant or a spot in its meadow, and where. */
+    heading: { kind: 'apple' | 'plant' | 'wander'; x: number; z: number } | null;
     /** Seconds since it last ate. */
     sinceMeal: number;
     /** Its meadow (an oval: centre and half-axes). */
@@ -137,11 +137,11 @@ export interface GameTestHooks {
   tortoiseDo: (action: 'eat' | 'rest' | { x: number; z: number }) => void;
   /** Stand the tortoise at (x, z) facing `yaw`, walking, and say how long since it ate. */
   tortoisePlace: (x: number, z: number, yaw: number, sinceMeal?: number) => void;
-  /** The figs from the fig tree: where each is, whether it's falling, floating, lying, lost in the crack or eaten, how often the lizard has pushed it, and whether it nosed it ashore. */
-  figs: () => { x: number; y: number; z: number; state: string; pushed: number; landed: boolean }[];
-  /** Lay fig `i` (making more if there are fewer) at (x, z): on the ground, or afloat if that's in the sea. */
-  figPlace: (i: number, x: number, z: number) => void;
-  figTree: () => { x: number; z: number };
+  /** The apples from the manzanillo: where each is, whether it's falling, floating, lying, lost in the crack or eaten, how often the lizard has pushed it, and whether it nosed it ashore. */
+  apples: () => { x: number; y: number; z: number; state: string; pushed: number; landed: boolean }[];
+  /** Lay apple `i` (making more if there are fewer) at (x, z): on the ground, or afloat if that's in the sea. */
+  applePlace: (i: number, x: number, z: number) => void;
+  appleTree: () => { x: number; z: number };
   /** The dead tree on the crack's rim: standing, falling or fallen, its foot, how far over it is (radians) and its tip. */
   snag: () => { state: string; x: number; y: number; z: number; angle: number; tip: { x: number; y: number; z: number } };
   /** Knock the dead tree over now. */

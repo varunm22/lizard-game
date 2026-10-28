@@ -5,12 +5,12 @@ import { crackHalf, crackX, overCrack } from './crack';
 import { shoreX } from '../world/shore';
 
 /**
- * Where the island's way out is laid out: the fig tree at the back of the beach north of the beach
+ * Where the island's way out is laid out: the manzanillo at the back of the beach north of the beach
  * path, its crown over the sea and out of the tortoise's notice from its meadow; the dead tree (snag) on the crack's east rim; and a game
  * trail from the meadow through the trees to it, kept clear so the tortoise can be led down it.
  */
-const FIG_Z = 1.65;
-export const FIG_TREE = { x: shoreX(FIG_Z) - 0.12, z: FIG_Z };
+const APPLE_Z = 1.65;
+export const MANZANILLO = { x: shoreX(APPLE_Z) - 0.12, z: APPLE_Z };
 /** The dead tree stands this far in from the rim, at this z, and falls west across the crack. */
 const SNAG_Z = 1.35;
 const SNAG_IN = 0.07;
@@ -21,8 +21,8 @@ export const TRAIL = { x0: -1.0, z0: 1.62, x1: SNAG.x, z1: SNAG.z, half: 0.2 };
 const LANDING = { reach: 0.8, half: 0.14 };
 /** The way on from the far rim, west up the bank to the island's edge where the lagoon opens out (`walkOut.ts`), kept clear this wide (m). */
 const WAY_OUT = { x: -3.95, half: 0.22 };
-/** Room round the fig tree (m). */
-const FIG_ROOM = 0.42;
+/** Room round the manzanillo (m). */
+const APPLE_ROOM = 0.42;
 
 /** How far (x, z) is from the segment a to b, along the ground. */
 function segmentDistance(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
@@ -32,7 +32,7 @@ function segmentDistance(x: number, z: number, ax: number, az: number, bx: numbe
   return Math.hypot(x - ax - dx * t, z - az - dz * t);
 }
 
-/** Whether an obstacle would be in the way of the puzzle: in the crack, on the trail, on the dead tree's fall line or the way on from it, or by the fig tree. */
+/** Whether an obstacle would be in the way of the puzzle: in the crack, on the trail, on the dead tree's fall line or the way on from it, or by the manzanillo. */
 function inTheWay(o: Obstacle): boolean {
   const [x, z] = [o.position.x, o.position.z];
   const reach = o.radius + (o.axis ? Math.hypot(o.axis.x, o.axis.z) : 0);
@@ -47,7 +47,7 @@ function inTheWay(o: Obstacle): boolean {
     if (segmentDistance(px, pz, SNAG.x, SNAG.z, SNAG.x - LANDING.reach, SNAG.z) < LANDING.half + o.radius) return true;
     if (segmentDistance(px, pz, SNAG.x - LANDING.reach, SNAG.z, WAY_OUT.x, SNAG.z) < WAY_OUT.half + o.radius) return true;
   }
-  return covers(o, FIG_TREE.x, FIG_TREE.z, FIG_ROOM) || covers(o, SNAG.x, SNAG.z, 0.15);
+  return covers(o, MANZANILLO.x, MANZANILLO.z, APPLE_ROOM) || covers(o, SNAG.x, SNAG.z, 0.15);
 }
 
 /**

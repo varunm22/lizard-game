@@ -11,7 +11,7 @@ import { covers, type Obstacle } from '../world/obstacles';
 import { shoreDistance } from '../world/layout';
 import { TERRAIN_SIZE } from '../world/terrain';
 import { overCrack, crackSide } from '../island/crack';
-import type { Fig, Figs } from '../island/figs';
+import type { Apple, Apples } from '../island/apples';
 import type { PlayerController } from '../player/controller';
 import { centreAboveFeet } from '../player/movement';
 import type { Route } from './route';
@@ -19,9 +19,9 @@ import type { Route } from './route';
 /**
  * A Galapagos giant tortoise (assets-src/tortoise.py) that grazes its meadow all day: it ambles from
  * one spot in it to another, picked at random, pressing the plants under it flat; it heads for food
- * it notices, liking figs best, then flowers, then grass; now and then it lies down for a rest. A
- * fig it will walk well out of its way for (`FIG_SENSE`), off its meadow and down the trail if that's
- * where the fig is; a flower only nearby; grass only when it hasn't eaten for a while and the grass
+ * it notices, liking apples best, then flowers, then grass; now and then it lies down for a rest. A
+ * apple it will walk well out of its way for (`APPLE_SENSE`), off its meadow and down the trail if that's
+ * where the apple is; a flower only nearby; grass only when it hasn't eaten for a while and the grass
  * is right at its mouth. It steers round rocks, trees and logs, and keeps off the crack and the sea.
  * It takes no notice of the lizard. Its shell is solid (a kinematic body, so the lizard can stand on
  * it), and if it walks into the lizard it shoves it aside; if the lizard can't go anywhere, the
@@ -31,16 +31,16 @@ export type TortoiseState = 'walk' | 'eat' | 'lie_down' | 'rest' | 'get_up';
 
 /** How far ahead of its centre the mouth meets the ground when it reaches down to eat (m). */
 export const MOUTH_AHEAD = 0.16;
-/** A plant this close to that spot (m) and at least half grown can be eaten; a fig, which it noses for, a little further. */
+/** A plant this close to that spot (m) and at least half grown can be eaten; an apple, which it noses for, a little further. */
 const BITE_REACH = 0.035;
-const FIG_REACH = 0.045;
+const APPLE_REACH = 0.045;
 /**
- * What it notices, and how long after a meal (s) before it wants each: a fig this far from its centre
+ * What it notices, and how long after a meal (s) before it wants each: an apple this far from its centre
  * (m), a flower this far from its mouth, and grass only once it's hungry and the grass is right at
  * its mouth.
  */
-const FIG_SENSE = 1.0;
-const FIG_AFTER = 3;
+const APPLE_SENSE = 1.0;
+const APPLE_AFTER = 3;
 const FLOWER_SENSE = 0.5;
 const FLOWER_AFTER = 12;
 const GRASS_SENSE = 0.12;
@@ -125,8 +125,8 @@ export class Tortoise {
   private x: number;
   private z: number;
   yaw: number;
-  /** What it's heading for: a fig, a plant, or just a spot in its meadow. */
-  aim: { kind: 'fig'; fig: Fig } | { kind: 'plant'; plant: Plant; for: number } | { kind: 'wander'; x: number; z: number; for: number } | null = null;
+  /** What it's heading for: an apple, a plant, or just a spot in its meadow. */
+  aim: { kind: 'apple'; apple: Apple } | { kind: 'plant'; plant: Plant; for: number } | { kind: 'wander'; x: number; z: number; for: number } | null = null;
   /** Plants it gave up trying to reach. */
   private passed = new WeakSet<Plant>();
   /** Seconds since it last ate. */
@@ -150,7 +150,7 @@ export class Tortoise {
   onTrample: ((dx: number, dz: number, shell: RAPIER.Collider) => boolean) | null = null;
   /** Times it has trampled the lizard. */
   tramples = 0;
-  private meal: { plant: Plant } | { fig: Fig } | null = null;
+  private meal: { plant: Plant } | { apple: Apple } | null = null;
   private greedy = false;
   private pos = new THREE.Vector3();
   private prevPos = new THREE.Vector3();
@@ -171,7 +171,7 @@ export class Tortoise {
     world: RAPIER.World,
     private route: Route,
     private plants: Plants,
-    private figs: Figs | null,
+    private apples: Apples | null,
     private obstacles: () => readonly Obstacle[],
     start: number,
   ) {
@@ -204,9 +204,9 @@ export class Tortoise {
     this.play('walk');
   }
 
-  /** `route` is the oval of its meadow; `figs` the fig tree's fruit, if the stage has one; `obstacles` what it steers round. */
-  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, route: Route, plants: Plants, figs: Figs | null, obstacles: () => readonly Obstacle[], start = 0) {
-    const tortoise = new Tortoise(await loadGltf(url), world, route, plants, figs, obstacles, start);
+  /** `route` is the oval of its meadow; `apples` the manzanillo's fruit, if the stage has one; `obstacles` what it steers round. */
+  static async load(url: string, scene: THREE.Scene, world: RAPIER.World, route: Route, plants: Plants, apples: Apples | null, obstacles: () => readonly Obstacle[], start = 0) {
+    const tortoise = new Tortoise(await loadGltf(url), world, route, plants, apples, obstacles, start);
     scene.add(tortoise.root);
     return tortoise;
   }
@@ -236,10 +236,10 @@ export class Tortoise {
   }
 
   /** What it's heading for now, if anything, and where that is. */
-  get heading(): { kind: 'fig' | 'plant' | 'wander'; x: number; z: number } | null {
+  get heading(): { kind: 'apple' | 'plant' | 'wander'; x: number; z: number } | null {
     const a = this.aim;
     if (!a) return null;
-    if (a.kind === 'fig') return { kind: a.kind, x: a.fig.x, z: a.fig.z };
+    if (a.kind === 'apple') return { kind: a.kind, x: a.apple.x, z: a.apple.z };
     if (a.kind === 'plant') return { kind: a.kind, x: a.plant.x, z: a.plant.z };
     return { kind: a.kind, x: a.x, z: a.z };
   }
@@ -284,8 +284,8 @@ export class Tortoise {
     const t = this.stateTime;
     switch (this.state) {
       case 'walk': {
-        // No rest while there's a fig in view.
-        if (this.aim?.kind !== 'fig') this.untilRest -= dt;
+        // No rest while there's an apple in view.
+        if (this.aim?.kind !== 'apple') this.untilRest -= dt;
         const phase = this.walkPhase();
         const pause = this.surge(phase) < DRAG_PAUSE;
         if (this.untilRest <= 0 && pause) {
@@ -453,13 +453,13 @@ export class Tortoise {
     return d;
   }
 
-  /** Take the bite: the plant goes, or the fig if its mouth is still on it (the lizard may have nosed it away). */
-  private bite(meal: { plant: Plant } | { fig: Fig }) {
+  /** Take the bite: the plant goes, or the apple if its mouth is still on it (the lizard may have nosed it away). */
+  private bite(meal: { plant: Plant } | { apple: Apple }) {
     const mouth = this.mouth;
-    if ('fig' in meal) {
-      const f = meal.fig;
-      if (f.state !== 'lying' || Math.hypot(f.x - mouth.x, f.z - mouth.z) > FIG_REACH * 1.5) return;
-      this.figs!.eat(f);
+    if ('apple' in meal) {
+      const f = meal.apple;
+      if (f.state !== 'lying' || Math.hypot(f.x - mouth.x, f.z - mouth.z) > APPLE_REACH * 1.5) return;
+      this.apples!.eat(f);
     } else if (!meal.plant.eaten) this.plants.eat(meal.plant);
     this.sinceMeal = 0;
   }
@@ -468,20 +468,20 @@ export class Tortoise {
   private think() {
     const { x: mx, z: mz } = this.mouth;
     const side = crackSide(this.x, this.z);
-    // A fig, if one lies within its notice on this side of the crack.
-    if (this.figs && this.sinceMeal > FIG_AFTER) {
-      let best: Fig | null = null;
-      let bestD = FIG_SENSE;
-      for (const f of this.figs.lying) {
+    // An apple, if one lies within its notice on this side of the crack.
+    if (this.apples && this.sinceMeal > APPLE_AFTER) {
+      let best: Apple | null = null;
+      let bestD = APPLE_SENSE;
+      for (const f of this.apples.lying) {
         const d = Math.hypot(f.x - this.x, f.z - this.z);
         if (d < bestD && crackSide(f.x, f.z) === side) [best, bestD] = [f, d];
       }
       if (best) {
-        this.aim = { kind: 'fig', fig: best };
+        this.aim = { kind: 'apple', apple: best };
         return;
       }
     }
-    if (this.aim?.kind === 'fig') this.aim = null;
+    if (this.aim?.kind === 'apple') this.aim = null;
     // A plant it's still after, as long as it's there and it hasn't been circling it too long.
     if (this.aim?.kind === 'plant') {
       if (!this.aim.plant.eaten && (this.aim.for += THINK) < PLANT_GIVE_UP) return;
@@ -528,11 +528,11 @@ export class Tortoise {
   }
 
   /** Food at its mouth once it has walked `ahead` further on its heading, or null. */
-  private mealAhead(ahead: number): { plant: Plant } | { fig: Fig } | null {
+  private mealAhead(ahead: number): { plant: Plant } | { apple: Apple } | null {
     const a = this.aim;
     if (!a || a.kind === 'wander') return null;
     const { x, z } = this.ahead(ahead + MOUTH_AHEAD);
-    if (a.kind === 'fig') return Math.hypot(a.fig.x - x, a.fig.z - z) < FIG_REACH ? { fig: a.fig } : null;
+    if (a.kind === 'apple') return Math.hypot(a.apple.x - x, a.apple.z - z) < APPLE_REACH ? { apple: a.apple } : null;
     return Math.hypot(a.plant.x - x, a.plant.z - z) < BITE_REACH ? { plant: a.plant } : null;
   }
 

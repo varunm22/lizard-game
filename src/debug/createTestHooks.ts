@@ -29,7 +29,7 @@ import type { Goals } from '../goals';
 import type { FollowCamera } from '../camera/followCamera';
 import type { OccluderFade } from '../camera/occluderFade';
 import type { GameTestHooks } from './testHooks';
-import type { Figs } from '../island/figs';
+import type { Apples } from '../island/apples';
 import type { Snag } from '../island/snag';
 import type { WalkOut } from '../island/walkOut';
 import type { LagoonView } from '../island/lagoonView';
@@ -63,7 +63,7 @@ interface HookContext {
   climate: ClimateSense;
   puff: StrikePuff;
   goals: Goals;
-  figs: Figs;
+  apples: Apples;
   snag: Snag;
   run: IslandRun;
   walkOut: WalkOut;
@@ -77,7 +77,7 @@ interface HookContext {
 /** Inspect game systems; mutable input and camera overrides stay owned by the game loop. */
 export function createTestHooks({
   world, obstacles, player, states, lizard, visual, camera, followCam, fade, plants,
-  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, figs, snag, run, walkOut, leave, lagoonView, canEat,
+  tortoise, crabs, iguanas, algae, reef, fishes, feeding, water, hawk, cover, prey, wounds, vitals, climate, puff, goals, apples, snag, run, walkOut, leave, lagoonView, canEat,
   setInput, viewFrom,
 }: HookContext): GameTestHooks {
   let left = false;
@@ -180,12 +180,12 @@ export function createTestHooks({
       tortoise.place(x, z, yaw);
       if (sinceMeal !== undefined) tortoise.sinceMeal = sinceMeal;
     },
-    figs: () => figs.list.map((f) => ({ x: f.x, y: f.y, z: f.z, state: f.state, pushed: f.pushed, landed: f.landed })),
-    figPlace: (i, x, z) => {
-      while (figs.list.length <= i) figs.drop(true);
-      figs.place(i, x, z);
+    apples: () => apples.list.map((f) => ({ x: f.x, y: f.y, z: f.z, state: f.state, pushed: f.pushed, landed: f.landed })),
+    applePlace: (i, x, z) => {
+      while (apples.list.length <= i) apples.drop(true);
+      apples.place(i, x, z);
     },
-    figTree: () => ({ x: figs.tree.position.x, z: figs.tree.position.z }),
+    appleTree: () => ({ x: apples.tree.position.x, z: apples.tree.position.z }),
     snag: () => {
       const tip = snag.tip;
       return { state: snag.state, x: snag.position.x, y: snag.position.y, z: snag.position.z, angle: snag.angle, tip: { x: tip.x, y: tip.y, z: tip.z } };
