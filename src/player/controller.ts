@@ -149,6 +149,7 @@ export class PlayerController {
   private world: RAPIER.World;
   private rot = new THREE.Quaternion();
   private supportRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  private clearRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 });
   /** Turning is checked against everything but the terrain, which the controller lifts the body off. */
   private turnBlocker = (c: RAPIER.Collider) => c.shapeType() !== RAPIER.ShapeType.HeightField;
 
@@ -547,9 +548,13 @@ export class PlayerController {
     // it goes on further up the dome and rests a little higher, over the rise, and settles from there.
     const to = new THREE.Vector3();
     let top: number | null = null;
+    // The highest top passed over on the way, for the check below.
+    let highest = -Infinity;
+    for (let s = rim; s < rim + CLIMB_OVER; s += 0.01) highest = Math.max(highest, topAt(s) ?? -Infinity);
     search: for (let over = rim + CLIMB_OVER; over <= rim + CLIMB_OVER + CLIMB_ONTO_DOME + 1e-6; over += 0.01) {
       const at = topAt(over);
       if (at === null) break;
+      highest = Math.max(highest, at);
       if (at < minTop) continue;
       for (let lift = 0.001; lift <= CLIMB_LIFT + 1e-6; lift += 0.003) {
         to.set(this.position.x + fx * over, at + centreAboveFeet() + lift, this.position.z + fz * over);
@@ -560,11 +565,29 @@ export class PlayerController {
       }
     }
     if (top === null) return false;
+    // The way there is clear: up then across for a climb (both over everything passed and at the
+    // height it ends at), across then down for a drop off a perch, traced from the body's middle (in
+    // the open) so a top found by a ray that started inside solid rock (ground behind a wall, or
+    // under a sloping wall's foot) can't carry it through the wall.
+    const p = this.position;
+    const level = Math.max(to.y, highest + centreAboveFeet());
+    if (to.y >= p.y) {
+      if (this.blocked(p.x, p.y, p.z, p.x, level, p.z) || this.blocked(p.x, level, p.z, to.x, level, to.z) || this.blocked(p.x, to.y, p.z, to.x, to.y, to.z)) return false;
+    } else if (this.blocked(p.x, p.y, p.z, to.x, p.y, to.z) || this.blocked(to.x, p.y, to.z, to.x, to.y, to.z)) return false;
     const height = Math.abs(top - feetY);
     this.climb = { from: this.position.clone(), to, t: 0, duration: CLIMB_BASE_TIME + CLIMB_TIME_PER_M * height, top };
     this.vy = 0;
     this.jumping = false;
     return true;
+  }
+
+  /** Whether anything lies on the straight line from one point to another (other than the lizard). */
+  private blocked(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) {
+    const d = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+    if (d < 1e-5) return false;
+    this.clearRay.origin = { x: x0, y: y0, z: z0 };
+    this.clearRay.dir = { x: (x1 - x0) / d, y: (y1 - y0) / d, z: (z1 - z0) / d };
+    return this.world.castRay(this.clearRay, d, true, undefined, this.climbGroups, undefined, this.body) !== null;
   }
 
   /**

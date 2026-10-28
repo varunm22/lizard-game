@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
 import type { PlayerController } from '../player/controller';
-import { FINISH, FLOORS, HOLES, lightAt, overHole, SKYLIGHTS, START, START_Y } from './layout';
+import type { LizardVisual } from '../player/visual';
+import { FINISH, FLOORS, HOLES, lightAt, overHole, ROOSTS, SKYLIGHTS, START, START_Y } from './layout';
 
-export type RunState = 'ready' | 'running' | 'home';
+export type RunState = 'ready' | 'running' | 'caught' | 'home';
+
+/** Held in an owl's talons this long (s) before the lizard is back where it last changed floors. */
+export const CAUGHT_TIME = 2.2;
+/** Basking this long (s) under an owl's roost without it hearing counts for the owl goal. */
+const QUIET_BASK = 2;
 
 /** Out of the tunnels within this (s) for the quick-run goal. */
 const QUICK = 60;
@@ -14,8 +20,8 @@ const BASK_SUN = 0.5;
 const BASK_REACH = 0.45;
 
 /**
- * One go through the tunnels, from the sunlit chamber at the west end to the jameo. The clock starts
- * as the lizard first moves; reaching the jameo's floor wins it; R starts over. Also keeps track of
+ * One go through the tunnels, from the sunlit chamber at the west end out to the beach in the cove. The clock starts
+ * as the lizard first moves; reaching the beach wins it; R starts over. Also keeps track of
  * the floor the lizard last stood on, to tell a fall through a hole (landing on the lower floor
  * from the upper) from a climb up a rubble pile (standing on the upper floor again, having walked
  * up), and of the gap leapt, and keeps the stage's goals.
@@ -32,6 +38,14 @@ export class TunnelsRun {
   /** Times the gap was cleared in a jump, landing on the upper floor beyond it. */
   leaps = 0;
   swam = false;
+  catches = 0;
+  /** Seconds basked under an owl's roost without it stirring (this visit), whether that's been done, and whether a whitetip was startled. */
+  private quietBask = 0;
+  baskedByOwl = false;
+  startledShark = false;
+  /** Where the lizard goes back to after a catch: where it last dropped or climbed to a floor (or the start). */
+  readonly checkpoint = { x: START.x, y: START_Y, z: START.z, yaw: START.yaw };
+  private caughtLeft = 0;
   /** Which skylights the lizard has basked under. */
   readonly basked = SKYLIGHTS.map(() => false);
   readonly goals: Goals;
@@ -47,15 +61,24 @@ export class TunnelsRun {
   onDrop: ((hole: string) => void) | null = null;
   onClimb: (() => void) | null = null;
   onLeap: (() => void) | null = null;
+  onCaught: (() => void) | null = null;
+  onRespawn: (() => void) | null = null;
+  /** Whether an owl has heard the lizard and is dropping on it (set by the owls each step). */
+  owlStirred = false;
 
-  constructor(private player: PlayerController) {
+  constructor(
+    private player: PlayerController,
+    private visual: LizardVisual,
+  ) {
     const specs: GoalSpec[] = [
       { id: 'drop', label: 'Drop through a hole to the lower tunnels', met: () => this.drops.length > 0 },
       { id: 'climb', label: 'Climb a rubble pile back up through the roof', met: () => this.climbs > 0 },
       { id: 'leap', label: 'Leap the gap at a run', met: () => this.leaps > 0 },
       { id: 'bask', label: `Bask under all ${SKYLIGHTS.length} skylights`, met: () => this.basked.every(Boolean) },
       { id: 'swim', label: 'Swim the flooded tunnel', met: () => this.swam },
-      { id: 'out', label: 'Find the way out to the jameo', met: () => this.finishes > 0 },
+      { id: 'owl', label: 'Bask under a barn owl without it hearing you', met: () => this.baskedByOwl },
+      { id: 'shark', label: 'Swim over a resting whitetip shark', met: () => this.startledShark },
+      { id: 'out', label: 'Find the way out to the sea', met: () => this.finishes > 0 },
       { id: 'quick', label: `Get out in under ${QUICK} s`, met: () => this.best !== null && this.best < QUICK },
     ];
     this.goals = new Goals(specs);
@@ -68,8 +91,35 @@ export class TunnelsRun {
     this.attempts++;
     this.floor = 1;
     this.overGap = false;
+    this.visual.downed = false;
+    Object.assign(this.checkpoint, { x: START.x, y: START_Y, z: START.z, yaw: START.yaw });
     this.player.setFeet(this.feet.set(START.x, START_Y, START.z), START.yaw);
     this.onReset?.();
+  }
+
+  /** Whether the lizard is held still (in an owl's talons). */
+  get held() {
+    return this.state === 'caught';
+  }
+
+  /** An owl has it. */
+  caught() {
+    if (this.state !== 'running' && this.state !== 'ready') return;
+    this.state = 'caught';
+    this.catches++;
+    this.caughtLeft = CAUGHT_TIME;
+    this.visual.downed = true;
+    this.onCaught?.();
+  }
+
+  /** Back where it last changed floors, the clock still running. */
+  private respawn() {
+    const c = this.checkpoint;
+    if (this.state === 'caught') this.state = 'running';
+    this.visual.downed = false;
+    this.floor = TunnelsRun.floorOf(c.y) === 1 ? 1 : 0;
+    this.player.setFeet(this.feet.set(c.x, c.y, c.z), c.yaw);
+    this.onRespawn?.();
   }
 
   /** Which floor feet at height y stand on, or -1 between them (on a rubble pile). */
@@ -83,7 +133,8 @@ export class TunnelsRun {
     if (this.state === 'ready' && moving) this.state = 'running';
     const p = this.player;
     p.feetAt(1, this.feet);
-    if (p.swimming) this.swam = true;
+    // The flooded stretch inside, not the sea at the way out.
+    if (p.swimming && this.feet.x < 2.6) this.swam = true;
     // In the air over the gap: a leap, if it comes down on the upper floor.
     if (!p.grounded && HOLES.some((h) => h.kind === 'gap' && overHole(this.feet.x, this.feet.z) === h) && this.feet.y > FLOORS[1] - 0.02) this.overGap = true;
     if (p.grounded || p.swimming) {
@@ -99,24 +150,37 @@ export class TunnelsRun {
           this.drops.push(hole.name);
           this.onDrop?.(hole.name);
         }
+        if (!p.swimming) Object.assign(this.checkpoint, { x: this.feet.x, y: this.feet.y, z: this.feet.z, yaw: p.yaw });
       } else if (floor === 1 && this.floor === 0) {
         this.climbs++;
         this.onClimb?.();
+        Object.assign(this.checkpoint, { x: this.feet.x, y: this.feet.y, z: this.feet.z, yaw: p.yaw });
       }
       if (floor >= 0) this.floor = floor;
       if (floor === 1) this.leftUpper.copy(this.feet);
+      let underOwl = false;
       if (!p.swimming) {
         lightAt(this.feet.x, this.feet.y + 0.03, this.feet.z, this.lit);
         if (this.lit.sun > BASK_SUN) {
           SKYLIGHTS.forEach((s, i) => {
-            if (Math.hypot(this.feet.x - s.x, this.feet.z - s.z) < s.r + BASK_REACH && floor === 1) this.basked[i] = true;
+            if (Math.hypot(this.feet.x - s.x, this.feet.z - s.z) < s.r + BASK_REACH && this.floor === 1) {
+              this.basked[i] = true;
+              if (ROOSTS.some((r) => r.name === s.name)) underOwl = true;
+            }
           });
         }
       }
+      this.quietBask = underOwl && !this.owlStirred && this.state !== 'caught' ? this.quietBask + dt : 0;
+      if (this.quietBask > QUIET_BASK) this.baskedByOwl = true;
+    }
+    if (this.state === 'caught') {
+      this.time += dt;
+      this.caughtLeft -= dt;
+      if (this.caughtLeft <= 0) this.respawn();
     }
     if (this.state === 'running') {
       this.time += dt;
-      if (Math.hypot(this.feet.x - FINISH.x, this.feet.z - FINISH.z) < FINISH.r && this.feet.y < FLOORS[0] + 0.1) {
+      if (Math.hypot(this.feet.x - FINISH.x, this.feet.z - FINISH.z) < FINISH.r && this.feet.y < FLOORS[0] + 0.1 && !p.swimming) {
         this.state = 'home';
         this.finishes++;
         if (this.best === null || this.time < this.best) this.best = this.time;
