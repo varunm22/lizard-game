@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
 import type { PlayerController } from '../player/controller';
 import type { LizardVisual } from '../player/visual';
-import { FINISH, floorOpen, FLOORS, HOLES, lightAt, overHole, ROOSTS, SKYLIGHTS, START, START_Y } from './layout';
+import { FINISH, FLOORS, HOLES, lightAt, overHole, ROOSTS, SKYLIGHTS, START, START_Y } from './layout';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
 
@@ -63,8 +63,6 @@ export class TunnelsRun {
   onLeap: (() => void) | null = null;
   onCaught: (() => void) | null = null;
   onRespawn: (() => void) | null = null;
-  /** Called when the lizard has somehow got inside the rock, under the tubes, and is put back. */
-  onLost: (() => void) | null = null;
   /** Whether an owl has heard the lizard and is dropping on it (set by the owls each step). */
   owlStirred = false;
 
@@ -135,12 +133,6 @@ export class TunnelsRun {
     if (this.state === 'ready' && moving) this.state = 'running';
     const p = this.player;
     p.feetAt(1, this.feet);
-    // Somehow inside the rock, down under the tubes (there should be no way in): put back.
-    if ((p.grounded || p.swimming) && this.state !== 'caught' && this.feet.y < FLOORS[0] + 0.25 && !floorOpen(this.feet.x, this.feet.z)) {
-      this.respawn();
-      this.onLost?.();
-      return;
-    }
     // The flooded stretch inside, not the sea at the way out.
     if (p.swimming && this.feet.x < 2.6) this.swam = true;
     // In the air over the gap: a leap, if it comes down on the upper floor.

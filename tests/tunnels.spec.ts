@@ -253,19 +253,30 @@ test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', 
   expect(s.run.goals.find((goal) => goal.id === 'shark')!.done).toBe(true);
 });
 
-test('a lizard that somehow ends up inside the rock, under the tubes, is put back', async ({ page }) => {
+test('pushing into the walls round the flooded pool and the cove never gets the lizard into the rock', async ({ page }) => {
   await bootTunnels(page);
   const s = await page.evaluate(() => {
     const g = window.__tunnels!;
-    g.advance(10);
-    const before = g.run();
-    // Solid rock between the tubes, on the lower floor's ground.
-    g.teleport(-3, 3, 0, 0);
-    g.advance(10);
-    return { before, after: g.run(), player: g.player() };
+    g.advance(2);
+    // From the pool's banks and the beach under the cliff, run and jump at the walls all round, the
+    // ways that used to climb in under the maze: out of the water onto ground behind a wall, and in
+    // under a low lip of rock.
+    const starts = [[0.86, 2.43], [0.84, 3.24], [0.86, 3.37], [0.9, 2.85], [3.2, 4.3], [3.1, 4.5]];
+    const out: number[][] = [];
+    for (const [x, z] of starts) {
+      for (let k = 0; k < 8; k++) {
+        g.teleport(x, z, (k / 8) * Math.PI * 2);
+        g.advance(5);
+        g.setInput({ move: { x: k % 2 ? 0.4 : 0, y: 1 }, run: k % 3 === 0, jump: k % 4 === 1 });
+        for (let q = 0; q < 60; q++) {
+          g.advance(1);
+          const p = g.player();
+          if (!g.floorOpen(p.x, p.z)) out.push([x, z, k, p.x, p.y, p.z]);
+        }
+        g.setInput(null);
+      }
+    }
+    return out.slice(0, 3);
   });
-  const cp = s.before.checkpoint;
-  expect(Math.hypot(s.player.x - cp.x, s.player.z - cp.z)).toBeLessThan(0.02);
-  expect(Math.abs(s.player.y - cp.y)).toBeLessThan(0.02);
-  expect(s.after.state).toBe(s.before.state);
+  expect(s).toEqual([]);
 });

@@ -9,7 +9,7 @@ import type { TunnelsTestHooks } from './testHooks';
 import type { TunnelsRun } from '../tunnels/run';
 import type { Owls } from '../tunnels/owl';
 import type { Sharks } from '../tunnels/sharks';
-import { FINISH, FLOORS, HOLES, ISLET, lightAt, POOLS, RAMPS, ROOSTS, SKYLIGHTS, START, STEPS, TOP } from '../tunnels/layout';
+import { FINISH, floorOpen, FLOORS, HOLES, ISLET, lightAt, POOLS, RAMPS, ROOSTS, SKYLIGHTS, START, STEPS, TOP } from '../tunnels/layout';
 
 interface TunnelsHookContext {
   world: RAPIER.World;
@@ -40,6 +40,7 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
     terrainHeight,
     groundAt: (x, z, from = 5) => down(x, z, from),
     floorBelow: (x, z, from) => down(x, z, from),
+    floorOpen,
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
       return {

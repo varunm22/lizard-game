@@ -70,9 +70,14 @@ the rock mesh at `FLOORS[1]` (0.42 m, on a grid plane so it's exactly flat). The
   the rock inside a cone from the camera to the lizard as a faint ghost instead (floors below the
   lizard excepted): the solid rock discards those fragments and a second, see-through draw of the
   same geometry shows only them.
-- The rock's sides are closed a few centimetres inside the square, and `floor_air` in the generator
-  marks where the lower floor is open. A lizard found grounded or swimming on the lower floor
-  anywhere else (inside the rock, under the tubes) is put back at its checkpoint (`onLost`).
+- Nothing gets in under the maze; there is no put-back, it must stay impossible. The rock's sides
+  are closed a few centimetres inside the square. On the lower floor the rock is straight columns
+  below knee height (solid wherever there is rock anywhere up to 6 cm over the floor), so the
+  heightfield, which dips below the floor in the pool and the cove, never runs on under a lip of
+  rock. And a climb needs a clear path (`PlayerController.blocked`): the climb's down-cast starts
+  inside the rock when the lizard faces a wall and would otherwise find the ground behind it.
+  `floor_air` in the generator marks where the lower floor is open (hook `floorOpen`), for the test
+  that pushes into the walls round the pool and the cove.
 - Lighting: nothing underground casts live shadows. Each frame the hemisphere and sun intensities
   follow the baked light at the lizard's feet, and a weak point light on the camera keeps the dark
   lizard readable against dark rock. The fog is dark and close inside and eases to the sky's far fog

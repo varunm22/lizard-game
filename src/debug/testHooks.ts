@@ -523,6 +523,8 @@ export interface TunnelsTestHooks
   light(x: number, y: number, z: number): { sun: number; glow: number };
   /** The rock's surface straight down from (x, from, z), or null: the floor under a point on either floor. */
   floorBelow(x: number, z: number, from: number): number | null;
+  /** Whether (x, z) is open on the lower floor (a tube, room, the jameo or the cove), not inside the rock between them. */
+  floorOpen(x: number, z: number): boolean;
 }
 
 declare global {

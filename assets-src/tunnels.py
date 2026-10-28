@@ -413,13 +413,14 @@ def build_field():
         X, Y, Z = coords(sl)
         p = (r['x'], r['z'])
         stamp(F[fl], sl, tube_sdf(X, Y, Z, p, p, FLOOR[fl], r['r'], r['height'], 300 + len(r['name']), False), 0.1)
-    # Rough walls and roofs: big lumps and hollows, then smaller knobs; the floors left flat.
+    # Rough walls and roofs: big lumps and hollows, then smaller knobs, the walls' lumps carried on
+    # down past the floor so a wall never leans out over it (no slot under its foot to crawl into).
     sl = (slice(None), slice(None), slice(None))
     X, Y, Z = coords(sl)
     for fl in (0, 1):
         n = (vnoise(X / 0.28, Y / 0.2, Z / 0.28, 13 + fl) * 0.042 + vnoise(X / 0.1, Y / 0.1, Z / 0.1, 3 + fl) * 0.015
              + vnoise(X / 0.04, Y / 0.04, Z / 0.04, 9 + fl) * 0.005)
-        mask = smoothstep(0.0, 0.08, Y - FLOOR[fl])
+        mask = smoothstep(-0.1, -0.02, Y - FLOOR[fl])
         F[fl] += (n * mask).astype(np.float32)
     # The upper floor cut flat but for shallow sags in the ropy lava; nothing of it below.
     sag = -0.006 * (0.5 + 0.5 * vnoise(X / 0.3, 0.0, Z / 0.3, 31))
@@ -532,6 +533,18 @@ def build_field():
         sl = box(b['x'] - r, b['x'] + r, b['z'] - r, b['z'] + r, b['bottom'] - 0.05, b['top'] + 0.05)
         X, Y, Z = coords(sl)
         G[sl] = -smin(-G[sl], block_sdf(X, Y, Z, b), 0.01)
+    # Nothing low to crawl into: below knee height on the lower floor (a lizard's height over it) the
+    # air goes no further than it does at knee height, so no undercut wall, cliff foot or block leaves
+    # a slot under the rock, and no water reaches in under it. Below the floor the rock is straight
+    # columns: solid wherever there is rock anywhere up to knee height, open only where the floor is.
+    # The ground there is the heightfield, which dips below the floor in the pool and the cove, so
+    # it is never under a lip of rock it could be walked onto from.
+    j0, jk = (int(round((FLOOR[0] + dy - Y0) / CELL)) for dy in (0.0, 0.06))
+    G[:, :jk, :] = np.maximum(G[:, :jk, :], G[:, jk:jk + 1, :])
+    # (Rock only just touching the floor, from the walls' noise, isn't counted: it would stand up as
+    # posts in the pool.)
+    floor = G[:, j0:j0 + 1, :]
+    G[:, :j0 + 1, :] = np.maximum(G[:, j0 + 1:jk + 1, :].max(axis=1, keepdims=True), np.where(floor > 0.008, floor, -1))
     return G
 
 
@@ -717,19 +730,17 @@ def layout(light_meta):
 def floor_air(G):
     """Where the lower floor is open (in a tube, a room, the jameo or the cove), as a bit grid: air
     anywhere from just above the floor up to under the upper floor (over a rubble pile), spread one
-    cell so a wall's foot counts. The game puts back a lizard that somehow ends up anywhere else down
-    there (inside the rock)."""
+    cell so a wall's foot counts. The game doesn't use it; the tests check against it that the lizard
+    never gets into the rock between the tubes."""
     import base64
     js = [int(round((FLOOR[0] + y - Y0) / CELL)) for y in (0.04, 0.1, 0.16, 0.22, 0.28, 0.34)]
     air = np.zeros((nx, nx), bool)
     for j in js:
         air |= G[:, j, :] < 0
     air = air | shift(air, 1, 0) | shift(air, -1, 0) | shift(air, 1, 1) | shift(air, -1, 1)
-    step = 2
-    a = air[::step, ::step]
     # Row by row along z (k), each row x (i) fastest.
-    bits = np.packbits(a.T.reshape(-1), bitorder='little')
-    return {'origin': [X0, X0], 'cell': CELL * step, 'size': list(a.shape), 'bits': base64.b64encode(bits.tobytes()).decode()}
+    bits = np.packbits(air.T.reshape(-1), bitorder='little')
+    return {'origin': [X0, X0], 'cell': CELL, 'size': list(air.shape), 'bits': base64.b64encode(bits.tobytes()).decode()}
 
 
 def main():

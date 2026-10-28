@@ -135,7 +135,6 @@ export async function tunnels() {
     owls.callOff();
     followCam.yaw = run.checkpoint.yaw;
   };
-  run.onLost = () => flashMessage('Lost in the rock', 'Back to where you last changed floors.');
   run.onCaught = () => flashMessage('Caught by a barn owl!', 'Back to where you last changed floors.');
   owls.onCatch = () => run.caught();
   owls.onHeard = () => flashMessage('The owl heard you!', 'Slip out from under it quietly.');
