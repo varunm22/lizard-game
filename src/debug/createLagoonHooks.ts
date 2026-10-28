@@ -10,8 +10,13 @@ import type { LagoonTestHooks } from './testHooks';
 import type { Herons } from '../lagoon/herons';
 import type { DriftLog } from '../lagoon/driftLog';
 import type { Swimmers } from '../lagoon/swimmers';
+import type { Fries } from '../lagoon/fry';
 import type { LagoonRun } from '../lagoon/run';
 import type { Mangrove } from '../lagoon/props';
+import type { Vitals } from '../player/vitals';
+import type { Wounds } from '../player/wounds';
+import type { Feeding } from '../player/feeding';
+import type { Algae } from '../world/algae';
 import { channelHalf, channelX, CREEK, current, depthAt, FINISH, JAM, LOG_POOL, SAFE_POINTS, START } from '../lagoon/layout';
 
 interface LagoonHookContext {
@@ -26,14 +31,20 @@ interface LagoonHookContext {
   herons: Herons;
   log: DriftLog;
   swimmers: Swimmers;
+  fries: Fries;
   run: LagoonRun;
+  vitals: Vitals;
+  wounds: Wounds;
+  algae: Algae;
+  feeding: Feeding;
+  canEat: () => boolean;
   setInput: LagoonTestHooks['setInput'];
   viewFrom: LagoonTestHooks['viewFrom'];
 }
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, run, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, fries, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -85,6 +96,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
         yaw: h.yaw,
         bill: xyz(h.billTip(new THREE.Vector3())),
         sees: h.sees,
+        unseen: h.unseen,
+        alert: h.alert,
         strikes: h.strikes,
         catches: h.catches,
         paused: h.paused,
@@ -110,6 +123,27 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       h.update(1);
     },
     tangle: (x, z) => herons.inTangle(x, z),
+    vitals: () => ({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      rate: { ...vitals.rate },
+      speedScale: vitals.speedScale,
+      frozen: vitals.frozen,
+      cause: vitals.cause,
+      down: wounds.down,
+      downBy: wounds.downBy,
+    }),
+    setVitals: (v) => Object.assign(vitals, v),
+    fry: () => fries.list.map((f) => ({ shoal: fries.shoals.indexOf(f.shoal), species: f.shoal.species, ...xyz(f.pos), speed: Math.hypot(f.vel.x, f.vel.z) })),
+    fryShoals: () => fries.shoals.map((s) => ({ species: s.species, x: s.home.x, z: s.home.z, roots: s.posts.map((p) => ({ ...p })) })),
+    fryDarts: () => fries.darts,
+    algae: () => algae.all().map((p) => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
+    bite: () => feeding.bite(),
+    feeding: () => ({ bites: feeding.bites, mouthfuls: feeding.mouthfuls, canEat: canEat() }),
+    wadeable: (x, z) => herons.wadeable(x, z, x, z),
+    haunts: (i) => herons.list[i].spots.map((p) => ({ ...p })),
     pause: ({ herons: hs, swimmers: ss }) => {
       if (hs !== undefined) herons.list.forEach((h, i) => (h.paused = Array.isArray(hs) ? !hs.includes(i) : hs));
       if (ss !== undefined) swimmers.paused = ss;
@@ -128,7 +162,8 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       ends: [xyz(log.end(-1, new THREE.Vector3())), xyz(log.end(1, new THREE.Vector3()))],
     }),
     placeLog: (x, z, heading) => log.place(x, z, heading),
-    swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, ...xyz(s.pos) })),
+    swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, state: s.state, pool: s.pool, ...xyz(s.pos), top: swimmers.top(s), yaw: s.yaw, speed: s.speed, bites: s.bites })),
+    placeSwimmer: (i, x, z, yaw) => swimmers.place(i, x, z, yaw),
     channel: (z) => ({ x: channelX(z), half: channelHalf(z) }),
     current: (x, z) => current(x, z, { x: 0, z: 0 }),
     depth: (x, z) => depthAt(x, z),
