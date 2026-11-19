@@ -1,7 +1,7 @@
 import type { Climate } from './climate';
 
 /** What brought the lizard down. */
-export type DownCause = 'hawk' | 'tortoise' | 'cactus' | 'heron' | 'shark' | 'cold' | 'hunger' | 'air';
+export type DownCause = 'hawk' | 'tortoise' | 'cactus' | 'heron' | 'shark' | 'sealion' | 'cold' | 'hunger' | 'air';
 
 /**
  * Every vitals tuning number in one place. All four bars run 0 to 1, rates are per second.
@@ -16,6 +16,8 @@ export const VITALS = {
   /** In the lagoon: a lava heron's stab, and a shark pup's bite. */
   heronHit: 0.4,
   sharkBite: 0.3,
+  /** On the sea lion beach: caught by the bull's charge. */
+  bullHit: 0.35,
   /** On its feet again at the spawn, it starts with these. */
   start: { health: 1, warmth: 0.7, fullness: 0.7, air: 1 },
 

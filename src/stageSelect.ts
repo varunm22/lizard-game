@@ -4,6 +4,7 @@ import islandTile from './assets/stages/island.jpg';
 import dunesTile from './assets/stages/dunes.jpg';
 import lagoonTile from './assets/stages/lagoon.jpg';
 import tunnelsTile from './assets/stages/tunnels.jpg';
+import beachTile from './assets/stages/beach.jpg';
 
 /** The stages, in the order the picker shows them, each with a still from the game. */
 const STAGES: { id: Level; name: string; blurb: string; image: string }[] = [
@@ -11,6 +12,7 @@ const STAGES: { id: Level; name: string; blurb: string; image: string }[] = [
   { id: 'island', name: LEVEL_NAMES.island, blurb: 'Roam the shore and the reef: iguanas, crabs, the tortoise and the hawk.', image: islandTile },
   { id: 'lagoon', name: LEVEL_NAMES.lagoon, blurb: 'Slip past the lava herons and float a log across the channel.', image: lagoonTile },
   { id: 'tunnels', name: LEVEL_NAMES.tunnels, blurb: 'Find the way through two floors of lava tubes: drop through holes, climb the rubble.', image: tunnelsTile },
+  { id: 'beach', name: LEVEL_NAMES.beach, blurb: 'Grown and in breeding colours: dodge the sea lion bull, win a display rock and a mate.', image: beachTile },
 ];
 
 const CSS = `

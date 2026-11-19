@@ -551,11 +551,77 @@ export interface TunnelsTestHooks
   floorBelow(x: number, z: number, from: number): number | null;
 }
 
+export interface BeachTestHooks
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'obstacles' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  /** The run: state, clock, where it came ashore, danger, goals. */
+  run(): {
+    state: string;
+    time: number;
+    best: number | null;
+    attempts: number;
+    catches: number;
+    finishes: number;
+    ashore: { x: number; z: number } | null;
+    danger: string;
+    held: boolean;
+    goals: { id: string; label: string; done: boolean }[];
+  };
+  restart(): void;
+  /** The bull: state, where he is and faces, his muzzle, whether he's swimming, and counts; the cows and pups. */
+  sealions(): {
+    bull: { state: string; x: number; y: number; z: number; yaw: number; nose: { x: number; z: number }; swim: number; dodged: number; hits: number };
+    cows: { x: number; z: number; yaw: number; lift: number }[];
+    pups: { state: string; x: number; z: number; yaw: number }[];
+    nudges: number;
+  };
+  /** The bull as drawn: each bone's world position by name. */
+  bullBones(): Record<string, { x: number; y: number; z: number }>;
+  /** Stand the bull at (x, z) facing `yaw`, on his beat or charging. */
+  placeBull(x: number, z: number, yaw: number, state?: 'patrol' | 'charge'): void;
+  /** The rival males (state, rock, where, displays answered), who holds each rock, the match, the females and the counts. */
+  rivals(): {
+    males: { state: string; rock: number; x: number; y: number; z: number; yaw: number; exchanges: number; displaying: boolean; challenging: boolean }[];
+    owner: (number | 'player' | null)[];
+    match: { rival: number; push: number; t: number } | null;
+    females: { state: string; x: number; z: number }[];
+    claiming: { rock: number; t: number } | null;
+    outDisplayed: number;
+    shoveWins: number;
+    shoveLosses: number;
+    claims: number;
+    defended: number;
+    courtship: number;
+    chosen: boolean;
+    /** The player's display under way (s in), or -1. */
+    playerDisplay: number;
+  };
+  /** Display, as pressing B does. */
+  display(): void;
+  /** Send rival `i` off to sulk now (its rock vacant), or bring it back to challenge now. */
+  rivalTo(i: number, state: 'retreat' | 'return'): void;
+  /** The display rocks: middle, top radius and the height of the top (world m). */
+  displayRocks(): { x: number; z: number; r: number; top: number }[];
+  /** The penguins and cormorants: where each is, swimming or not; whether the lizard has swum with each kind. */
+  birds(): { kind: string; x: number; y: number; z: number; swim: number }[];
+  birdGoals(): { penguin: boolean; cormorant: boolean };
+  /** The island's bars, as the lagoon's. */
+  vitals(): { health: number; warmth: number; fullness: number; air: number; down: boolean; downBy: string | null };
+  setVitals(v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>): void;
+  /** Stop or start the sea lions, the rivals and females. */
+  pause(what: { sealions?: boolean; rivals?: boolean }): void;
+  /** Start, the waterline at x, whether (x, z) is on the bull's stretch, and water depth. */
+  start(): { x: number; z: number; yaw: number };
+  shoreZ(x: number): number;
+  onBullStretch(x: number, z: number): boolean;
+  depth(x: number, z: number): number;
+}
+
 declare global {
   interface Window {
     __game?: GameTestHooks;
     __dunes?: DunesTestHooks;
     __lagoon?: LagoonTestHooks;
     __tunnels?: TunnelsTestHooks;
+    __beach?: BeachTestHooks;
   }
 }

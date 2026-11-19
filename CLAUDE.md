@@ -38,5 +38,6 @@ In Claude cloud sessions Chromium is preinstalled; do not run `playwright instal
 - [Nesting dunes level](docs/dunes.md): `?level=dunes`, racer snakes, hatchlings, the run and its tests (`window.__dunes`).
 - [Mangrove lagoon level](docs/lagoon.md): `?level=lagoon`, lava herons, the drift log gate, the channel current and its tests (`window.__lagoon`).
 - [Lava tunnels level](docs/tunnels.md): `?level=tunnels`, the two-floor tube maze generated in `assets-src/tunnels.py`, drop holes, rubble stairs, the gap, baked light and its tests (`window.__tunnels`).
+- [Sea lion beach level](docs/beach.md): `?level=beach`, the last stage: the sea lion bull's charge, pups, the lek's rival males (displays, shoving, claiming a rock, the female), penguins and cormorants, free-rig creatures posed in code, and its tests (`window.__beach`).
 
 These guides retain the detailed behavior, regression constraints and test hooks; load only the ones relevant to the change.
