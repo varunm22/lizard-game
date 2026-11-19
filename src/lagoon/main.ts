@@ -32,7 +32,7 @@ import lizardUrl from '../assets/lizard.glb?url';
 import propsUrl from '../assets/props.glb?url';
 import lagoonUrl from '../assets/lagoon.glb?url';
 import heronUrl from '../assets/heron.glb?url';
-import { CREEK_FLOW, current, FINISH, lagoonLava, SAFE_POINTS, START } from './layout';
+import { current, FINISH, lagoonLava, SAFE_POINTS, START } from './layout';
 import { buildLagoonProps, loadKit } from './props';
 import { DriftLog } from './driftLog';
 import { Wrack } from './wrack';
@@ -46,20 +46,14 @@ import { CAUGHT_TIME, LagoonRun } from './run';
 const TEXT: HudText = {
   intro:
     '<h2>Mangrove lagoon</h2>' +
-    'Cross the lagoon to the <b>lava field</b> beyond the channel, under the <b>golden light</b>.' +
-    '<ul><li>Lava herons stalk the shallows and stab fast: each stab costs <b>health</b>. Keep moving, and keep out of reach.</li>' +
-    '<li>No heron reaches in among the <b>mangrove roots</b>, or sees you swimming low over <b>deep water</b>. ' +
-    'Swim too near one and it strikes without stalking.</li>' +
-    '<li>Shark pups are curious, and sometimes bite. Never turn on one close up.</li>' +
-    '<li>The water <b>chills</b> you and diving costs <b>air</b>: bask on the black lava to warm up.</li>' +
-    '<li>Bite (<b>F</b>) the green <b>gutweed</b> on the lava at the waterline, or the dark red <b>moss</b> on the mangrove roots, to eat.</li>' +
-    '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies stuck in a still pool behind its bank, ' +
-    'and a dam of <b>drift wrack</b> blocks the pool\'s creek. Push the wrack loose to let the pool drain, then shove the log free: ' +
-    'the creek carries it out. Wrack catches on an old drowned trunk downstream, and a log can catch on wrack.</li>' +
-    '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
+    'Cross the channel to the <b>lava field</b>, under the <b>golden light</b>.' +
+    '<ul><li>Herons can\'t reach into <b>roots</b>, or see you over <b>deep water</b>.</li>' +
+    '<li>Never turn on a <b>shark pup</b> up close.</li>' +
+    '<li>A stuck <b>log</b> could bridge the channel.</li>' +
+    '<li>Water <b>chills</b> you: bask on black lava. Bite (<b>F</b>) weed to eat.</li></ul>' +
     '<span class="go">Move to start.</span>',
-  watched: 'A heron is stalking you. Keep moving!',
-  chased: 'It is about to strike!',
+  watched: 'Stalked!',
+  chased: 'Move!',
   controls: [['F', 'bite']],
 };
 
@@ -139,19 +133,19 @@ export async function lagoon() {
     messageLeft = 3;
   };
   const DOWN: Partial<Record<DownCause, string>> = {
-    heron: 'Caught by a lava heron!',
-    shark: 'Bitten by a shark pup!',
-    cold: 'Too cold to move!',
-    air: 'Out of air!',
+    heron: 'Speared!',
+    shark: 'Bitten!',
+    cold: 'Too cold!',
+    air: 'Drowned!',
     hunger: 'Starved!',
   };
   run.onCaught = (by) => {
     messageLeft = null;
-    hud.message(DOWN[by] ?? 'Down!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to the lava coast...');
+    hud.message(DOWN[by] ?? 'Down!', run.checkpoint >= 0 ? 'Back to the safe point' : 'Back to the start');
   };
   run.onSafe = (i) => {
     markers.reached(i, true);
-    flashMessage('Safe in the roots', 'No heron reaches in here. Caught later, you start again from here.');
+    flashMessage('Safe point', '');
   };
   run.onRespawn = () => hud.message(null);
   run.onReset = () => {
@@ -165,14 +159,10 @@ export async function lagoon() {
     hud.message(`Across! ${clock(run.time)}`, best, endKeys('lagoon'));
   };
   log.hooksOn = (a, b, r, out) => wrack.hooks(a, b, r, out);
-  wrack.onCleared = () => flashMessage('The creek is flowing', 'The pool drains out into the channel, and the wrack goes with it.');
-  wrack.onRacked = (count) => {
-    if (count === 1) flashMessage('The wrack has caught on something', 'An old trunk lies drowned off the lava knob, down the channel.');
-  };
-  log.onAfloat = () =>
-    flashMessage('The log is loose', CREEK_FLOW.open > 0 ? 'The draining pool carries it toward the creek.' : 'But the pool is still: nothing carries it anywhere yet.');
-  log.onJammed = () => flashMessage('The log has caught on the wrack and swung across', 'A bridge from the mud spit to the lava knob.');
-  log.onLost = () => flashMessage('The log drifted out to sea', 'Another has washed into the pool.');
+  wrack.onCleared = () => flashMessage('The creek flows', '');
+  log.onAfloat = () => flashMessage('The log is loose', '');
+  log.onJammed = () => flashMessage('A bridge!', '');
+  log.onLost = () => flashMessage('Lost to the sea', 'Another log washed into the pool');
   runKeys('lagoon', run);
 
   let forcedInput: Partial<InputState> | null = null;

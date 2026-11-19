@@ -157,10 +157,16 @@ sprout as there. As on the island, "[F] to eat" shows while algae is within a bi
 
 As the dunes': the clock starts on the first move; going down (a heron's stab or a shark pup's bite
 taking the last of its health, or the cold, hunger or drowning) puts the lizard back at the start, or at
-the safe point once reached; reaching `FINISH` on the lava field wins. Goals: shelter in the roots,
-cross, hide from a stalking heron in the roots, escape one into deep water, slip away from one, clear
-the wrack dam, work the log loose, float it into the channel, catch it across the channel, ride it
-1 s, swim beside a shark pup, swim with the rays. `GOAL_COUNT.lagoon` in `src/progress.ts` is 12.
+the safe point once reached; reaching `FINISH` on the lava field wins. Goals are side quests only
+(5; the steps the crossing needs anyway, the safe point, the wrack, the log and the bridge, aren't
+goals, the user's rule 2026-11-19): cross, hide from a stalking heron in the roots, ride the log 1 s,
+swim beside a shark pup, swim with the rays. `GOAL_COUNT.lagoon` in `src/progress.ts` is 5.
+
+Help text is terse, as on the dunes and in the tunnels: a four-line intro card (roots and deep water
+lose a heron, don't turn on a shark pup, a stuck log could bridge the channel, the water chills and F
+bites weed), the danger banner ("Stalked!", "Move!"), and short flashes for the safe point, the creek
+flowing, the log coming loose, the bridge and a log lost to the sea. A catch names its cause
+("Speared!", "Bitten!", "Too cold!", "Drowned!", "Starved!").
 
 ## Sharks and rays (`swimmers.ts`, models in `assets-src/lagoon.py`)
 

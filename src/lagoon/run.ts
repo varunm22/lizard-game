@@ -44,8 +44,6 @@ export class LagoonRun {
   readonly goals: Goals;
   /** Things the goals wait on, set by the herons' callbacks. */
   private hid = false;
-  private dove = false;
-  private slipped = false;
   private feet = new THREE.Vector3();
   onReset: (() => void) | null = null;
   /** Down, and what took the last of its health; and a blow that only hurt it. */
@@ -84,19 +82,11 @@ export class LagoonRun {
     };
     herons.onLose = (_h, why) => {
       if (why === 'tangle') this.hid = true;
-      else if (why === 'deep') this.dove = true;
-      else if (why === 'away') this.slipped = true;
     };
+    // Side quests only: the steps the crossing needs anyway (the wrack, the log, the bridge) aren't goals.
     const specs: GoalSpec[] = [
-      { id: 'safe', label: "Shelter in the old mangroves' roots", met: () => this.checkpoint >= 0 },
       { id: 'cross', label: 'Cross the channel to the lava field', met: () => this.finishes > 0 },
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
-      { id: 'deep', label: 'Escape a heron into deep water', met: () => this.dove },
-      { id: 'slip', label: 'Slip away from a stalking heron', met: () => this.slipped },
-      { id: 'dam', label: 'Clear the wrack dam from the creek', met: () => wrack.cleared },
-      { id: 'free', label: 'Work the stuck log loose', met: () => log.state !== 'aground' },
-      { id: 'channel', label: 'Float the driftwood out into the channel', met: () => log.reachedChannel > 0 },
-      { id: 'bridge', label: 'Catch the log across the channel', met: () => log.state === 'jammed' },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
       { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
