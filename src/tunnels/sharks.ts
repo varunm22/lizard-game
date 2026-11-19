@@ -16,6 +16,11 @@ const OUT = [
   { x: 3.55, z: 5.3 },
   { x: 3.7, z: 8.5 },
 ];
+/**
+ * The pups' size against a real one (whitetip.py builds a 0.55 m newborn): 0.7, about 0.39 m, so
+ * one is about twice the lizard's length rather than three times.
+ */
+export const SHARK_SIZE = 0.7;
 /** A swimmer (or wader) within this (m, across) wakes a resting pup. */
 const WAKE = 0.42;
 /** Speeds (m/s): bolting, and swimming back in. */
@@ -130,7 +135,7 @@ export class Shark {
   /** Pose the body along a swimming wave (each frame). */
   pose() {
     const rig = this.rig;
-    rig.place(this.at, q.setFromAxisAngle(UP, this.yaw));
+    rig.place(this.at, q.setFromAxisAngle(UP, this.yaw), SHARK_SIZE);
     const head = this.spine[0].z;
     const length = head - this.spine[this.spine.length - 1].z;
     const lateral = (s: number) => 0.06 * this.beat * Math.pow(s / length, 1.6) * Math.sin(this.phase - 5 * (s / length));

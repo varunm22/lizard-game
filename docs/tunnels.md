@@ -141,7 +141,7 @@ the armature's extras.
   checkpoint (where it last changed floors, or the start) and the owl flies back up. A miss leaves it
   on the floor a moment, then it returns and stays deaf a little while. Basking 2 s under an owl
   without it stirring is a goal.
-- **Whitetip reef sharks** (`sharks.ts`): two pups (0.55 m) lying on the sea pool's bed in the mouth,
+- **Whitetip reef sharks** (`sharks.ts`): two pups drawn at `SHARK_SIZE` (0.7 of a 0.55 m newborn, about 0.39 m) lying on the sea pool's bed in the mouth,
   tails barely moving. A swimmer within 0.42 m wakes one: it bolts down the channel and out to sea,
   stays away 9 s, and cruises back to its spot. Harmless; startling one is a goal.
 - **Sea lions** (`sealions.ts`): a herd on the islet's north beach (a bull, cows, pups: one model
