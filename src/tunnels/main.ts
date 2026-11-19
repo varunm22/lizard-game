@@ -11,6 +11,7 @@ import { Splashes } from '../world/splashes';
 import { Input, type InputState } from '../input';
 import { PlayerController } from '../player/controller';
 import { MovementStateMachine, movementFacts } from '../player/state';
+import { MOVEMENT } from '../player/movement';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
 import { FollowCamera, type SoftArm } from '../camera/followCamera';
@@ -185,7 +186,11 @@ export async function tunnels() {
 
   const still: Partial<InputState> = { move: { x: 0, y: 0 }, run: false, jump: false };
   const tickFeet = new THREE.Vector3();
-  const prey = { feet: tickFeet, loudness: 0, open: true };
+  const prey = { feet: tickFeet, loudness: 0, loud: false, open: true };
+  // A run is anything faster than halfway from a walk to a run (the walk itself is 0.25 m/s).
+  const RUN_SOUND = (MOVEMENT.walkSpeed + MOVEMENT.runSpeed) / 2;
+  /** Seconds in the air (about a 16 cm fall) before a landing is a thump the owls hear far off. */
+  const THUMP_AIR = 0.18;
   const tick = (dt: number) => {
     let input = forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
     if (run.held) input = { ...input, ...still };
@@ -193,7 +198,11 @@ export async function tunnels() {
     // What the owls hear: running, a jump or a landing carry; a walk barely; standing still, nothing.
     player.feetAt(1, tickFeet);
     const speed = player.horizontalSpeed;
-    prey.loudness = player.landed || player.jumped ? HEARING.thump : speed > 0.12 ? HEARING.run : speed > 0.015 ? HEARING.walk : 0;
+    // Landing from a real fall or a jump thumps; stepping down off a lump of breakdown doesn't.
+    const thump = (player.landed && player.lastAirTime > THUMP_AIR) || player.jumped;
+    const running = speed > RUN_SOUND * player.speedScale;
+    prey.loudness = thump ? HEARING.thump : running ? HEARING.run : speed > 0.015 ? HEARING.walk : 0;
+    prey.loud = thump || running;
     prey.open = run.state === 'running' || run.state === 'ready';
     owls.step(dt, prey);
     run.owlStirred = owls.list.some((o) => o.state !== 'roost');

@@ -132,8 +132,11 @@ the armature's extras.
 - **Barn owls** (`owl.ts`, Galapagos barn owl), drawn at `OWL_SIZE` (0.6) of life size: the lizard has grown since the lagoon and should feel a match for one. One sits on a ledge high in the shady side of the
   `south` and `last` skylight shafts (`ROOSTS`, a block in `make_blocks`), head turning after sounds.
   It hears the lizard on the floor under the skylight: running or a jump/landing within 0.9 m, a walk
-  only within 0.16 m, standing still never (`HEARING`). Heard within `REACH` (0.55 m) it stirs
-  (`alert`), drops on the spot it last heard, and if the lizard is still within 6.5 cm, mantles over
+  only within 0.16 m, standing still never (`HEARING`). A run is faster than halfway from the walk
+  to the run speed, and a landing thumps only after 0.18 s in the air (stepping off breakdown
+  doesn't). Heard within `REACH` (0.55 m) it stirs (`alert`, leaning out and tracking the sound). A
+  walk only stirs it, and it settles back after 1.5 s of quiet; a run, jump or thump in reach makes
+  it drop on the spot it last heard, and if the lizard is still within 6.5 cm, it mantles over
   it with wings spread: the run goes `caught` for 2.2 s, then the lizard is put back at the
   checkpoint (where it last changed floors, or the start) and the owl flies back up. A miss leaves it
   on the floor a moment, then it returns and stays deaf a little while. Basking 2 s under an owl

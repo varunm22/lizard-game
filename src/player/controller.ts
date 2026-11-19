@@ -101,6 +101,8 @@ export class PlayerController {
   jumped = false;
   /** Seconds since leaving the ground (0 while grounded). */
   airTime = 0;
+  /** How long (s) the last fall that ended in `landed` was in the air. */
+  lastAirTime = 0;
   /** Turn input this step, -1 (left) to 1 (right); the visual turns the head into it. */
   turning = 0;
   /** True when the body itself turned this step (only while moving forward or back, or swimming). */
@@ -345,7 +347,10 @@ export class PlayerController {
     this.velocity.set(moved.x / dt, this.vy, moved.z / dt);
     if (this.grounded) this.velocity.y = moved.y / dt;
 
-    if (this.grounded && !wasGrounded && this.airTime > 0.05) this.landed = true;
+    if (this.grounded && !wasGrounded && this.airTime > 0.05) {
+      this.landed = true;
+      this.lastAirTime = this.airTime;
+    }
     this.airTime = this.grounded ? 0 : this.airTime + dt;
   }
 

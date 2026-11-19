@@ -8,9 +8,12 @@ export type OwlState = 'roost' | 'alert' | 'drop' | 'mantle' | 'grounded' | 'ret
  * What an owl hears of the lizard: how far (m, across the ground from under the skylight) a step is
  * heard. A barn owl finds prey in the dark by sound alone, so running (the patter of feet, a jump's
  * thump, a splash) carries across the whole sunlit floor under the roost, a walk only right under it,
- * and a lizard standing still makes no sound at all.
+ * and a lizard standing still makes no sound at all. A walk only stirs the owl (it leans out and
+ * tracks the sound); it drops only on a loud sound, a run or a thump.
  */
 export const HEARING = { run: 0.9, walk: 0.16, thump: 0.9 };
+/** Seconds of quiet before a stirred owl that never dropped settles back on its ledge. */
+const SETTLE_TIME = 1.5;
 /** Within this (m, across) of the skylight's middle, on its floor, the owl can drop on the lizard. */
 export const REACH = 0.55;
 /** Seconds from hearing to leaving the ledge, and on the way down. */
@@ -33,6 +36,8 @@ export interface Prey {
   feet: THREE.Vector3;
   /** How far its sound carries this step (m), 0 when silent. */
   loudness: number;
+  /** Whether it's loud enough to drop on (running, a jump or a landing), not just a walk. */
+  loud: boolean;
   /** Whether it can be caught now (not already caught, not finished). */
   open: boolean;
 }
@@ -73,6 +78,10 @@ export class Owl {
   private headPitch = 0.2;
   private lookAt: THREE.Vector3 | null = null;
   private time: number;
+  /** Seconds since the owl last heard the lizard (while stirred). */
+  private quiet = 0;
+  /** Whether a stirred owl has heard enough to drop. */
+  private armed = false;
 
   constructor(
     kit: FreeRigKit,
@@ -112,14 +121,25 @@ export class Owl {
     const audible = prey.open && across < prey.loudness && Math.abs(prey.feet.y - this.under.y) < 0.3;
     // It hears the lizard (turning its head to it) whenever it's audible, and drops if it's in reach.
     if (audible) this.lookAt = this.heard.copy(prey.feet);
+    const strike = audible && prey.loud && this.inReach(prey.feet);
+    this.quiet = audible ? 0 : this.quiet + dt;
     switch (this.state) {
       case 'roost':
-        if (audible && this.deaf <= 0 && this.inReach(prey.feet)) this.enter('alert');
+        if (audible && this.deaf <= 0 && this.inReach(prey.feet)) {
+          this.enter('alert');
+          this.quiet = 0;
+          this.armed = strike;
+        }
         break;
       case 'alert':
-        if (this.timer >= ALERT_TIME) {
+        // A walk only stirs it: it leans out, tracking the sound, and drops once it hears a run or
+        // a thump in reach. After a while of quiet it settles back.
+        this.armed ||= strike;
+        if (this.armed && this.timer >= ALERT_TIME) {
           this.from.copy(this.at);
           this.enter('drop');
+        } else if (!this.armed && this.quiet >= SETTLE_TIME) {
+          this.enter('roost');
         }
         break;
       case 'drop': {

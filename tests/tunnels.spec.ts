@@ -272,6 +272,35 @@ test('a barn owl misses a lizard keeping still under it, and drops on one runnin
   expect(Math.hypot(s.after.player.x - cp.x, s.after.player.z - cp.z)).toBeLessThan(0.02);
 });
 
+test('a barn owl stirs at a lizard walking right under it but never drops on it', async ({ page }) => {
+  await bootTunnels(page);
+  const s = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    const upper = g.layout().floors[1];
+    const owl = g.owls()[0];
+    // Walking (not running) straight across the middle of the floor under its skylight.
+    g.teleport(owl.under.x - 0.28, owl.under.z, Math.PI / 2, upper);
+    g.advance(80);
+    g.setInput({ move: { x: 0, y: 1 }, run: false });
+    const states = new Set<string>();
+    let closest = Infinity;
+    for (let i = 0; i < 90; i++) {
+      g.advance(2);
+      states.add(g.owls()[0].state);
+      const p = g.player();
+      closest = Math.min(closest, Math.hypot(p.x - owl.under.x, p.z - owl.under.z));
+    }
+    g.setInput(null);
+    g.advance(150);
+    return { states: [...states], closest, run: g.run(), owl: g.owls()[0].state };
+  });
+  expect(s.closest).toBeLessThan(0.1);
+  expect(s.states).toContain('alert');
+  expect(s.states).not.toContain('drop');
+  expect(s.run.catches).toBe(0);
+  expect(s.owl).toBe('roost');
+});
+
 test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', async ({ page }) => {
   await bootTunnels(page);
   const s = await page.evaluate(() => {
