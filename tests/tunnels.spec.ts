@@ -51,7 +51,7 @@ test('the tunnels load: the lizard on the upper floor at the start; holes and ru
   expect(Math.abs(s.player.y - s.L.floors[1])).toBeLessThan(0.01);
   expect(Math.hypot(s.player.x - s.L.start.x, s.player.z - s.L.start.z)).toBeLessThan(0.02);
   expect(s.run.state).toBe('ready');
-  expect(s.run.goals.length).toBe(5);
+  expect(s.run.goals.length).toBe(4);
   for (const h of s.holes) expect(Math.abs(h.floor! - h.ground), h.name).toBeLessThan(0.01);
   for (const treads of s.ramps) {
     // The lower floor has shallow sags, up to a centimetre or so.
@@ -295,6 +295,54 @@ test('a barn owl stirs at a lizard walking right under it but never drops on it'
   expect(s.states).not.toContain('drop');
   expect(s.run.catches).toBe(0);
   expect(s.owl).toBe('roost');
+});
+
+test('the bars: the shade cools and slows the lizard, a skylight warms it, food only drains, and the cold can bring it down', async ({ page }) => {
+  await bootTunnels(page, { vitals: true });
+  const s = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    const L = g.layout();
+    const upper = L.floors[1];
+    const sky = L.skylights.find((k) => k.name === 'start')!;
+    // The sunniest spot on the floor under the start's skylight, and a dark one down the tube.
+    let sunny = { x: sky.x, z: sky.z, sun: 0 };
+    for (let dx = -0.3; dx <= 0.3; dx += 0.05)
+      for (let dz = -0.3; dz <= 0.3; dz += 0.05) {
+        const sun = g.light(sky.x + dx, upper + 0.03, sky.z + dz).sun;
+        if (sun > sunny.sun) sunny = { x: sky.x + dx, z: sky.z + dz, sun };
+      }
+    g.teleport(-2.5, -1.0, 0, upper + 0.01);
+    g.advance(10);
+    g.setVitals({ warmth: 0.45, fullness: 0.5 });
+    g.advance(300);
+    const shade = g.vitals();
+    g.teleport(sunny.x, sunny.z, 0, upper + 0.01);
+    g.advance(10);
+    g.setVitals({ warmth: 0.3 });
+    g.advance(300);
+    const sun = g.vitals();
+    // Freezing, with almost no health left: down, and back at the checkpoint with fresh bars.
+    g.teleport(-2.5, -1.0, 0, upper + 0.01);
+    g.advance(10);
+    g.setVitals({ warmth: 0.02, health: 0.01 });
+    let caught = null;
+    for (let i = 0; i < 120 && !caught; i++) {
+      g.advance(5);
+      if (g.run().state === 'caught') caught = g.vitals();
+    }
+    g.advance(200);
+    return { sunny, shade, sun, caught, after: { run: g.run(), vitals: g.vitals() } };
+  });
+  expect(s.sunny.sun).toBeGreaterThan(0.5);
+  expect(s.shade.warmth).toBeLessThan(0.45 - 0.01);
+  expect(s.shade.speedScale).toBeLessThan(1);
+  expect(s.shade.fullness).toBeLessThan(0.5);
+  expect(s.sun.warmth).toBeGreaterThan(0.3 + 0.03);
+  expect(s.caught).not.toBeNull();
+  expect(s.caught!.cause).toBe('cold');
+  expect(s.after.run.state).toBe('running');
+  expect(s.after.vitals.health).toBe(1);
+  expect(s.after.vitals.warmth).toBeCloseTo(0.7, 2);
 });
 
 test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', async ({ page }) => {

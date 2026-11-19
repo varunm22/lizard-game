@@ -516,7 +516,8 @@ export interface LagoonTestHooks
 }
 
 export interface TunnelsTestHooks
-  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'>,
+    Pick<LagoonTestHooks, 'vitals' | 'setVitals'> {
   /** The run: state, clock, falls through holes (by hole name), climbs, leaps, swim, skylights basked under, goals. */
   run(): {
     state: string;

@@ -10,6 +10,7 @@ import type { TunnelsRun } from '../tunnels/run';
 import type { Owls } from '../tunnels/owl';
 import type { Sharks } from '../tunnels/sharks';
 import type { RockSection } from '../tunnels/section';
+import type { Vitals } from '../player/vitals';
 import { FINISH, floorOpen, FLOORS, HOLES, ISLET, lightAt, POOLS, RAMPS, ROOSTS, SKYLIGHTS, START, STEPS, TOP } from '../tunnels/layout';
 
 interface TunnelsHookContext {
@@ -23,13 +24,14 @@ interface TunnelsHookContext {
   owls: Owls;
   sharks: Sharks;
   section: RockSection;
+  vitals: Vitals;
   setInput: TunnelsTestHooks['setInput'];
   viewFrom: TunnelsTestHooks['viewFrom'];
 }
 
 /** The lava tunnels' test hooks (`window.__tunnels`); the tunnels' main owns input and view overrides. */
 export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
-  const { world, player, states, camera, followCam, fade, run, owls, sharks, section, setInput, viewFrom } = ctx;
+  const { world, player, states, camera, followCam, fade, run, owls, sharks, section, vitals, setInput, viewFrom } = ctx;
   const down = (x: number, z: number, from: number) => {
     const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
     return hit ? from - hit.timeOfImpact : null;
@@ -119,6 +121,19 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
     owls: () =>
       owls.list.map((o) => ({ name: o.roost.name, state: o.state, x: o.at.x, y: o.at.y, z: o.at.z, under: { ...o.under } })),
     sharks: () => sharks.list.map((s) => ({ state: s.state, x: s.at.x, y: s.at.y, z: s.at.z })),
+    vitals: () => ({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      rate: { ...vitals.rate },
+      speedScale: vitals.speedScale,
+      frozen: vitals.frozen,
+      cause: vitals.cause,
+      down: run.state === 'caught',
+      downBy: run.state === 'caught' ? vitals.cause : null,
+    }),
+    setVitals: (v) => Object.assign(vitals, v),
     light: (x, y, z) => ({ ...lightAt(x, y, z, { sun: 0, glow: 0 }) }),
   };
 }

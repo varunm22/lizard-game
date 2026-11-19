@@ -31,7 +31,10 @@ import { loadFreeRigKit } from '../render/freeRig';
 import { FINISH, lightAt, outside, setLight, START, START_Y, terrainOrUpper } from './layout';
 import { buildRock, buildSunbeams } from './rock';
 import { darkenGroundUnderRock, RockSection } from './section';
-import { TunnelsRun } from './run';
+import { TunnelsRun, type CaughtBy } from './run';
+import { ClimateSense } from '../player/climate';
+import { Vitals } from '../player/vitals';
+import { createVitalsPanel } from '../vitalsPanel';
 import { HEARING, Owls } from './owl';
 import { Sharks } from './sharks';
 import { SeaLions } from './sealions';
@@ -42,7 +45,8 @@ const TEXT: HudText = {
     'Find the way out to the <b>sea</b>, under the <b>golden light</b>.' +
     '<ul><li>Drop through <b>holes</b>; climb <b>rubble piles</b> back up.</li>' +
     '<li>Leap the <b>gap</b> at a run.</li>' +
-    '<li>Owls hunt by <b>sound</b>: walk under them.</li></ul>' +
+    '<li>Owls hunt by <b>sound</b>: walk under them.</li>' +
+    '<li>Out of the sun you <b>cool</b> and slow. Bask under <b>skylights</b>; there\'s no food down here.</li></ul>' +
     '<span class="go">Move to start.</span>',
   watched: 'Quiet!',
   chased: 'Move!',
@@ -95,6 +99,12 @@ export async function tunnels() {
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
   const run = new TunnelsRun(player, visual);
+  // The island's bars, for time pressure: out of the sun it cools, slows and at last loses health,
+  // and there's nothing to eat down here. The sun is the baked light (skylights, the cove), and the
+  // rock is all lava, so basking in a skylight warms it fast.
+  const vitals = new Vitals();
+  const sunPoint = { sun: 0, glow: 0 };
+  const climate = new ClimateSense(player, null, () => [], waterDepth, () => 1, (p) => lightAt(p.x, p.y, p.z, sunPoint).sun);
   const [owlKit, whitetipKit, sealionKit] = await Promise.all([
     loadFreeRigKit(owlUrl, 'Owl'),
     loadFreeRigKit(whitetipUrl, 'Whitetip'),
@@ -114,6 +124,7 @@ export async function tunnels() {
   const input = new Input(renderer.domElement);
 
   const hud = createDunesHud(TEXT);
+  const vitalsPanel = createVitalsPanel();
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
@@ -128,12 +139,15 @@ export async function tunnels() {
     messageLeft = null;
     followCam.yaw = START.yaw;
     owls.callOff();
+    vitals.reset();
   };
   run.onRespawn = () => {
+    vitals.reset();
     owls.callOff();
     followCam.yaw = run.checkpoint.yaw;
   };
-  run.onCaught = () => flashMessage('Caught!', '');
+  const CAUGHT_TEXT: Record<CaughtBy, string> = { owl: 'Caught!', cold: 'Too cold!', hunger: 'Starved!', air: 'Drowned!' };
+  run.onCaught = (by) => flashMessage(CAUGHT_TEXT[by], '');
   owls.onCatch = () => run.caught();
   sharks.onBolt = () => {
     run.startledShark = true;
@@ -166,6 +180,7 @@ export async function tunnels() {
     owls,
     sharks,
     section,
+    vitals,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -203,6 +218,19 @@ export async function tunnels() {
     // out, "Move!" while one is dropping.
     hud.danger(owls.list.some((o) => o.state === 'drop') ? 'chased' : owls.list.some((o) => o.state === 'alert') ? 'watched' : 'none');
     sharks.step(dt, tickFeet, player.swimming);
+    climate.step(dt);
+    if (run.state !== 'home') {
+      const moving = input.move.x !== 0 || input.move.y !== 0;
+      vitals.step(dt, climate.now, {
+        still: player.grounded && !moving && player.horizontalSpeed < 0.02,
+        running: input.run && moving && player.horizontalSpeed > 0.3,
+        swimming: player.swimming,
+        groomed: false,
+      });
+      // Out of health: down like a catch, back where it last changed floors with fresh bars.
+      if (vitals.dead) run.caught((vitals.cause ?? 'cold') as CaughtBy);
+    }
+    player.speedScale = vitals.speedScale;
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
@@ -253,6 +281,14 @@ export async function tunnels() {
     const distance = Math.max(0, Math.hypot(FINISH.x - feet.x, FINISH.z - feet.z) - FINISH.r);
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
+    vitalsPanel({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      healthRate: vitals.rate.health,
+      warmthRate: vitals.rate.warmth,
+    });
     water.update(frameDt);
     const under = waterDepth(camera.position) > 0;
     const open = outside(camera.position.x, camera.position.z);

@@ -8,11 +8,11 @@ export type RunState = 'ready' | 'running' | 'caught' | 'home';
 
 /** Held in an owl's talons this long (s) before the lizard is back where it last changed floors. */
 export const CAUGHT_TIME = 2.2;
+/** What ended a go: an owl's talons, or the bars (the cold, hunger, the sea). */
+export type CaughtBy = 'owl' | 'cold' | 'hunger' | 'air';
 /** Basking this long (s) under an owl's roost without it hearing counts for the owl goal. */
 const QUIET_BASK = 2;
 
-/** Out of the tunnels within this (s) for the quick-run goal. */
-const QUICK = 60;
 /** Feet within this of a floor's height (m), standing, count as on that floor. */
 const ON_FLOOR = 0.05;
 /** In this much sun (0 to 1) within this far of a skylight (m) counts as basking under it. */
@@ -58,7 +58,7 @@ export class TunnelsRun {
   private lit = { sun: 0, glow: 0 };
   onReset: (() => void) | null = null;
   onHome: (() => void) | null = null;
-  onCaught: (() => void) | null = null;
+  onCaught: ((by: CaughtBy) => void) | null = null;
   onRespawn: (() => void) | null = null;
   /** Whether an owl has heard the lizard and is dropping on it (set by the owls each step). */
   owlStirred = false;
@@ -68,13 +68,13 @@ export class TunnelsRun {
     private visual: LizardVisual,
   ) {
     // Few and distinctive: the way out, then side quests. Dropping, climbing and leaping the gap are
-    // just how the maze is crossed, so they aren't goals (the user's rule, as on the dunes).
+    // just how the maze is crossed, so they aren't goals (the user's rule, as on the dunes), and
+    // there's no time goal: the run's best time already covers that.
     const specs: GoalSpec[] = [
       { id: 'out', label: 'Reach the sea', met: () => this.finishes > 0 },
       { id: 'bask', label: `Bask under all ${SKYLIGHTS.length} skylights`, met: () => this.basked.every(Boolean) },
       { id: 'owl', label: 'Bask under an owl unheard', met: () => this.baskedByOwl },
       { id: 'shark', label: 'Swim over a sleeping whitetip', met: () => this.startledShark },
-      { id: 'quick', label: `Get out in under ${QUICK} s`, met: () => this.best !== null && this.best < QUICK },
     ];
     this.goals = new Goals(specs);
   }
@@ -97,14 +97,14 @@ export class TunnelsRun {
     return this.state === 'caught';
   }
 
-  /** An owl has it. */
-  caught() {
+  /** An owl has it, or the cold (or hunger, or the sea) has brought it down. */
+  caught(by: CaughtBy = 'owl') {
     if (this.state !== 'running' && this.state !== 'ready') return;
     this.state = 'caught';
     this.catches++;
     this.caughtLeft = CAUGHT_TIME;
     this.visual.downed = true;
-    this.onCaught?.();
+    this.onCaught?.(by);
   }
 
   /** Back where it last changed floors, the clock still running. */

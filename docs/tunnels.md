@@ -58,7 +58,7 @@ the rock mesh at `FLOORS[1]` (0.42 m, on a grid plane so it's exactly flat). The
 - `src/tunnels/main.ts` is the level's main, built like the lagoon's. Hooks are `window.__tunnels`
   (`TunnelsTestHooks` in `src/debug/testHooks.ts`, built in `createTunnelsHooks.ts`).
 - Step order per physics tick: run (floors, drops, climbs, leaps, basking, finish, goals), owls,
-  sharks, player, Rapier. While caught, input is held still.
+  sharks, climate and vitals, player, Rapier. While caught, input is held still.
 - `rock.ts` loads the rock and draws it faceted (non-indexed, one colour per face): `rockColour`
   (stone by facing, toon bands of the baked glow, warm sun patches, sparse moss where sun falls on an
   upward face) times `rockShade` (a fixed key light on the face normal and bands of the baked AO), so
@@ -154,13 +154,24 @@ The clock starts on the first move; standing on the beach at `FINISH` (not swimm
 over. The run tracks the floor the lizard last stood on: landing on the lower floor having left the
 upper one by a hole is a drop (by hole name), standing on the upper floor again having walked up is
 a climb, landing on the upper floor after being in the air over the gap is a leap (tracked for the
-tests and checkpoints, not goals). Goals (5, few and distinctive like the dunes': the mechanics the
-maze needs anyway aren't goals, the user's rule 2026-11-19): reach the sea, bask under all four
-skylights, bask under an owl unheard, swim over a sleeping whitetip, get out in under 60 s.
+tests and checkpoints, not goals). Goals (4, few and distinctive like the dunes': the mechanics the
+maze needs anyway aren't goals, and no stage has a time goal since the best time already tracks
+speed, the user's rules 2026-11-19): reach the sea, bask under all four skylights, bask under an owl
+unheard, swim over a sleeping whitetip.
+
+## Vitals: the time pressure
+
+The island's bars (`Vitals`, `createVitalsPanel`) run here too, as the stage's clock. `ClimateSense`
+gets no `Cover`; its `sunAt` reads the baked light (`lightAt(...).sun`) at three points along the
+back. Out of the sun the lizard cools (from the start's 0.7 it slows after about a minute and the
+cold starts taking health after about three); a skylight warms it back. There is no food, so
+fullness only drains (empty in about five and a half minutes from 0.7). Air works as on the island
+in the flooded stretch. Health at zero from cold, hunger or drowning counts as a catch ("Too cold!",
+"Starved!", "Drowned!"): back at the checkpoint with fresh bars. The bars don't change once home.
 
 Help text is terse, as on the dunes: a three-line intro card, and instead of messages the dunes'
 danger banner, "Quiet!" while an owl has heard the lizard and leans out, "Move!" while one drops.
-A catch flashes "Caught!".
+An owl's catch flashes "Caught!".
 
 ## Tests (`tests/tunnels.spec.ts`, `tests/helpers/bootTunnels.ts`)
 
@@ -173,5 +184,6 @@ test that walks past one starts clear of it. The tests check the floors join up 
 reaches the lower floor, every riser is climbable, the last tread is flush), the sun reaches each
 skylight's floor, a walk into a hole drops, both rubble piles climb, the gap is leapt at a run and
 swallows a walk or a plain run, the flooded stretch is swum, the beach is the way out, an owl misses
-a still lizard and catches a running one (and the lizard comes back at the checkpoint), and a pup
-bolts out to sea when swum over.
+a still lizard and catches a running one (and the lizard comes back at the checkpoint), a pup
+bolts out to sea when swum over, and the shade cools and slows, a skylight warms, food drains and
+the cold brings the lizard down (`bootTunnels(page, { vitals: true })`; otherwise the bars are frozen).
