@@ -14,7 +14,7 @@ import { MovementStateMachine, movementFacts } from '../player/state';
 import { MOVEMENT } from '../player/movement';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
-import { FollowCamera } from '../camera/followCamera';
+import { FollowCamera, type EasedArm } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createTunnelsHooks } from '../debug/createTunnelsHooks';
 import { createGoalsPanel } from '../goalsPanel';
@@ -53,8 +53,10 @@ const TEXT: HudText = {
  * Fog in the tubes: dark, close, warm grey; out in the cove, the sky's and far off, so the islet
  * shows across the water. Under water: dark green in the tunnels, blue-green in the sea.
  */
-/** The follow camera's distance in the tubes (m): a little closer than elsewhere, held steady. */
+/** The follow camera's distance in the tubes (m): a little closer than elsewhere. */
 const CAMERA_DISTANCE = 0.3;
+/** In the tubes the camera zooms in gently where the space closes in, never under 0.17 m (see `EasedArm`). */
+const CAMERA_ARM: EasedArm = { minArm: 0.17, inRate: 2.5, outRate: 1.5 };
 const CAVE_FOG = { colour: new THREE.Color(0x1d1916), near: 1.2, far: 5 };
 const OPEN_FOG = { colour: new THREE.Color(PALETTE.sky), near: 4, far: 24 };
 const UNDERWATER_FOG = { colour: new THREE.Color(0x16302f), near: 0.05, far: 0.9 };
@@ -105,10 +107,9 @@ export async function tunnels() {
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
   const fade = new OccluderFade(world, []);
-  // The camera holds its distance: its arm passes through the rock, and the rock between it and the
-  // lizard is cut away along a plane just short of the lizard (`RockSection`), showing the cut as
-  // dark stone, so the lumps of a tube never pull it in and out and the outside never shows.
-  const followCam = new FollowCamera(camera, world, player.body, new Set([...fade.handles, rock.collider.handle]));
+  // The camera eases in where the tube closes in (gently, never right up to the lizard); any rock
+  // still hiding the lizard is cut away (`RockSection`), showing the cut as dark stone.
+  const followCam = new FollowCamera(camera, world, player.body, new Set(fade.handles), CAMERA_ARM);
   followCam.distance = CAMERA_DISTANCE;
   followCam.yaw = START.yaw;
   const input = new Input(renderer.domElement);
@@ -241,7 +242,7 @@ export async function tunnels() {
       camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
-    section.update(camera.position, viewOffset ? (viewTarget ?? feet) : followCam.target, feet.y);
+    section.update(camera, viewOffset ? (viewTarget ?? feet) : followCam.target, feet, player.yawAt(alpha));
     lizard.updateBodySpheres();
     owls.pose(frameDt);
     sharks.pose();

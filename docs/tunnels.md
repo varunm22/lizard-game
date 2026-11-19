@@ -65,18 +65,19 @@ the rock mesh at `FLOORS[1]` (0.42 m, on a grid plane so it's exactly flat). The
   lumps and blocks read even unlit. The collider is the indexed mesh, a trimesh
   (`FIX_INTERNAL_EDGES`), so the lizard stands on exactly what is drawn. It also adds the sunbeams,
   slanted additive cylinders under each skylight and into the jameo.
-- Camera: a section view (`section.ts`). The follow camera holds a steady 0.3 m (`CAMERA_DISTANCE`):
-  its arm passes through the rock, so the lumps of a tube never pull it in and out (the user found
-  an arm that eased round them still too jerky, 2026-11-18). Rock nearer the camera than a plane
-  square to the view, 3.5 cm short of the point it looks at, isn't drawn, except at and below the
-  lizard's feet (`RockSection`). Through the cut the eye sees into the solid: the rock's back faces
-  draw as its dark inside, and the ground inside the rock (where the lower floor isn't open,
-  `floorOpen`), which closes the rock's underside, draws the same dark (`darkenGroundUnderRock`).
-  So the cut reads as a face of cut stone, the lizard's own tube stays whole, and nothing outside
-  the maze shows except through real openings. Don't bring back a cone cut-out (it read as a
-  see-through circle) or a camera in the rock with nothing cut (the outside showed through). Hook
-  `cameraClear` (nothing drawn between the camera and the lizard) backs the test that turns the
-  camera in three tubes.
+- Camera (`section.ts`): the follow camera eases in where the tube closes in (`EasedArm`: 0.3 m,
+  never under 0.17 m, in at 2.5/s, out at 1.5/s; no snapping in, which the user found jerky), and
+  the rock still hiding the lizard is cut away (`RockSection`). Only rock nearer the camera than a
+  plane 3.5 cm short of the lizard is ever cut, and of that only where it lies over the lizard on
+  screen (a band snout to tail, 4 cm wider) or in the nearer 45% of the way (round the camera,
+  which may sit in the rock), never at or below the lizard's feet. Rock beside or past the lizard
+  stays (the user's ask, 2026-11-18). Through a cut the eye sees into the solid: the rock's back
+  faces draw as its dark inside, and the ground inside the rock (where the lower floor isn't open,
+  `floorOpen`), which closes the rock's underside, draws the same dark (`darkenGroundUnderRock`),
+  so nothing outside the maze shows except through real openings. Don't bring back a cut that is
+  always there round the lizard (an earlier cone read as a see-through circle) or a camera in the
+  rock with nothing cut (the outside showed through). Hook `cameraClear` (nothing drawn between the
+  camera and the lizard) backs the test that turns the camera in three tubes.
 - Nothing gets in under the maze; there is no put-back, it must stay impossible. The rock's sides
   are closed a few centimetres inside the square. On the lower floor the rock is straight columns
   below knee height (solid wherever there is rock anywhere up to 6 cm over the floor), so the

@@ -56,7 +56,7 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
         const hit = world.castRay(new RAPIER.Ray(from, d), left, false, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
         if (!hit) return true;
         const at = from.clone().addScaledVector(d, hit.timeOfImpact);
-        if (!section.cuts(at)) return false;
+        if (!section.cuts(at, camera)) return false;
         const skip = hit.timeOfImpact + 0.002;
         from.addScaledVector(d, skip);
         left -= skip;
