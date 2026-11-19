@@ -91,6 +91,10 @@ class Bird {
   balance = 0;
   /** A cormorant holding its wings out to dry. */
   drying = false;
+  /** Its feet's stroke, in cycles (the fraction is where in the stroke it is), and on a dive whether
+   * it is heading down (1) or up (-1). */
+  kick = 0;
+  dip = 0;
 
   constructor(source: THREE.Object3D, seed: number) {
     this.root = clone(source);
@@ -258,9 +262,6 @@ class Trip {
       case 'sea': {
         b.swim = 1;
         const r = (this.loop.rx + this.loop.rz) / 2;
-        this.a += (sp.swim / r) * dt;
-        const p = this.onLoop(this.a);
-        b.yaw = p.yaw;
         // Diving now and then, out on the loop: down, along under the surface, and up again.
         this.nextDive -= dt;
         if (this.nextDive <= 0 && this.diveLeft <= 0 && Math.cos(this.a) > -0.6) {
@@ -269,9 +270,31 @@ class Trip {
         }
         this.diveLeft -= dt;
         const want = this.diveLeft > 0.6 ? 1 : 0;
+        const before = b.under;
         b.under += (want - b.under) * (1 - Math.exp(-(want ? 3 : 2.5) * dt));
-        const floatAt = sp.float + (DIVE_DEPTH - sp.float) * b.under;
-        b.pos.set(p.x, WATER_Y - floatAt, p.z);
+        const u = b.under;
+        b.dip = Math.max(-1, Math.min(1, ((b.under - before) / dt) * 1.5));
+        // Strokes: a cormorant kicks both feet together, a quick stroke then a glide (burst and
+        // glide), faster under water; a penguin paddles its feet at the surface and flies with its
+        // flippers under it.
+        const cormorant = this.species === 'cormorant';
+        b.kick += dt * (cormorant ? 1.1 + 0.9 * u : 1.6 + 1.6 * u);
+        // Under water it zooms: much faster than it paddles at the surface, surging with each stroke.
+        const f = b.kick % 1;
+        const surge = cormorant ? (f < 0.25 ? Math.sin((f / 0.25) * Math.PI) : 0) - 0.25 : 0;
+        const zoom = (1 + (cormorant ? 2 : 1.4) * u) * (1 + 0.6 * u * surge);
+        this.a += ((sp.swim * zoom) / r) * dt;
+        const p = this.onLoop(this.a);
+        // Hunting about under water: swinging from side to side off its line and rising and falling,
+        // where the water's open enough.
+        const swing = Math.sin(this.t * 1.4);
+        const floatAt = sp.float + (DIVE_DEPTH - sp.float) * u * (0.85 + 0.15 * Math.sin(this.t * 0.9));
+        let off = 0.08 * u * swing;
+        const ox = Math.cos(p.yaw) * off;
+        const oz = -Math.sin(p.yaw) * off;
+        if (off && surface(p.x + ox, p.z + oz) > WATER_Y - floatAt - 0.015) off = 0;
+        b.yaw = p.yaw + (off ? 0.45 * u * Math.cos(this.t * 1.4) : 0);
+        b.pos.set(p.x + (off ? ox : 0), WATER_Y - floatAt, p.z + (off ? oz : 0));
         const home = Math.abs(wrap(this.a - Math.PI)) < 0.03;
         if (this.t > sp.sea && home && this.diveLeft <= 0 && b.under < 0.05) this.go('out');
         break;
@@ -408,6 +431,7 @@ export class Birds {
       const b = this.penguins[2 + i];
       b.begin();
       b.t += dt;
+      b.kick += dt * 1.6;
       this.swimLoop(b, i);
     });
     const p = this.penguins[1];
@@ -444,7 +468,9 @@ export class Birds {
     // Standing it leans a little forward, looking about; swimming, the body lies along the water,
     // head up, and under water it flies, beating its flippers.
     const lean = -0.12 - 0.04 * Math.sin(t * 0.7) * (1 - wk) - 0.08 * wk;
-    let pitch = sw ? -Math.PI / 2 + 0.12 + 0.03 * Math.sin(t * 6) * (1 - b.under) : lean;
+    const kick = b.kick * Math.PI * 2;
+    // Diving it points down going under and up coming back.
+    let pitch = sw ? -Math.PI / 2 + 0.12 + 0.03 * Math.sin(kick) * (1 - b.under) - 0.45 * b.dip * b.under : lean;
     if (b.pitch !== null) pitch = b.pitch;
     const diving = b.pitch !== null && b.pitch < -0.6;
     rig.chain('body', null, turn(q, pitch, 0.1 * rock, sw ? 0.05 * Math.sin(t * 3) * (1 - b.under) : 0.17 * rock));
@@ -457,11 +483,15 @@ export class Birds {
       // swimming a slow scull at the surface, beating hard under it.
       let out = 0.2 + 0.05 * Math.sin(t * 0.9 + side);
       if (wk > 0.01) out += (0.45 + 0.05 * Math.sin(ph * 2) - out) * wk;
-      if (sw) out = 0.06 + 0.06 * Math.sin(t * 4) + b.under * (0.12 + 0.3 * Math.sin(t * 11));
+      if (sw) out = 0.06 + 0.04 * Math.sin(t * 2) * (1 - b.under) + b.under * (0.12 + 0.32 * Math.sin(kick * 1.5));
       if (b.pitch !== null) out = diving ? 0.12 : 0.6;
       rig.chain('flipper' + s, 'body', turn(q, 0, 0, side * out));
-      // Feet: trailing behind swimming and diving; stepping, one then the other, walking.
-      if (sw || diving) rig.chain('foot' + s, 'body', turn(q, -1.45 + 0.15 * Math.sin(t * 5 + side), 0));
+      // Feet: at the surface paddling, one then the other, down and back under it; under water held
+      // back together against the tail, steering; stepping, one then the other, walking.
+      const paddle = Math.sin(kick + (side > 0 ? 0 : Math.PI));
+      const swimFoot = -1.2 + 0.55 * paddle * (1 - b.under) - 0.45 * b.under + 0.08 * b.under * Math.sin(t * 2.3);
+      if (sw) rig.chain('foot' + s, 'body', turn(q, swimFoot, 0.12 * side * (1 - b.under)));
+      else if (diving) rig.chain('foot' + s, 'body', turn(q, -1.65, 0));
       else rig.chain('foot' + s, null, turn(q, 0.5 * Math.max(0, side * Math.sin(ph)) * wk, 0));
     }
   }
@@ -476,7 +506,11 @@ export class Birds {
     const step = Math.sin(ph) * wk;
     // Body: upright standing (its rest pose), bobbing as it walks; swimming it lies level and low,
     // tipping forward to dive.
-    let pitch = sw ? -0.9 + 0.025 * Math.sin(t * 2.2) - 0.4 * u : 0.05 * Math.sin(t * 0.5) * (1 - wk) - 0.12 * wk + 0.04 * Math.abs(step);
+    // Its feet's stroke (see Trip): a quick stroke back, a glide with the feet stretched behind, and
+    // a recovery forward. Under water the body rides a little nose down, more so in the stroke.
+    const f = b.kick % 1;
+    const stroke = f < 0.25 ? Math.sin((f / 0.25) * Math.PI) : 0;
+    let pitch = sw ? -0.9 + 0.025 * Math.sin(t * 2.2) * (1 - u) - u * (0.18 + 0.1 * stroke + 0.55 * b.dip) : 0.05 * Math.sin(t * 0.5) * (1 - wk) - 0.12 * wk + 0.04 * Math.abs(step);
     if (b.pitch !== null) pitch = b.pitch;
     // Leaning out to slide in (not scrambling out, wings open), the neck reaches forward.
     const reaching = b.pitch !== null && b.balance < 0.01 ? Math.min(1, Math.max(0, -(b.pitch + 0.15) / 0.75)) : 0;
@@ -484,15 +518,16 @@ export class Birds {
     // Neck: an S held up out of the water swimming (the bill tilted a little up), stretched out along
     // the body diving or sliding in; standing, an S that turns and looks about; walking, pumping.
     const swimNeck = sw ? 1 : reaching;
-    const neck1 = (0.1 * Math.sin(t * 0.6) * (1 - wk) + 0.12 * Math.sin(ph * 2) * wk) * (1 - swimNeck) + swimNeck * (0.9 + 0.04 * Math.sin(t * 2.2 + 0.8) - 1.23 * Math.max(u, reaching * 0.8));
-    const neck2 = (-0.1 + 0.08 * Math.sin(t * 0.6 + 1)) * (1 - swimNeck) + swimNeck * (-0.15 + 0.15 * Math.max(u, reaching));
+    const neck1 = (0.1 * Math.sin(t * 0.6) * (1 - wk) + 0.12 * Math.sin(ph * 2) * wk) * (1 - swimNeck) + swimNeck * (0.9 + 0.04 * Math.sin(t * 2.2 + 0.8) - 1.32 * Math.max(u, reaching * 0.8));
+    const neck2 = (-0.1 + 0.08 * Math.sin(t * 0.6 + 1)) * (1 - swimNeck) + swimNeck * (-0.15 + 0.38 * Math.max(u, reaching));
     const turnNeck = 0.4 * Math.sin(t * 0.33) * (1 - wk) * (1 - u) * (sw ? 0.5 : 1);
     rig.chain('neck1', 'body', turn(q, neck1, 0));
     rig.chain('neck2', 'neck1', turn(q, neck2, turnNeck));
-    const head = (0.15 * Math.sin(t * 0.9) * (1 - wk)) * (1 - swimNeck) + swimNeck * (0.42 + 0.58 * Math.max(u, reaching));
+    // (Under water the head keeps pointing ahead as the body tilts with each stroke.)
+    const head = (0.15 * Math.sin(t * 0.9) * (1 - wk)) * (1 - swimNeck) + swimNeck * (0.42 + 0.68 * Math.max(u, reaching) + 0.1 * u * stroke);
     rig.chain('head', 'neck2', turn(q, head, 0.5 * Math.sin(t * 0.27) * (1 - wk) * (1 - u) * (sw ? 0.4 : 1)));
     // Tail: flat along the water swimming.
-    rig.chain('tail', 'body', turn(q, sw ? 0.3 : 0, 0));
+    rig.chain('tail', 'body', turn(q, sw ? 0.3 - 0.18 * u - 0.12 * u * stroke : 0, 0));
     for (const [s, side] of [['_L', 1], ['_R', -1]] as const) {
       // Wings: folded tight (they're no use in the water), half open for balance scrambling out,
       // held out from the sides to dry, shivered now and then.
@@ -502,7 +537,9 @@ export class Birds {
       else rig.chain('wing' + s, 'body', q.identity());
       // Feet: swimming, both kick back together behind it (cormorants swim with their feet);
       // walking, stepping one then the other.
-      if (sw) rig.chain('foot' + s, 'body', turn(q, -1.5 + 0.55 * Math.sin(t * (4 + 2 * u)), 0));
+      const back = f < 0.25 ? ease(f / 0.25) : f < 0.72 ? 1 : 1 - ease((f - 0.72) / 0.28);
+      // Both together, splayed a little out from the body; swept wider and harder under water.
+      if (sw) rig.chain('foot' + s, 'body', turn(q, -0.55 - (0.85 + 0.35 * u) * back, side * 0.28 * (0.5 + 0.5 * u)));
       else rig.chain('foot' + s, null, turn(q, 0.5 * Math.max(0, side * Math.sin(ph)) * wk, 0));
     }
   }

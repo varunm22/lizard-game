@@ -52,7 +52,12 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   species does: down to the water's edge or the top of a drop to it (`plan`), the penguin waddling
   and hopping in headfirst, the cormorant leaning out and sliding in breast first. At sea they swim
   an oval kept clear of rock and dive now and then; the cormorant rides low, back awash, neck up in
-  an S, kicking with both feet together, wings folded. Back, the penguin leaps out onto the rock and
+  an S, kicking with both feet together, wings folded. Under water the cormorant zooms: burst-and-glide
+  strokes of both feet together (a quick stroke back, a glide with the feet stretched behind, a recovery;
+  after the great cormorant's 1.6 Hz cycle, J Exp Biol 207:2101), surging with each, the body a little
+  nose down, neck and head stretched in line, swinging side to side where the water's open. Penguins
+  paddle their feet one then the other at the surface and fly with their flippers under it, feet back
+  against the tail. Back, the penguin leaps out onto the rock and
   lands on its feet; the cormorant scrambles out with its wings half open and holds them out to dry.
   Hook `birdTrips()`. Swimming within `WITH` of a swimming bird
   ticks its goal. The swimming loops (`SWIM_LOOPS`) keep to open water clear of the point's lava
