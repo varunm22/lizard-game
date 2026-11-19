@@ -10,6 +10,7 @@ import type { LagoonTestHooks } from './testHooks';
 import type { Herons } from '../lagoon/herons';
 import type { DriftLog } from '../lagoon/driftLog';
 import type { Wrack } from '../lagoon/wrack';
+import type { Pods } from '../lagoon/pods';
 import type { Swimmers } from '../lagoon/swimmers';
 import type { Fries } from '../lagoon/fry';
 import type { LagoonRun } from '../lagoon/run';
@@ -32,6 +33,7 @@ interface LagoonHookContext {
   herons: Herons;
   log: DriftLog;
   wrack: Wrack;
+  pods: Pods;
   swimmers: Swimmers;
   fries: Fries;
   run: LagoonRun;
@@ -46,7 +48,7 @@ interface LagoonHookContext {
 
 /** The mangrove lagoon's test hooks (`window.__lagoon`); the lagoon's main owns input and view overrides. */
 export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
-  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, wrack, swimmers, fries, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
+  const { world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, wrack, pods, swimmers, fries, run, vitals, wounds, algae, feeding, canEat, setInput, viewFrom } = ctx;
   const xyz = (v: THREE.Vector3) => ({ x: v.x, y: v.y, z: v.z });
   return {
     ready: false,
@@ -172,14 +174,11 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
     wrack: () => ({
       open: CREEK_FLOW.open,
       racked: wrack.racked,
-      pieces: wrack.pieces.map((w) => ({ kind: w.kind, state: w.state, ...xyz(w.pos) })),
+      pieces: wrack.pieces.map((w) => ({ kind: w.kind, state: w.state, hold: w.hold, shake: w.shake, ...xyz(w.pos) })),
     }),
     rackWrack: () => wrack.rackAll(),
-    pushWrack: (i, x, z) => {
-      const w = wrack.pieces[i];
-      w.vel.x = x;
-      w.vel.z = z;
-    },
+    pods: () => ({ shoves: pods.shoves, list: pods.state }),
+    pushWrack: (i, x, z) => wrack.free(wrack.pieces[i], { x, z }, Math.hypot(x, z)),
     logPoint: (x, y, z) => xyz(log.toWorld(x, y, z, new THREE.Vector3())),
     placeLog: (x, z, heading, roll = 0) => log.place(x, z, heading, roll),
     swimmers: () => swimmers.list.map((s) => ({ kind: s.kind, state: s.state, pool: s.pool, ...xyz(s.pos), top: swimmers.top(s), yaw: s.yaw, speed: s.speed, bites: s.bites })),

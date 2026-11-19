@@ -6,6 +6,7 @@ import { rng } from '../world/noise';
 import { WATER_Y } from '../world/shore';
 import { CACTUS_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import { covers, hull, type Obstacle } from '../world/obstacles';
+import type { PodSpot } from './pods';
 import {
   acrossChannel, depthAt, FINISH, FRINGE, HERON_HAUNTS, inChannel, ISLETS, JAM, LAGOON_EDGE, lagoonLava, SAFE_POINTS, STANDS, START, westCoastX,
 } from './layout';
@@ -67,6 +68,9 @@ export interface LagoonProps {
   rootWaterline: { position: THREE.Vector3; normal: THREE.Vector3 }[];
   /** The same roots where they stand in the water, as upright posts (centre and radius, m): what the fry weave between. */
   rootPosts: { x: number; z: number; r: number }[];
+  /** Where the fallen propagules lie, and how they're drawn: `Pods` moves them. */
+  pods: PodSpot[];
+  podLook: { geometry: THREE.BufferGeometry; material: THREE.Material };
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -343,26 +347,22 @@ export function buildLagoonProps(kit: Kit, scene: THREE.Scene, world: RAPIER.Wor
     placed++;
   }
 
-  // Propagules: floating flat in the shallows, and stuck upright in the mud where they took root.
-  const props: THREE.Matrix4[] = [];
+  // Propagules: floating flat in the shallows, and stuck upright in the mud where they took root. The
+  // lizard shoves them about (`Pods`); here they're only placed.
+  const pods: PodSpot[] = [];
   for (let i = 0, placed = 0; i < 6000 && placed < 90; i++) {
     const x = range(-4.2, 2.3);
     const z = range(-5.6, 5.6);
     const d = depthAt(x, z);
     if (inChannel(x, z) || lagoonLava(x, z) > 0.1 || d > 0.15) continue;
     const upright = d < 0.02 && rand() < 0.6;
-    const y = upright ? terrainHeight(x, z) - 0.03 : Math.max(terrainHeight(x, z) + 0.004, WATER_Y - 0.002);
     const rot = upright
       ? new THREE.Quaternion().setFromEuler(new THREE.Euler(range(-0.15, 0.15), range(0, 6.3), range(-0.15, 0.15)))
       : new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, range(0, 6.3), 'YXZ'));
-    props.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), rot, new THREE.Vector3(1, 1, 1)));
+    const along = new THREE.Vector3(0, 1, 0).applyQuaternion(rot);
+    pods.push({ x, z, upright, heading: Math.atan2(along.x, along.z), rot: upright ? rot : undefined });
     placed++;
   }
-  const propMesh = new THREE.InstancedMesh(need('propagule'), material(), props.length);
-  props.forEach((m, k) => propMesh.setMatrixAt(k, m));
-  propMesh.computeBoundingSphere();
-  propMesh.name = 'propagules';
-  scene.add(propMesh);
 
-  return { obstacles, mangroves, roots, crowns, rootWaterline, rootPosts };
+  return { obstacles, mangroves, roots, crowns, rootWaterline, rootPosts, pods, podLook: { geometry: need('propagule'), material: material() } };
 }

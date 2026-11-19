@@ -401,6 +401,100 @@ test('a stalking heron gives up on a lizard in the mangrove roots or swimming lo
   expect(s.atSafe).toMatchObject({ checkpoint: 0, safe: true });
 });
 
+test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and landings work it loose piece by piece until it collapses', async ({ page }) => {
+  await bootLagoon(page);
+  const s = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    const marks = g.marks();
+    const pieces = () => g.wrack().pieces;
+    const x0 = Math.min(...pieces().map((p) => p.x)) - 0.2;
+    const zs = [0, 0.09, -0.09, 0.18, -0.18];
+    // Swimming slowly into it for 3 s: it stops the lizard and only shakes.
+    g.teleport(x0, marks.creek.z, Math.PI / 2, -0.07);
+    g.advance(5);
+    g.setInput({ move: { x: 0, y: 1 } }, 180);
+    let shook = 0;
+    for (let i = 0; i < 180; i++) {
+      g.advance(1);
+      shook = Math.max(shook, ...pieces().map((p) => Math.abs(p.shake)));
+    }
+    const nudged = { pieces: pieces(), player: g.player(), open: g.wrack().open };
+    // Rammed at a fast swim, again and again across it: pieces work free one by one, then the rest collapse.
+    const rams: { out: number; holds: number[] }[] = [];
+    for (let k = 0; k < 20 && g.wrack().open < 1; k++) {
+      g.teleport(x0 - 0.05, marks.creek.z + zs[k % zs.length], Math.PI / 2, -0.07);
+      g.advance(3);
+      g.setInput({ move: { x: 0, y: 1 }, run: true }, 70);
+      g.advance(70);
+      rams.push({ out: pieces().filter((p) => p.state !== 'dam').length, holds: pieces().map((p) => p.hold) });
+    }
+    g.setInput({ move: { x: 0, y: 1 }, run: true }, 90);
+    g.advance(90);
+    const rammed = { open: g.wrack().open, player: g.player() };
+    // From scratch: landing on the tangle from the bank, and hopping on it, presses it down and works it loose too.
+    g.restart();
+    g.teleport(marks.dam.x - 0.13, marks.creek.z - marks.creek.half - 0.07, 0);
+    g.advance(10);
+    g.setInput({ move: { x: 0, y: 1 }, run: true, jump: true }, 6);
+    g.advance(6);
+    g.setInput({ move: { x: 0, y: 1 } }, 20);
+    g.advance(20);
+    const landed = { player: g.player(), holds: pieces().map((p) => p.hold) };
+    for (let k = 0; k < 4; k++) {
+      g.setInput({ jump: true }, 6);
+      g.advance(6);
+      g.setInput(null);
+      g.advance(40);
+    }
+    const hopped = pieces().map((p) => ({ state: p.state, hold: p.hold }));
+    return { shook, nudged, rams, rammed, landed, hopped };
+  });
+  // A nudge: it holds, the lizard can't get past, but it shakes and gives a little.
+  expect(s.shook).toBeGreaterThan(0.002);
+  expect(s.nudged.pieces.every((p) => p.state === 'dam')).toBe(true);
+  expect(Math.min(...s.nudged.pieces.map((p) => p.hold))).toBeGreaterThan(0.6);
+  expect(s.nudged.player.x).toBeLessThan(Math.min(...s.nudged.pieces.map((p) => p.x)) + 0.02);
+  expect(s.nudged.open).toBe(0);
+  // Rams: no single one frees anything, a few work a piece free, and once enough are out it all goes.
+  expect(s.rams[0].out).toBe(0);
+  expect(s.rams.length).toBeGreaterThan(4);
+  expect(s.rams.length).toBeLessThan(16);
+  expect(s.rammed.open).toBe(1);
+  // Through the gap it leaves.
+  expect(s.rammed.player.x).toBeGreaterThan(Math.min(...s.nudged.pieces.map((p) => p.x)) + 0.1);
+  // Landed on, the lizard stands on the tangle and each landing works it.
+  expect(s.landed.player.swimming).toBe(false);
+  expect(Math.min(...s.landed.holds)).toBeLessThan(0.8);
+  expect(s.hopped.some((p) => p.state !== 'dam')).toBe(true);
+});
+
+test('mangrove propagules are shoved along by a walking lizard, and a seedling stuck upright is knocked flat', async ({ page }) => {
+  await bootLagoon(page);
+  const s = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    const out: { kind: string; before: { x: number; z: number }; after: { state: string; x: number; z: number }; player: { x: number } }[] = [];
+    for (const kind of ['loose', 'stuck']) {
+      const list = g.pods().list;
+      const i = list.findIndex((p) => p.state === kind);
+      const before = list[i];
+      g.teleport(before.x - 0.15, before.z, Math.PI / 2);
+      g.advance(5);
+      g.setInput({ move: { x: 0, y: 1 } }, 60);
+      g.advance(60);
+      g.setInput(null);
+      g.advance(60);
+      out.push({ kind, before, after: g.pods().list[i], player: g.player() });
+    }
+    return out;
+  });
+  const [loose, stuck] = s;
+  // Shoved ahead, east, and left ahead of the lizard.
+  expect(loose.after.x - loose.before.x).toBeGreaterThan(0.05);
+  expect(loose.after.x).toBeGreaterThan(loose.player.x);
+  expect(stuck.after.state).toBe('loose');
+  expect(stuck.after.x).toBeGreaterThan(stuck.before.x);
+});
+
 test('the log: the wrack dam holds the pool still; cleared, it drains; shoved loose, the log floats out, catches on the racked wrack and bridges to the lava field', async ({ page }) => {
   await bootLagoon(page);
   const s = await page.evaluate(() => {
@@ -410,13 +504,7 @@ test('the log: the wrack dam holds the pool still; cleared, it drains; shoved lo
     const l0 = g.log();
     g.advance(60);
     const still = { log: g.log(), wrack: g.wrack(), creek: g.current(marks.dam.x + 0.3, marks.creek.z) };
-    // Swimming into a piece of the dam shoves it loose.
-    const w0 = g.wrack().pieces[2];
-    g.teleport(w0.x - 0.11, w0.z, Math.PI / 2, -0.07);
-    g.setInput({ move: { x: 0, y: 1 } }, 60);
-    g.advance(60);
-    const shovedPiece = g.wrack().pieces[2];
-    // The rest, loose at once (as though shoved): the creek runs and carries them off.
+    // All of it worked loose at once (the dam's own test works it loose for real): the creek runs and carries it off.
     g.wrack().pieces.forEach((_, i) => g.pushWrack(i, 0.35, ((i % 3) - 1) * 0.05));
     const mid = l0.spine[Math.floor(l0.spine.length / 2)];
     g.teleport(mid.x, mid.z - 0.12, 0, -0.07);
@@ -461,13 +549,12 @@ test('the log: the wrack dam holds the pool still; cleared, it drains; shoved lo
     const crossed = { run: g.run(), player: g.player() };
     g.viewFrom({ x: 2.2, y: 0.4, z: 1.5 }, { x: (sp[0].x + last.x) / 2, y: -0.05, z: (sp[0].z + last.z) / 2 });
     g.advance(1);
-    return { l0, still, shovedPiece, cleared, shoves, loose, jammed, startGround, onLog, crossed };
+    return { l0, still, cleared, shoves, loose, jammed, startGround, onLog, crossed };
   });
   expect(s.l0.state).toBe('aground');
   expect(Math.hypot(s.still.log.x - s.l0.x, s.still.log.z - s.l0.z)).toBeLessThan(0.001);
   expect(s.still.wrack.open).toBe(0);
   expect(s.still.creek.x).toBe(0);
-  expect(s.shovedPiece.state).not.toBe('dam');
   expect(s.cleared.wrack.open).toBe(1);
   expect(s.cleared.creek.x).toBeGreaterThan(0.03);
   expect(s.loose.state).toBe('float');

@@ -489,10 +489,12 @@ export interface LagoonTestHooks
     spine: { x: number; y: number; z: number }[];
   };
   /** The drift wrack: how open the creek is (0 to 1), how many pieces are racked on the snag, and each piece. */
-  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; x: number; y: number; z: number }[] };
+  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; hold: number; shake: number; x: number; y: number; z: number }[] };
   /** Rack every piece on the snag at once. */
   rackWrack(): void;
-  /** Set a piece moving at (x, z) m/s, as a shove would. */
+  /** The fallen propagules: how many shoves so far, and each one (its middle, heading, and stuck upright, toppling or loose). */
+  pods(): { shoves: number; list: { state: string; x: number; y: number; z: number; heading: number }[] };
+  /** Work a piece free of the dam at once, toppling out along (x, z) at that speed (m/s). */
   pushWrack(i: number, x: number, z: number): void;
   /** A point given in the log's own frame (m, X along its main limb, Y up, the big fork toward -Z), in the world. */
   logPoint(x: number, y: number, z: number): { x: number; y: number; z: number };

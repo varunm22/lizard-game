@@ -24,7 +24,7 @@ The plan's "high tide floats the log" is an **ebb current** here instead: a tide
 - `src/lagoon/main.ts` is the level's main, built like the dunes': fixed-step loop, `?test`
   driving, `advance`/`frame`. Hooks are `window.__lagoon` (`LagoonTestHooks` in
   `src/debug/testHooks.ts`, built in `createLagoonHooks.ts`).
-- Step order per physics tick: run (start, catch, safe point, finish, goals), herons, wrack, log (both
+- Step order per physics tick: run (start, catch, safe point, finish, goals), herons, wrack, pods, log (both
   shoved if the lizard moves forward into them), sharks and rays (which read the lizard through the run's
   `prey`, like the herons), the current carrying a swimming lizard (`player.carry`), player, Rapier.
   Herons and swimmers use seeded `rng`.
@@ -119,15 +119,46 @@ puts it back stuck in its pool.
 
 ## The drift wrack (`wrack.ts`)
 
-Eight dead twigs and old propagules standing on end in a tangle in the creek's mouth (`DAM`),
-leaning one way and another, tops at the surface. Kinematic bodies moved here; the log collides
-with them, the lizard doesn't. Shoved by the lizard's snout (reaching 18 cm down: its feet catch
-the twigs swimming over), a piece topples onto the bed and is loose; `CREEK_FLOW.open` is the share
-loose (`onCleared` at all of them). Loose pieces roll along the bed with the current; in the channel
-within 0.1 m of the snag line they rack up on it in turn (`SLOTS`, from the knob's tip out across),
-standing and leaning downstream, tops just awash (`onRacked`). The drowned trunk is solid but lies
-27 cm down, too deep to catch a floating log until the wrack stands up on it. `rackAll` (hook
-`rackWrack`) racks them at once for tests.
+Eight dead twigs and old propagules (1.3x the models, each with a smaller twig and propagule caught on
+it up top) jammed in a tangle across the creek on its flat bed, 10 cm west of `DAM`: sticks standing
+on end with their feet in the mud, propagules caught across them, the heap's top 2 cm out of the
+water. The pieces are kinematic bodies that only the log meets. The lizard meets the tangle as one
+slab from bank to bank, cut into eight equal cells along the creek (one per piece, fixed cuboids in
+`DAM_GROUP` that only the player collides with): it stops a swimmer, and its top can be climbed or
+landed on. A cell turns off when its piece comes out, opening a gap.
+
+Each piece has a `hold` (1 to 0). It gives way only to hard knocks (the user's ask, 2026-11-19: not
+"touch it and it drops"):
+- A ram, the snout meeting its cell (`touching`, within `PUSH_GAP`) after being clear of it: `RAM`
+  (2) per m/s over 0.05, so a fast swim (0.24) takes about 0.38 and a slow one under 0.2.
+- Pressing on it: `GRIND` (0.04) a second.
+- A landing on it from at least 0.1 s in the air (`MIN_AIR`), on top or through into the water
+  within `ON_TANGLE` of its cell: `STOMP` (0.7) per m/s of fall over 0.2, and it's pressed down
+  (`dip`).
+- Each knock passes `NEIGHBOUR` (0.3) of itself to the pieces either side.
+
+Knocks set pieces rocking on their feet (a damped spring, `shake`), and a landing shudders the whole
+heap. Loosening, a piece sags: it leans over further and settles. At hold 0 it topples out over
+`FALL_TIME` (0.7 s), the way it was knocked but borne east by the creek, tugging `LOOSEN` (0.2) off
+its neighbours. Once `COLLAPSE` (4) are out, the rest go one after another. In play that's about ten
+fast rams, fewer with landings mixed in. `CREEK_FLOW.open` is the share out (`onCleared` once all of
+them are).
+
+Loose pieces roll along the bed with the current. In the channel, within 0.1 m of the snag line, they
+rack up on it in turn (`SLOTS`, from the knob's tip out across), standing and leaning downstream with
+their tops just awash (`onRacked`). The drowned trunk is solid but lies 27 cm down, too deep to catch
+a floating log until the wrack stands up on it. `rackAll` (hook `rackWrack`) racks them all at once
+for tests; `pushWrack(i, x, z)` frees one at once.
+
+## Propagules (`pods.ts`)
+
+The 90 fallen red mangrove propagules that `props.ts` places (same random draws as before: floating
+flat in the shallows, lying on the mud, stuck upright where they took root) are moved by `Pods` and
+drawn as one InstancedMesh, with no colliders. The lizard's body seen from above (hips to snout)
+pushes any it meets out of the way, carrying them at about its own speed along the push and turning
+them when met off-centre. Floating ones drift on `current()`; on the mud they stop quickly; they
+won't go up a bank. An upright seedling it walks or swims into topples flat over 0.35 s and is then
+loose. Hook `pods()`.
 
 ## Vitals
 
@@ -210,10 +241,13 @@ far side. Drawn only, with their own random numbers; cheap, so tests leave them 
 
 `bootLagoon` holds the herons and the swimmers still unless a test asks for them. Hooks:
 `herons()`, `heronBody(i)`, `placeHeron`, `haunts(i)`, `tangle`, `wadeable`, `log()` (with its
-`spine`, the way along its top), `placeLog`, `logPoint`, `wrack()`, `pushWrack`, `rackWrack`,
+`spine`, the way along its top), `placeLog`, `logPoint`, `wrack()` (each piece's `hold` and `shake`), `pushWrack`, `rackWrack`, `pods()`,
 `swimmers()`, `placeSwimmer`, `vitals()`, `setVitals`, `channel`, `current`, `depth`, `run()`, `restart`, `mangroves()`,
 `marks()`. The hunting tests stand heron 1 at
 its first spot facing south over the open flat. The log test runs the whole gate in about 6,000
-steps (around 15 s): a shoved dam piece, the rest loosed with `pushWrack`, the log shoved loose, its
-drift out of the pool and down to where it catches, and the walk from the west bank along its
-`spine` onto the lava and to the light.
+steps (around 15 s): the dam loosed with `pushWrack`, the log shoved loose, its drift out of the
+pool and down to where it catches, and the walk from the west bank along its `spine` onto the lava
+and to the light. The dam test checks that a slow push only shakes it and is stopped, that fast rams
+free no piece at once but collapse it within about 5 to 15, and that a landing from the bank stands
+the lizard on the heap and hops on it work pieces free. The propagule test walks into a floating one
+and an upright one.
