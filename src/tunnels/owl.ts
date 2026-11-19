@@ -292,8 +292,7 @@ export class Owl {
 /** The tunnels' owls: one on each roost (`ROOSTS`, from assets-src/tunnels.py). */
 export class Owls {
   readonly list: Owl[];
-  /** Called as an owl hears the lizard and is about to drop, and as one catches it. */
-  onHeard: ((owl: Owl) => void) | null = null;
+  /** Called as an owl catches the lizard. */
   onCatch: ((owl: Owl) => void) | null = null;
 
   constructor(kit: FreeRigKit, scene: THREE.Scene) {
@@ -306,9 +305,7 @@ export class Owls {
 
   step(dt: number, prey: Prey) {
     for (const o of this.list) {
-      const was = o.state;
       if (o.step(dt, prey)) this.onCatch?.(o);
-      if (was === 'roost' && o.state === 'alert') this.onHeard?.(o);
     }
   }
 

@@ -58,9 +58,6 @@ export class TunnelsRun {
   private lit = { sun: 0, glow: 0 };
   onReset: (() => void) | null = null;
   onHome: (() => void) | null = null;
-  onDrop: ((hole: string) => void) | null = null;
-  onClimb: (() => void) | null = null;
-  onLeap: (() => void) | null = null;
   onCaught: (() => void) | null = null;
   onRespawn: (() => void) | null = null;
   /** Whether an owl has heard the lizard and is dropping on it (set by the owls each step). */
@@ -70,15 +67,13 @@ export class TunnelsRun {
     private player: PlayerController,
     private visual: LizardVisual,
   ) {
+    // Few and distinctive: the way out, then side quests. Dropping, climbing and leaping the gap are
+    // just how the maze is crossed, so they aren't goals (the user's rule, as on the dunes).
     const specs: GoalSpec[] = [
-      { id: 'drop', label: 'Drop through a hole to the lower tunnels', met: () => this.drops.length > 0 },
-      { id: 'climb', label: 'Climb a rubble pile back up through the roof', met: () => this.climbs > 0 },
-      { id: 'leap', label: 'Leap the gap at a run', met: () => this.leaps > 0 },
+      { id: 'out', label: 'Reach the sea', met: () => this.finishes > 0 },
       { id: 'bask', label: `Bask under all ${SKYLIGHTS.length} skylights`, met: () => this.basked.every(Boolean) },
-      { id: 'swim', label: 'Swim the flooded tunnel', met: () => this.swam },
-      { id: 'owl', label: 'Bask under a barn owl without it hearing you', met: () => this.baskedByOwl },
-      { id: 'shark', label: 'Swim over a resting whitetip shark', met: () => this.startledShark },
-      { id: 'out', label: 'Find the way out to the sea', met: () => this.finishes > 0 },
+      { id: 'owl', label: 'Bask under an owl unheard', met: () => this.baskedByOwl },
+      { id: 'shark', label: 'Swim over a sleeping whitetip', met: () => this.startledShark },
       { id: 'quick', label: `Get out in under ${QUICK} s`, met: () => this.best !== null && this.best < QUICK },
     ];
     this.goals = new Goals(specs);
@@ -139,21 +134,14 @@ export class TunnelsRun {
     if (!p.grounded && HOLES.some((h) => h.kind === 'gap' && overHole(this.feet.x, this.feet.z) === h) && this.feet.y > FLOORS[1] - 0.02) this.overGap = true;
     if (p.grounded || p.swimming) {
       const floor = p.swimming ? 0 : TunnelsRun.floorOf(this.feet.y);
-      if (floor === 1 && this.overGap) {
-        this.leaps++;
-        this.onLeap?.();
-      }
+      if (floor === 1 && this.overGap) this.leaps++;
       this.overGap = false;
       if (floor === 0 && this.floor === 1) {
         const hole = overHole(this.leftUpper.x, this.leftUpper.z, 0.12) ?? overHole(this.feet.x, this.feet.z, 0.05);
-        if (hole) {
-          this.drops.push(hole.name);
-          this.onDrop?.(hole.name);
-        }
+        if (hole) this.drops.push(hole.name);
         if (!p.swimming) Object.assign(this.checkpoint, { x: this.feet.x, y: this.feet.y, z: this.feet.z, yaw: p.yaw });
       } else if (floor === 1 && this.floor === 0) {
         this.climbs++;
-        this.onClimb?.();
         Object.assign(this.checkpoint, { x: this.feet.x, y: this.feet.y, z: this.feet.z, yaw: p.yaw });
       }
       if (floor >= 0) this.floor = floor;

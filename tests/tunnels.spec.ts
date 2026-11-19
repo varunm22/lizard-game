@@ -51,7 +51,7 @@ test('the tunnels load: the lizard on the upper floor at the start; holes and ru
   expect(Math.abs(s.player.y - s.L.floors[1])).toBeLessThan(0.01);
   expect(Math.hypot(s.player.x - s.L.start.x, s.player.z - s.L.start.z)).toBeLessThan(0.02);
   expect(s.run.state).toBe('ready');
-  expect(s.run.goals.length).toBe(9);
+  expect(s.run.goals.length).toBe(5);
   for (const h of s.holes) expect(Math.abs(h.floor! - h.ground), h.name).toBeLessThan(0.01);
   for (const treads of s.ramps) {
     // The lower floor has shallow sags, up to a centimetre or so.
@@ -88,7 +88,6 @@ test('walking into a hole in the floor drops the lizard into the tube below', as
   expect(s.player.y).toBeLessThan(s.floors[0] + 0.03);
   expect(s.player.grounded).toBe(true);
   expect(s.run.drops).toEqual(['last']);
-  expect(s.run.goals.find((goal) => goal.id === 'drop')!.done).toBe(true);
 });
 
 test('a rubble pile climbs from the lower tubes up through the roof onto the upper floor', async ({ page }) => {
@@ -116,7 +115,6 @@ test('a rubble pile climbs from the lower tubes up through the roof onto the upp
     expect(player.grounded, name).toBe(true);
   }
   expect(s.run.climbs).toBe(2);
-  expect(s.run.goals.find((goal) => goal.id === 'climb')!.done).toBe(true);
 });
 
 test('past the gap the roof has fallen in: the way on is down its hole, round below and back up the south rubble pile', async ({ page }) => {
@@ -198,7 +196,6 @@ test('the gap is cleared by a running jump; walked or run into, it drops the liz
   expect(s.fall.y).toBeLessThan(s.floors[0] + 0.03);
   expect(s.dash.y).toBeLessThan(s.floors[0] + 0.03);
   expect(s.run.drops).toEqual(['gap', 'gap']);
-  expect(s.run.goals.find((goal) => goal.id === 'leap')!.done).toBe(true);
 });
 
 test('the flooded stretch is swum, and the beach past the sea mouth is the way out', async ({ page }) => {
@@ -223,7 +220,6 @@ test('the flooded stretch is swum, and the beach past the sea mouth is the way o
   });
   expect(s.swam).toBe(true);
   expect(s.out.swimming).toBe(false);
-  expect(s.run.goals.find((goal) => goal.id === 'swim')!.done).toBe(true);
   expect(s.run.state).toBe('home');
   expect(s.run.finishes).toBe(1);
   expect(s.run.goals.find((goal) => goal.id === 'out')!.done).toBe(true);

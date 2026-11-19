@@ -39,14 +39,13 @@ import { SeaLions } from './sealions';
 const TEXT: HudText = {
   intro:
     '<h2>Lava tunnels</h2>' +
-    'Find your way through the lava tubes and out to the <b>sea</b>, under the <b>golden light</b>.' +
-    '<ul><li>The tunnels run on <b>two floors</b>. Holes in the floor drop you to the tubes below: some are dead ends, some are the way on.</li>' +
-    '<li>No jumping back up a hole. Find a <b>rubble pile</b> to climb up through a hole in the roof.</li>' +
-    '<li>One gap is narrow enough to <b>leap at a run</b> (Shift and Space).</li>' +
-    '<li>Skylights let the sun in: warm patches, and landmarks. Barn owls roost in some: they hunt by <b>sound</b>, so walk, don\'t run, under them.</li></ul>' +
+    'Find the way out to the <b>sea</b>, under the <b>golden light</b>.' +
+    '<ul><li>Drop through <b>holes</b>; climb <b>rubble piles</b> back up.</li>' +
+    '<li>Leap the <b>gap</b> at a run.</li>' +
+    '<li>Owls hunt by <b>sound</b>: walk under them.</li></ul>' +
     '<span class="go">Move to start.</span>',
-  watched: '',
-  chased: '',
+  watched: 'Quiet!',
+  chased: 'Move!',
 };
 
 /**
@@ -124,15 +123,6 @@ export async function tunnels() {
     hud.message(title, detail);
     messageLeft = 2.5;
   };
-  run.onDrop = () => {
-    if (run.drops.length === 1) flashMessage('Down to the lower tunnels', 'Find a rubble pile to climb back up.');
-  };
-  run.onClimb = () => {
-    if (run.climbs === 1) flashMessage('Back up through the roof', 'Rubble from old collapses makes a way up.');
-  };
-  run.onLeap = () => {
-    if (run.leaps === 1) flashMessage('Over the gap!', '');
-  };
   run.onReset = () => {
     hud.message(null);
     messageLeft = null;
@@ -143,12 +133,9 @@ export async function tunnels() {
     owls.callOff();
     followCam.yaw = run.checkpoint.yaw;
   };
-  run.onCaught = () => flashMessage('Caught by a barn owl!', 'Back to where you last changed floors.');
+  run.onCaught = () => flashMessage('Caught!', '');
   owls.onCatch = () => run.caught();
-  owls.onHeard = () => flashMessage('The owl heard you!', 'Slip out from under it quietly.');
-  let owlWarned = false;
   sharks.onBolt = () => {
-    if (!run.startledShark) flashMessage('A whitetip reef shark!', 'Only a pup, resting in the cave. Harmless.');
     run.startledShark = true;
   };
   run.onHome = () => {
@@ -212,10 +199,9 @@ export async function tunnels() {
     prey.open = run.state === 'running' || run.state === 'ready';
     owls.step(dt, prey);
     run.owlStirred = owls.list.some((o) => o.state !== 'roost');
-    if (!owlWarned && owls.list.some((o) => o.inReach(tickFeet))) {
-      owlWarned = true;
-      flashMessage('A barn owl roosts up in this skylight', 'It hunts by sound: walk here, don\'t run.');
-    }
+    // As on the dunes, a short banner instead of messages: "Quiet!" while an owl has heard and leans
+    // out, "Move!" while one is dropping.
+    hud.danger(owls.list.some((o) => o.state === 'drop') ? 'chased' : owls.list.some((o) => o.state === 'alert') ? 'watched' : 'none');
     sharks.step(dt, tickFeet, player.swimming);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;

@@ -141,7 +141,7 @@ the armature's extras.
   it with wings spread: the run goes `caught` for 2.2 s, then the lizard is put back at the
   checkpoint (where it last changed floors, or the start) and the owl flies back up. A miss leaves it
   on the floor a moment, then it returns and stays deaf a little while. Basking 2 s under an owl
-  without it stirring is a goal.
+  without it stirring is a goal. While one is stirred the HUD shows "Quiet!", while it drops "Move!".
 - **Whitetip reef sharks** (`sharks.ts`): two pups drawn at `SHARK_SIZE` (0.7 of a 0.55 m newborn, about 0.39 m) lying on the sea pool's bed in the mouth,
   tails barely moving. A swimmer within 0.42 m wakes one: it bolts down the channel and out to sea,
   stays away 9 s, and cruises back to its spot. Harmless; startling one is a goal.
@@ -153,10 +153,14 @@ the armature's extras.
 The clock starts on the first move; standing on the beach at `FINISH` (not swimming) wins; R starts
 over. The run tracks the floor the lizard last stood on: landing on the lower floor having left the
 upper one by a hole is a drop (by hole name), standing on the upper floor again having walked up is
-a climb, landing on the upper floor after being in the air over the gap is a leap. Goals (9): drop
-through a hole, climb a rubble pile, leap the gap, bask under all four skylights, swim the flooded
-tunnel (inside, `x < 2.6`), bask under a barn owl without it hearing, swim over a resting whitetip,
-find the way out to the sea, get out in under 60 s.
+a climb, landing on the upper floor after being in the air over the gap is a leap (tracked for the
+tests and checkpoints, not goals). Goals (5, few and distinctive like the dunes': the mechanics the
+maze needs anyway aren't goals, the user's rule 2026-11-19): reach the sea, bask under all four
+skylights, bask under an owl unheard, swim over a sleeping whitetip, get out in under 60 s.
+
+Help text is terse, as on the dunes: a three-line intro card, and instead of messages the dunes'
+danger banner, "Quiet!" while an owl has heard the lizard and leans out, "Move!" while one drops.
+A catch flashes "Caught!".
 
 ## Tests (`tests/tunnels.spec.ts`, `tests/helpers/bootTunnels.ts`)
 
