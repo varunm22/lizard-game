@@ -488,8 +488,8 @@ export interface LagoonTestHooks
     /** The main limb's joints, butt to tip: the way along its top. */
     spine: { x: number; y: number; z: number }[];
   };
-  /** The drift wrack: how open the creek is (0 to 1), how many pieces are racked on the snag, and each piece. */
-  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; hold: number; shake: number; x: number; y: number; z: number }[] };
+  /** The drift wrack: how open the creek is (0 to 1), how many pieces are racked on the snag, and each piece (with the middle of its share of the tangle across the creek, `cellZ`). */
+  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; hold: number; shake: number; cellZ: number; x: number; y: number; z: number }[] };
   /** Rack every piece on the snag at once. */
   rackWrack(): void;
   /** The fallen propagules: how many shoves so far, and each one (its middle, heading, and stuck upright, toppling or loose). */

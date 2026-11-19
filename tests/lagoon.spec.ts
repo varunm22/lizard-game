@@ -401,14 +401,14 @@ test('a stalking heron gives up on a lizard in the mangrove roots or swimming lo
   expect(s.atSafe).toMatchObject({ checkpoint: 0, safe: true });
 });
 
-test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and landings work it loose piece by piece until it collapses', async ({ page }) => {
+test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and landings work it loose piece by piece', async ({ page }) => {
   await bootLagoon(page);
   const s = await page.evaluate(() => {
     const g = window.__lagoon!;
     const marks = g.marks();
     const pieces = () => g.wrack().pieces;
-    const x0 = Math.min(...pieces().map((p) => p.x)) - 0.2;
-    const zs = [0, 0.09, -0.09, 0.18, -0.18];
+    // 15 cm short of the tangle's upstream face (it stands 10 cm west of the dam's mark).
+    const x0 = marks.dam.x - 0.37;
     // Swimming slowly into it for 3 s: it stops the lizard and only shakes.
     g.teleport(x0, marks.creek.z, Math.PI / 2, -0.07);
     g.advance(5);
@@ -421,15 +421,21 @@ test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and 
     const nudged = { pieces: pieces(), player: g.player(), open: g.wrack().open };
     // Rammed at a fast swim, again and again across it: pieces work free one by one, then the rest collapse.
     const rams: { out: number; holds: number[] }[] = [];
-    for (let k = 0; k < 20 && g.wrack().open < 1; k++) {
-      g.teleport(x0 - 0.05, marks.creek.z + zs[k % zs.length], Math.PI / 2, -0.07);
+    for (let k = 0; k < 30 && g.wrack().open < 1; k++) {
+      // At the next piece still standing, as a player would go for what's left.
+      const left = pieces().filter((p) => p.state === 'dam');
+      const edge = marks.creek.half - 0.05;
+      const z = Math.max(marks.creek.z - edge, Math.min(marks.creek.z + edge, left[k % left.length].cellZ));
+      g.teleport(x0 - 0.05, z, Math.PI / 2, -0.07);
       g.advance(3);
-      g.setInput({ move: { x: 0, y: 1 }, run: true }, 70);
-      g.advance(70);
+      g.setInput({ move: { x: 0, y: 1 }, run: true }, 80);
+      g.advance(80);
       rams.push({ out: pieces().filter((p) => p.state !== 'dam').length, holds: pieces().map((p) => p.hold) });
     }
-    g.setInput({ move: { x: 0, y: 1 }, run: true }, 90);
-    g.advance(90);
+    g.teleport(x0, marks.creek.z, Math.PI / 2, -0.07);
+    g.advance(3);
+    g.setInput({ move: { x: 0, y: 1 }, run: true }, 120);
+    g.advance(120);
     const rammed = { open: g.wrack().open, player: g.player() };
     // From scratch: landing on the tangle from the bank, and hopping on it, presses it down and works it loose too.
     g.restart();
@@ -447,21 +453,25 @@ test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and 
       g.advance(40);
     }
     const hopped = pieces().map((p) => ({ state: p.state, hold: p.hold }));
-    return { shook, nudged, rams, rammed, landed, hopped };
+    return { x0, shook, nudged, rams, rammed, landed, hopped };
   });
   // A nudge: it holds, the lizard can't get past, but it shakes and gives a little.
   expect(s.shook).toBeGreaterThan(0.002);
   expect(s.nudged.pieces.every((p) => p.state === 'dam')).toBe(true);
   expect(Math.min(...s.nudged.pieces.map((p) => p.hold))).toBeGreaterThan(0.6);
-  expect(s.nudged.player.x).toBeLessThan(Math.min(...s.nudged.pieces.map((p) => p.x)) + 0.02);
+  expect(s.nudged.player.x).toBeLessThan(s.x0 + 0.17);
   expect(s.nudged.open).toBe(0);
   // Rams: no single one frees anything, a few work a piece free, and once enough are out it all goes.
   expect(s.rams[0].out).toBe(0);
-  expect(s.rams.length).toBeGreaterThan(4);
-  expect(s.rams.length).toBeLessThan(16);
+  expect(s.rams.length).toBeGreaterThan(5);
+  expect(s.rams.length).toBeLessThan(25);
+  // Half out, the rest still stand until each is knocked out.
+  const half = s.rams.findIndex((r) => r.out >= 4);
+  expect(s.rams[half].out).toBeLessThan(8);
+  expect(s.rams.length - 1 - half).toBeGreaterThan(1);
   expect(s.rammed.open).toBe(1);
   // Through the gap it leaves.
-  expect(s.rammed.player.x).toBeGreaterThan(Math.min(...s.nudged.pieces.map((p) => p.x)) + 0.1);
+  expect(s.rammed.player.x).toBeGreaterThan(s.x0 + 0.42);
   // Landed on, the lizard stands on the tangle and each landing works it.
   expect(s.landed.player.swimming).toBe(false);
   expect(Math.min(...s.landed.holds)).toBeLessThan(0.8);

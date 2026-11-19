@@ -15,16 +15,19 @@ const DRAG = 1.5;
  * it a little more (GRIND per second). A knock passes NEIGHBOUR of itself to the pieces it's tangled
  * with (either side across the creek), and a piece working free tugs LOOSEN off each of them.
  */
-const RAM = 2;
+const RAM = 2.4;
 const RAM_FROM = 0.05;
 const STOMP = 0.7;
 const STOMP_FROM = 0.2;
 const GRIND = 0.04;
-const NEIGHBOUR = 0.3;
-const LOOSEN = 0.2;
-/** Once this many pieces are out, the rest of the tangle can't hold and collapses, one after another this far apart (s). */
-const COLLAPSE = 4;
-const COLLAPSE_GAP = 0.18;
+const NEIGHBOUR = 0.15;
+const LOOSEN = 0.1;
+/**
+ * Once this many pieces are out, the rest of the tangle slackens: each gives SLACKEN at once, with a
+ * shudder, but still has to be knocked out.
+ */
+const SLACK_AT = 4;
+const SLACKEN = 0.15;
 /** Loosening, a piece sags: leaning over this much further (radians) and settling this far (m) by the time it goes. */
 const SAG_LEAN = 0.3;
 const SAG_DROP = 0.025;
@@ -96,8 +99,6 @@ export interface WrackPiece {
   dip: number;
   /** The snout was clear of it last step, so touching it now is a fresh knock. */
   armed: boolean;
-  /** Collapsing with the tangle: seconds until it goes, else -1. */
-  goIn: number;
   /** The pieces it's tangled with. */
   tangled: WrackPiece[];
   readonly colliders: RAPIER.Collider[];
@@ -125,8 +126,8 @@ const SLOTS = [0.02, -0.03, -0.08, -0.13, -0.18, -0.23, -0.28, -0.33];
  * The drift wrack: a tangle of dead mangrove twigs and old propagules dammed in the creek's mouth,
  * holding the log's pool back (`CREEK_FLOW.open`, the share cleared). It's solid to the lizard while
  * it holds. Rammed at speed or landed on, a piece shakes and sags, and its neighbours shake with it;
- * knocked enough, it works free and topples out, tugging at the rest, and once most are out the whole
- * tangle collapses. Loose in the creek or the channel, the current rolls them
+ * knocked enough, it works free and topples out, tugging at the rest, and once half are out the rest
+ * slacken (each still has to be knocked out). Loose in the creek or the channel, the current rolls them
  * along the bed, and in the channel they catch on the drowned snag above the narrows and rack up
  * against it, standing up off the bed, pinned downstream, until their tops are awash: a spur out
  * from the east bank that catches a log's leading end.
@@ -152,6 +153,8 @@ export class Wrack {
   /** The hardest the lizard has fallen (m/s down) since it was last on something or in the water. */
   private falling = 0;
   private airTime = 0;
+  /** Most of the dam is out and the rest has slackened. */
+  private slackened = false;
 
   constructor(
     world: RAPIER.World,
@@ -257,7 +260,6 @@ export class Wrack {
         shakeAxis: new THREE.Vector3(0, 0, -1),
         dip: 0,
         armed: true,
-        goIn: -1,
         tangled: [],
         colliders,
         cell: null,
@@ -272,16 +274,16 @@ export class Wrack {
     const x1 = DAM.x - DAM_WEST + Math.max(...DAM_LAYOUT.map((d) => d.dx)) + 0.02;
     const y0 = WATER_Y - CREEK.depth - 0.06;
     const y1 = WATER_Y + DAM_TOP;
-    const zA = CREEK.z - CREEK.half - 0.1;
-    const zB = CREEK.z + CREEK.half + 0.1;
+    // Equal shares of the water's width; the end ones run on up the banks.
+    const zA = CREEK.z - CREEK.half;
+    const zB = CREEK.z + CREEK.half;
     byZ.forEach((w, k) => {
-      const z0 = zA + ((zB - zA) * k) / byZ.length;
-      const z1 = zA + ((zB - zA) * (k + 1)) / byZ.length;
+      const z0 = zA + ((zB - zA) * k) / byZ.length - (k === 0 ? 0.1 : 0);
+      const z1 = zA + ((zB - zA) * (k + 1)) / byZ.length + (k === byZ.length - 1 ? 0.1 : 0);
       w.box = { x0, x1, y1, z0, z1 };
       // It stands in the middle of its share, give or take, tangled with the pieces either side.
-      const zMid = (z0 + z1) / 2 + (((k * 37) % 7) / 7 - 0.5) * 0.03;
-      // The end cells run up the banks; their pieces stand at the water's edge.
-      w.home.z = THREE.MathUtils.clamp(zMid, CREEK.z - CREEK.half + 0.05, CREEK.z + CREEK.half - 0.05);
+      const zMid = zA + ((zB - zA) * (k + 0.5)) / byZ.length + (((k * 37) % 7) / 7 - 0.5) * 0.02;
+      w.home.z = THREE.MathUtils.clamp(zMid, CREEK.z - CREEK.half + 0.04, CREEK.z + CREEK.half - 0.04);
       w.tangled = [byZ[k - 1], byZ[k + 1]].filter((o): o is WrackPiece => !!o);
       w.cell = world.createCollider(
         RAPIER.ColliderDesc.cuboid((x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2)
@@ -304,7 +306,6 @@ export class Wrack {
       w.shake = w.shakeV = w.dip = 0;
       w.shakeAxis.set(0, 0, -1);
       w.armed = true;
-      w.goIn = -1;
       this.solid(w, true);
       this.pile(w, this.pieces.indexOf(w));
       w.prevPos.copy(w.pos);
@@ -313,6 +314,7 @@ export class Wrack {
       w.body.setRotation(w.quat, true);
     }
     CREEK_FLOW.open = 0;
+    this.slackened = false;
   }
 
   /** Every piece racked on the snag at once (tests). */
@@ -338,13 +340,16 @@ export class Wrack {
     if (w.kind === 'propagule') {
       // Caught across the sticks just under the surface, nearly level: the tangle's top.
       const tilt = side * (0.12 + jitter * 0.15) - SAG_LEAN * loosened;
-      up.set(Math.cos(w.home.yaw) * Math.cos(tilt), Math.sin(tilt), Math.sin(w.home.yaw) * Math.cos(tilt));
+      // Along the creek, give or take, so it stays in its own share of the tangle.
+      const turn = 0.35 * Math.sin(w.home.yaw);
+      up.set(Math.cos(turn) * Math.cos(tilt), Math.sin(tilt), Math.sin(turn) * Math.cos(tilt));
       w.pos.set(w.home.x, surface - 0.012 - SAG_DROP * loosened - w.dip, w.home.z);
     } else {
       // Standing on end, its foot in the mud, leaning so its top reaches the surface.
       const bed = terrainHeight(w.home.x, w.home.z);
       const lean = Math.acos(THREE.MathUtils.clamp((surface - bed) / w.length, 0.3, 0.97)) + jitter * 0.15 + SAG_LEAN * loosened;
-      up.set(side * Math.sin(lean) * Math.cos(w.home.yaw), Math.cos(lean), Math.sin(lean) * Math.sin(w.home.yaw)).normalize();
+      // Leaning up or down the creek, a little to one side: within its own share of the tangle.
+      up.set(side * Math.sin(lean), Math.cos(lean), 0.3 * Math.sin(lean) * Math.sin(w.home.yaw)).normalize();
       w.pos.set(w.home.x, bed + 0.004 - w.dip, w.home.z).addScaledVector(up, w.length / 2);
     }
     w.quat.setFromUnitVectors(X, up);
@@ -385,7 +390,6 @@ export class Wrack {
     const n = Math.hypot(dir.x, dir.z) || 1;
     w.state = 'falling';
     w.rackT = 0;
-    w.goIn = -1;
     w.from.copy(w.pos);
     w.fromQ.copy(w.quat);
     // It goes the way it was knocked, but the creek's water bears it downstream, east.
@@ -451,9 +455,15 @@ export class Wrack {
           w.hold -= GRIND * dt;
           if (w.shakeV === 0 && w.shake === 0) this.kick(w, 0.02, this.dir);
         }
-        // The rest go with the tangle once most of it's out.
-        if (out >= COLLAPSE && w.goIn < 0) w.goIn = COLLAPSE_GAP * (1 + this.pieces.indexOf(w) % 4);
-        if (w.goIn >= 0 && (w.goIn -= dt) < 0) w.hold = 0;
+        // Most of it out, the rest slackens once (and stays standing).
+        if (out >= SLACK_AT && !this.slackened) {
+          for (const o of this.pieces)
+            if (o.state === 'dam') {
+              o.hold -= SLACKEN;
+              o.shakeV += 0.4;
+            }
+          this.slackened = true;
+        }
         // Shaking on its foot, springing back up after a landing.
         w.shakeV += (-SHAKE_RATE * SHAKE_RATE * w.shake - 2 * SHAKE_DAMP * w.shakeV) * dt;
         w.shake += w.shakeV * dt;

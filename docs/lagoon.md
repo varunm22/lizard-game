@@ -130,18 +130,20 @@ landed on. A cell turns off when its piece comes out, opening a gap.
 Each piece has a `hold` (1 to 0). It gives way only to hard knocks (the user's ask, 2026-11-19: not
 "touch it and it drops"):
 - A ram, the snout meeting its cell (`touching`, within `PUSH_GAP`) after being clear of it: `RAM`
-  (2) per m/s over 0.05, so a fast swim (0.24) takes about 0.38 and a slow one under 0.2.
+  (2.4) per m/s over 0.05, so a fast swim (0.24) takes about 0.45 and a slow one under 0.25.
 - Pressing on it: `GRIND` (0.04) a second.
 - A landing on it from at least 0.1 s in the air (`MIN_AIR`), on top or through into the water
   within `ON_TANGLE` of its cell: `STOMP` (0.7) per m/s of fall over 0.2, and it's pressed down
   (`dip`).
-- Each knock passes `NEIGHBOUR` (0.3) of itself to the pieces either side.
+- Each knock passes `NEIGHBOUR` (0.15) of itself to the pieces either side, so wear stays where
+  the lizard works and the dam doesn't go all at once.
 
 Knocks set pieces rocking on their feet (a damped spring, `shake`), and a landing shudders the whole
 heap. Loosening, a piece sags: it leans over further and settles. At hold 0 it topples out over
-`FALL_TIME` (0.7 s), the way it was knocked but borne east by the creek, tugging `LOOSEN` (0.2) off
-its neighbours. Once `COLLAPSE` (4) are out, the rest go one after another. In play that's about ten
-fast rams, fewer with landings mixed in. `CREEK_FLOW.open` is the share out (`onCleared` once all of
+`FALL_TIME` (0.7 s), the way it was knocked but borne east by the creek, tugging `LOOSEN` (0.1) off
+its neighbours. Once `SLACK_AT` (4) are out, the rest slacken once (`SLACKEN`, 0.15 off each, with
+a shudder) but each still has to be knocked out (the user's ask, 2026-11-19: not all flowing out
+after four). In play that's about 15 fast rams, fewer with landings mixed in. `CREEK_FLOW.open` is the share out (`onCleared` once all of
 them are).
 
 Loose pieces roll along the bed with the current. In the channel, within 0.1 m of the snag line, they
@@ -248,6 +250,6 @@ its first spot facing south over the open flat. The log test runs the whole gate
 steps (around 15 s): the dam loosed with `pushWrack`, the log shoved loose, its drift out of the
 pool and down to where it catches, and the walk from the west bank along its `spine` onto the lava
 and to the light. The dam test checks that a slow push only shakes it and is stopped, that fast rams
-free no piece at once but collapse it within about 5 to 15, and that a landing from the bank stands
+free no piece at once but clear it within about 6 to 24, and that a landing from the bank stands
 the lizard on the heap and hops on it work pieces free. The propagule test walks into a floating one
 and an upright one.

@@ -174,7 +174,7 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
     wrack: () => ({
       open: CREEK_FLOW.open,
       racked: wrack.racked,
-      pieces: wrack.pieces.map((w) => ({ kind: w.kind, state: w.state, hold: w.hold, shake: w.shake, ...xyz(w.pos) })),
+      pieces: wrack.pieces.map((w) => ({ kind: w.kind, state: w.state, hold: w.hold, shake: w.shake, cellZ: (w.box.z0 + w.box.z1) / 2, ...xyz(w.pos) })),
     }),
     rackWrack: () => wrack.rackAll(),
     pods: () => ({ shoves: pods.shoves, list: pods.state }),
