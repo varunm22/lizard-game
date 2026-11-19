@@ -30,10 +30,13 @@ export class Cover {
 
   constructor(
     private world: RAPIER.World,
-    obstacles: Obstacle[],
-    private plants: Plants,
+    obstacles: readonly Obstacle[],
+    /** Plants whose crowns hide what's in them (none in the lagoon). */
+    private plants: Plants | null,
+    /** More drawn meshes that cast shade with no collider: the lagoon's instanced mangroves. */
+    crowns: THREE.Object3D[] = [],
   ) {
-    this.crowns = obstacles.filter((o) => o.kind === 'tree' || o.kind === 'cactus').map((o) => o.mesh);
+    this.crowns = [...obstacles.filter((o) => o.kind === 'tree' || o.kind === 'cactus').map((o) => o.mesh), ...crowns];
   }
 
   /** Whether `p` can be seen from `eye`. Bodies in `ignore` (the one `p` is on) don't block the view. */
@@ -55,6 +58,7 @@ export class Cover {
 
   /** Inside a standing plant: under most of its height and within its reach of the stem. */
   private inCrown(p: { x: number; y: number; z: number }): boolean {
+    if (!this.plants) return false;
     for (const plant of this.plants.near(p.x, p.z, CROWN_SEARCH)) {
       const r = plant.radius + CROWN_REACH;
       const dx = p.x - plant.x;

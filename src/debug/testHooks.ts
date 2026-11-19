@@ -417,6 +417,9 @@ export interface LagoonTestHooks
     yaw: number;
     bill: { x: number; y: number; z: number };
     sees: boolean;
+    /** Seconds since it last saw the lizard while hunting, and left on the alert after losing it. */
+    unseen: number;
+    alert: number;
     strikes: number;
     catches: number;
     paused: boolean;
@@ -427,6 +430,36 @@ export interface LagoonTestHooks
   placeHeron(i: number, x: number, z: number, yaw: number): void;
   /** Whether (x, z) is in a red mangrove's root tangle, and whether a heron could wade there. */
   tangle(x: number, z: number): boolean;
+  wadeable(x: number, z: number): boolean;
+  /** The island's bars here too: health, warmth, food, air (0 to 1), how they're changing, and whether it's down and why. */
+  vitals(): {
+    health: number;
+    warmth: number;
+    fullness: number;
+    air: number;
+    rate: { health: number; warmth: number };
+    speedScale: number;
+    frozen: boolean;
+    cause: string | null;
+    down: boolean;
+    downBy: string | null;
+  };
+  /** Set bars, or hold them (`frozen`: strikes still land, nothing drifts). */
+  setVitals(v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>): void;
+  /** The juvenile fish among the mangrove roots: which shoal, species, where each is and how fast it's going (m/s). */
+  fry(): { shoal: number; species: string; x: number; y: number; z: number; speed: number }[];
+  /** The fry shoals: species, home, and the roots standing in the water round it (centre and radius). */
+  fryShoals(): { species: string; x: number; z: number; roots: { x: number; z: number; r: number }[] }[];
+  /** Darts so far, all fry together. */
+  fryDarts(): number;
+  /** The lagoon's algae patches: gutweed on the lava, Bostrychia on the mangrove roots, and how grown each is (0 to 1). */
+  algae(): { id: number; kind: string; x: number; y: number; z: number; grown: number }[];
+  /** Bite, as pressing F does; false while a bite is already under way. */
+  bite(): boolean;
+  /** The player's bites so far, those that got algae, and whether algae is within a bite now (the "[F] to eat" prompt shows). */
+  feeding(): { bites: number; mouthfuls: number; canEat: boolean };
+  /** Heron `i`'s standing spots. */
+  haunts(i: number): { x: number; z: number; yaw: number }[];
   /** Stop or start the herons and the sharks and rays: `true`/`false` for all, or for herons the indices to leave running. */
   pause(what: { herons?: boolean | number[]; swimmers?: boolean }): void;
   /** The drift log: state, middle (world m), heading, drift speed, and counts. */
@@ -447,8 +480,10 @@ export interface LagoonTestHooks
   };
   /** Put the log floating at (x, z) along `heading`. */
   placeLog(x: number, z: number, heading: number): void;
-  /** Sharks and rays: kind, where each is. */
-  swimmers(): { kind: string; x: number; y: number; z: number }[];
+  /** Sharks and rays: kind, state, home pool, where each is (its belly) and faces, the top of its fins or wingtips, speed, and a shark's bites. */
+  swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; top: number; yaw: number; speed: number; bites: number }[];
+  /** Put swimmer `i` at (x, z) facing `yaw`, calm. */
+  placeSwimmer(i: number, x: number, z: number, yaw: number): void;
   /** The channel's middle and half-width at z, the current there (m/s), and water depth at (x, z). */
   channel(z: number): { x: number; half: number };
   current(x: number, z: number): { x: number; z: number };

@@ -67,6 +67,8 @@ export interface HudText {
   intro: string;
   watched: string;
   chased: string;
+  /** Extra controls for the row at the bottom, after jump. */
+  controls?: [string, string][];
 }
 
 /** The keys on the end screen: R for another go, C on to the next stage. */
@@ -154,7 +156,7 @@ export function createDunesHud(text: HudText = DUNES_TEXT): DunesHud {
     'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:#fffc;' +
     'font:14px system-ui,sans-serif;color:#2f3a2a;display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;' +
     'width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;pointer-events:none';
-  for (const [keys, does] of CONTROLS) {
+  for (const [keys, does] of text.controls ? [...CONTROLS.slice(0, 3), ...text.controls, ...CONTROLS.slice(3)] : CONTROLS) {
     const item = document.createElement('span');
     item.style.whiteSpace = 'nowrap';
     const k = document.createElement('b');

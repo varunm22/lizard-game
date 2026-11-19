@@ -44,6 +44,8 @@ export class Wounds {
     private model: LizardModel,
     private vitals: Vitals,
     private respawn: () => void,
+    /** How long it lies down (s). */
+    private lieFor = COUNTDOWN,
   ) {}
 
   /** Knocked down: lying on its side, out of the player's control. */
@@ -58,9 +60,10 @@ export class Wounds {
 
   /**
    * Struck by something travelling along (dx, dz): thrown to whichever side of the lizard that
-   * points, flinching toward the side it came from. Returns false if it was already down.
+   * points, flinching toward the side it came from, losing `amount` of its health (a hawk's strike
+   * unless said). Returns false if it was already down.
    */
-  strike(dx: number, dz: number): boolean {
+  strike(dx: number, dz: number, amount = VITALS.hawkHit, cause: DownCause = 'hawk'): boolean {
     if (this.down) return false;
     const yaw = this.player.yaw;
     // The lizard's left, with +Z forward at yaw 0.
@@ -71,7 +74,7 @@ export class Wounds {
     this.model.flinch(side > 0 ? 'right' : 'left');
     this.onStrike?.(side > 0 ? 'right' : 'left', lx * side, lz * side);
     this.hits++;
-    this.vitals.hurt(VITALS.hawkHit, 'hawk');
+    this.vitals.hurt(amount, cause);
     this.knockDown();
     return true;
   }
@@ -110,8 +113,16 @@ export class Wounds {
   /** At no health, it goes down. */
   private knockDown() {
     if (this.down || !this.vitals.dead) return;
-    this.downFor = COUNTDOWN;
+    this.downFor = this.lieFor;
     this.downBy = this.vitals.cause ?? 'hawk';
+  }
+
+  /** Up again at once, nothing pending (the run starts over). */
+  reset() {
+    this.downFor = null;
+    this.downBy = null;
+    this.hits = 0;
+    this.jerk.t = 0;
   }
 
   /** Advance one fixed step, before the player's own move (and after the vitals'). */

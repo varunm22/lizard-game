@@ -282,10 +282,15 @@ export function inChannel(x: number, z: number): boolean {
 /**
  * Where the herons hunt: a few standing spots each, in ankle-deep water or on a bank, that it
  * moves between now and then. 0 watches the sand bar, 1 the flats by the safe point, 2 the log's
- * pool, the channel bank and the landing at the jam.
+ * pool, the channel bank and the landing at the jam, 3 the open basin south of the bar, 4 the
+ * flats south of the jam, 5 the shallows between the north pools. Each spot was probed wadeable
+ * (`wadeable` hook) with room to turn round it.
  */
 export const HERON_HAUNTS: readonly (readonly { x: number; z: number; yaw: number }[])[] = [
   [{ x: -3.05, z: -1.15, yaw: 2.6 }, { x: -2.25, z: -1.35, yaw: -0.4 }, { x: -3.85, z: -2.05, yaw: 0.9 }],
   [{ x: -1.55, z: -0.25, yaw: 1.2 }, { x: 0.25, z: -0.2, yaw: -1.8 }, { x: -1.25, z: 1.2, yaw: 2.2 }],
   [{ x: 1.85, z: 3.35, yaw: -1.9 }, { x: 1.8, z: 0.25, yaw: -1.6 }, { x: 1.3, z: -0.75, yaw: 1.3 }],
+  [{ x: -1.9, z: -2.0, yaw: 0.4 }, { x: -1.5, z: -2.3, yaw: -0.3 }, { x: -2.6, z: -2.2, yaw: 1.2 }],
+  [{ x: 1.4, z: -1.6, yaw: -0.5 }, { x: 1.2, z: -3.4, yaw: -1.4 }, { x: 1.5, z: -1.4, yaw: 0.3 }],
+  [{ x: -1.5, z: 2.2, yaw: 0.6 }, { x: -3.6, z: 2.9, yaw: 2.4 }, { x: 0.3, z: 2.5, yaw: -2.4 }],
 ];

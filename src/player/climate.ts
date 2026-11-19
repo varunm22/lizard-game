@@ -61,6 +61,8 @@ export class ClimateSense {
     /** Where the other lizards are (their middles). */
     private others: () => Iterable<THREE.Vector3>,
     private waterDepth: (p: { x: number; y: number; z: number }) => number,
+    /** How much (x, z) is bare black lava, 0 to 1: the island's own unless a stage has its own. */
+    private lava: (x: number, z: number) => number = lavaCover,
   ) {}
 
   step(dt: number) {
@@ -77,7 +79,7 @@ export class ClimateSense {
 
     this.player.feetAt(1, this.feet);
     const raised = this.player.grounded && this.feet.y - terrainHeight(this.feet.x, this.feet.z) > RAISED;
-    const lava = THREE.MathUtils.clamp(lavaCover(this.feet.x, this.feet.z), 0, 1);
+    const lava = THREE.MathUtils.clamp(this.lava(this.feet.x, this.feet.z), 0, 1);
     const ground = SURFACE.ground + (SURFACE.lava - SURFACE.ground) * lava;
     c.surface = raised ? Math.max(SURFACE.raised, ground) : ground;
     c.surfaceKind = raised && SURFACE.raised >= ground ? 'raised' : lava > 0.5 ? 'lava' : 'ground';

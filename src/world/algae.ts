@@ -15,7 +15,8 @@ import { lineWeight } from '../render/cel';
  * (`remove`); the rest of the game never holds on to a patch. Now and then a new patch sprouts on a
  * bare site on the rocks and grows in (`sprout`).
  */
-export type AlgaeKind = 'green' | 'red';
+/** The island's sea lettuce and red turf, and the mangrove lagoon's gutweed and root-fringing Bostrychia. */
+export type AlgaeKind = 'green' | 'red' | 'gutweed' | 'bostrychia';
 
 export interface AlgaePatch {
   readonly id: number;
@@ -62,7 +63,7 @@ const SPROUT_GAP_M = 0.025;
 const BITTEN_MIN = 0.35;
 /** How far a patch's fronds spread from the holdfast and how high they stand, at scale 1 (m): see assets-src/props.py. */
 const FROND_RADIUS = 0.014;
-const FROND_HEIGHT: Record<AlgaeKind, number> = { green: 0.025, red: 0.015 };
+const FROND_HEIGHT: Record<AlgaeKind, number> = { green: 0.025, red: 0.015, gutweed: 0.03, bostrychia: 0.013 };
 
 interface Site extends Placement {
   batch: Batch;
@@ -96,10 +97,14 @@ export class Algae {
   private s = new THREE.Vector3();
   private c = new THREE.Color();
 
-  /** `rocks` are the obstacles algae may grow on; only their tops near or under the water get any. */
-  constructor(scene: THREE.Scene, geometry: Record<AlgaeKind, THREE.BufferGeometry>, rocks: readonly Obstacle[]) {
-    const first = place(rocks, SEED, PER_ROCK_MAX, FLOOR_PATCHES);
-    const spare = place(rocks, SPARE_SEED, SPARE_PER_ROCK, SPARE_FLOOR);
+  /**
+   * `rocks` are the obstacles algae may grow on on the island; only their tops near or under the
+   * water get any. A stage with algae of its own passes its `sites` instead: those growing at the
+   * start and spare ones to sprout on.
+   */
+  constructor(scene: THREE.Scene, geometry: Partial<Record<AlgaeKind, THREE.BufferGeometry>>, rocks: readonly Obstacle[], sites?: { first: Placement[]; spare: Placement[] }) {
+    const first = sites?.first ?? place(rocks, SEED, PER_ROCK_MAX, FLOOR_PATCHES);
+    const spare = sites?.spare ?? place(rocks, SPARE_SEED, SPARE_PER_ROCK, SPARE_FLOOR);
     const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), side: THREE.DoubleSide });
     this.sway(material);
     // Light outlines, like the plants on land.
@@ -115,7 +120,7 @@ export class Algae {
     }
     for (const [k, g] of groups) {
       const all = [...g.first, ...g.spare];
-      const mesh = new THREE.InstancedMesh(geometry[all[0].kind], material, all.length);
+      const mesh = new THREE.InstancedMesh(geometry[all[0].kind]!, material, all.length);
       mesh.name = `algae-${k}`;
       mesh.receiveShadow = true;
       const batch: Batch = { mesh, slots: [] };
@@ -283,7 +288,7 @@ export class Algae {
   }
 }
 
-interface Placement {
+export interface Placement {
   kind: AlgaeKind;
   position: THREE.Vector3;
   matrix: THREE.Matrix4;
@@ -296,6 +301,23 @@ const UP = new THREE.Vector3(0, 1, 0);
 const smooth = (x: number) => x * x * (3 - 2 * x);
 
 /**
+ * A site for a patch at `position` on a surface facing `normal`: leaning a little toward straight up,
+ * turned at random about the surface, its size and shade varied. `kind` is told one random number.
+ */
+export function algaeSite(kind: (r: number) => AlgaeKind, position: THREE.Vector3, normal: THREE.Vector3, rand: () => number): Placement {
+  const n = normal.clone().lerp(UP, 0.4).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(UP, n).multiply(new THREE.Quaternion().setFromAxisAngle(UP, rand() * 2 * Math.PI));
+  const s = 0.8 + rand() * 0.7;
+  return {
+    kind: kind(rand()),
+    position,
+    matrix: new THREE.Matrix4().compose(position, q, new THREE.Vector3(s, s, s)),
+    size: s,
+    shade: 0.8 + rand() * 0.35,
+  };
+}
+
+/**
  * Where algae grow: on the upward faces of boulders in the splash zone and below, and over the
  * rough lava sea floor and the ledge at the waterline. Deterministic, like the rest of the island.
  */
@@ -303,19 +325,7 @@ function place(rocks: readonly Obstacle[], seed: number, perRockMax: number, flo
   const rand = rng(seed);
   const out: Placement[] = [];
   const wet = (y: number) => y < WATER_Y + SPLASH_ZONE && y > WATER_Y - MAX_DEPTH;
-  const add = (position: THREE.Vector3, normal: THREE.Vector3) => {
-    // Lean a little toward straight up, turn at random about the surface, vary the size.
-    const n = normal.clone().lerp(UP, 0.4).normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(UP, n).multiply(new THREE.Quaternion().setFromAxisAngle(UP, rand() * 2 * Math.PI));
-    const s = 0.8 + rand() * 0.7;
-    out.push({
-      kind: kindAt(WATER_Y - position.y, rand()),
-      position,
-      matrix: new THREE.Matrix4().compose(position, q, new THREE.Vector3(s, s, s)),
-      size: s,
-      shade: 0.8 + rand() * 0.35,
-    });
-  };
+  const add = (position: THREE.Vector3, normal: THREE.Vector3) => out.push(algaeSite((r) => kindAt(WATER_Y - position.y, r), position, normal, rand));
 
   // Boulders: look straight down onto each at random points of its footprint.
   const ray = new THREE.Raycaster();
