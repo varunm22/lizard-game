@@ -57,12 +57,15 @@ export class ClimateSense {
 
   constructor(
     private player: PlayerController,
-    private cover: Cover,
+    /** What shades the lizard from the sun; or none, with `sunAt` saying how much sun reaches a point. */
+    private cover: Cover | null,
     /** Where the other lizards are (their middles). */
     private others: () => Iterable<THREE.Vector3>,
     private waterDepth: (p: { x: number; y: number; z: number }) => number,
     /** How much (x, z) is bare black lava, 0 to 1: the island's own unless a stage has its own. */
     private lava: (x: number, z: number) => number = lavaCover,
+    /** Sun (0 to 1) at a point, for a stage whose light is baked (the tunnels) rather than cast through `cover`. */
+    private sunAt: ((p: THREE.Vector3) => number) | null = null,
   ) {}
 
   step(dt: number) {
@@ -104,8 +107,12 @@ export class ClimateSense {
     for (const along of [-1, 0, 1]) {
       const d = along * M.bodyHalfLength;
       this.p.set(pos.x + fx * d, pos.y + M.bodyRadius + 0.002, pos.z + fz * d);
+      if (this.sunAt) {
+        lit += THREE.MathUtils.clamp(this.sunAt(this.p), 0, 1);
+        continue;
+      }
       this.eye.copy(this.p).addScaledVector(this.sunDir, SUN_FAR);
-      if (this.cover.inSight(this.eye, this.p, this.player.body)) lit++;
+      if (this.cover!.inSight(this.eye, this.p, this.player.body)) lit++;
     }
     return lit / 3;
   }
