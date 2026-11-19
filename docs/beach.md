@@ -22,7 +22,13 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   one GLB (cow 0.30 m, bull 0.44 m, pup 0.17 m: a fifth of real size, the tortoise's convention). A
   free rig (`render/freePose.ts`) posed each frame from a few numbers: `lift` (lying to propped up),
   `gait` (galumphing, the hind flippers turned forward), `swim` (fore-flippers beating), `look`,
-  `nod`, `jaw`. Each has a kinematic capsule in `PLANT_STEM_GROUP` (solid, never ground to climb).
+  `nod`, `jaw`. Propped up, the hindquarters and belly stay on the sand and the body curves up
+  through the chest (the spine turns add up down the chain, so a big turn low down lifts the whole
+  body off the sand like a plank). Ashore each lies along the slope under it (`SeaLion.tilt`, level
+  afloat). Its solid body is one capsule across the trunk per slice, rump to head, fitted at load to
+  the mesh's trunk vertices (`fitParts`, flippers left out) and moved each step to where the pose put
+  that slice (`partAt`); all on one kinematic body in `PLANT_STEM_GROUP` (solid, never ground to climb).
+  `player.shove` looks past every collider on the pusher's body. Hook `sealions().cows[].gaps`.
   The bull swims his beat 0.7 m off the waterline; a lizard on his stretch within `NOTICE` gets a
   rear-and-bark (`REAR_TIME`, HUD "watched") then a charge (`CHARGE_SPEED`, slow to turn,
   `CHARGE_TIME` at most, never past `BULL_STRETCH` up the sand). His muzzle within `HIT_REACH` takes
@@ -44,7 +50,9 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
 - **Seabirds** (`birds.ts`, `assets-src/penguin.py`, `assets-src/cormorant.py`): Galápagos penguins
   (two standing, two swimming loops low in the water, head up) and flightless cormorants (one holding
   its stubby wings out to dry, one going to sea and back). Swimming within `WITH` of a swimming bird
-  ticks its goal.
+  ticks its goal. The swimming loops (`SWIM_LOOPS`) keep to open water clear of the point's lava
+  (a test samples them); and a bird only swims where there's water under it (`Birds.place` casts
+  down past animals and plants): where rock comes up under a swimmer it stands on it, wading in or out.
 
 Creatures are posed only within a few metres of the camera; the rivals and females go to
 `lowDetail` past 1.5 m. None of that touches the simulation.

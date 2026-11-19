@@ -44,18 +44,25 @@ const NUDGE_TIME = 0.4;
 /** After a nudge, a pup goes back to its mother and rests at least this long (s). */
 const PUP_REST = 6;
 
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const yawQ = new THREE.Quaternion();
+const tiltE = new THREE.Euler();
+const partAt = new THREE.Vector3();
+const partTurn = new THREE.Quaternion();
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
-/** One sea lion in the world: its body, where it is and which way it faces, and its solid capsule. */
+/** One sea lion in the world: its body, where it is and which way it faces, and its solid body. */
 class SeaLion {
   readonly pos = new THREE.Vector3();
   readonly prev = new THREE.Vector3();
   yaw: number;
   prevYaw: number;
   travel = 0;
+  /** Lying along the ground: its pitch and roll to the sand under it (level afloat). */
+  readonly tilt = new THREE.Quaternion();
   readonly rb: RAPIER.RigidBody;
-  readonly collider: RAPIER.Collider;
-  private radius: number;
+  /** One capsule per slice of its trunk (`SeaLionBody.parts`), following its pose. */
+  readonly colliders: RAPIER.Collider[];
 
   constructor(
     readonly body: SeaLionBody,
@@ -65,19 +72,42 @@ class SeaLion {
     yaw: number,
   ) {
     this.yaw = this.prevYaw = yaw;
-    const L = body.length;
-    this.radius = 0.09 * L * (body.kind === 'Bull' ? 1.15 : 1);
     this.rb = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
-    this.collider = world.createCollider(RAPIER.ColliderDesc.capsule(0.28 * L, this.radius).setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)).setCollisionGroups(SEA_LION_GROUPS), this.rb);
+    this.colliders = body.parts.map((p) => world.createCollider(RAPIER.ColliderDesc.capsule(Math.max(p.half, 1e-4), p.radius).setCollisionGroups(SEA_LION_GROUPS), this.rb));
     this.place(x, z);
     this.prev.copy(this.pos);
     this.syncBody(true);
   }
 
-  /** Put it at (x, z) on the ground, or floating at the surface where the water is deep enough. */
+  /** The first of its colliders, for the lizard's shove to look past (it looks past all of them). */
+  get collider() {
+    return this.colliders[0];
+  }
+
+  /**
+   * Put it at (x, z) on the ground, or floating at the surface where the water is deep enough.
+   * Ashore it lies along the sand: pitched to the slope under it nose to tail, rolled to it side to side.
+   */
   place(x: number, z: number) {
     const ground = terrainHeight(x, z);
-    this.pos.set(x, Math.max(ground, WATER_Y - 0.55 * this.body.height), z);
+    const float = WATER_Y - 0.55 * this.body.height;
+    this.pos.set(x, Math.max(ground, float), z);
+    if (float >= ground) {
+      this.tilt.identity();
+      return;
+    }
+    const half = 0.35 * this.body.length;
+    const side = 0.1 * this.body.length;
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    const nose = terrainHeight(x + fx * half, z + fz * half);
+    const tail = terrainHeight(x - fx * half, z - fz * half);
+    const left = terrainHeight(x + fz * side, z - fx * side);
+    const right = terrainHeight(x - fz * side, z + fx * side);
+    // Halfway between the sand under its middle and the line between its ends, so it neither floats over a dip nor sinks into a hump.
+    this.pos.y = (ground + (nose + tail) / 2) / 2;
+    tiltE.set(Math.atan2(tail - nose, 2 * half), 0, Math.atan2(right - left, 2 * side) * -1, 'XYZ');
+    this.tilt.setFromEuler(tiltE);
   }
 
   get depth() {
@@ -90,16 +120,21 @@ class SeaLion {
     return out.set(this.pos.x + Math.sin(this.yaw) * L, this.pos.y, this.pos.z + Math.cos(this.yaw) * L);
   }
 
+  /** Move its solid body to where it is, each capsule to where its pose put that part of it. */
   syncBody(teleport = false) {
-    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
-    const t = { x: this.pos.x, y: this.pos.y + this.radius, z: this.pos.z };
+    const q = yawQ.setFromAxisAngle(Y_AXIS, this.yaw).multiply(this.tilt);
     if (teleport) {
-      this.rb.setTranslation(t, true);
+      this.rb.setTranslation(this.pos, true);
       this.rb.setRotation(q, true);
     } else {
-      this.rb.setNextKinematicTranslation(t);
+      this.rb.setNextKinematicTranslation(this.pos);
       this.rb.setNextKinematicRotation(q);
     }
+    this.colliders.forEach((c, i) => {
+      this.body.partAt(i, partAt, partTurn);
+      c.setTranslationWrtParent(partAt);
+      c.setRotationWrtParent(partTurn);
+    });
   }
 
   /** Start of a step: remember where it was, for drawing between steps. */
@@ -120,7 +155,7 @@ class SeaLion {
   draw(alpha: number, dt: number) {
     const root = this.body.root;
     root.position.lerpVectors(this.prev, this.pos, alpha);
-    root.rotation.y = this.prevYaw + wrap(this.yaw - this.prevYaw) * alpha;
+    root.quaternion.setFromAxisAngle(Y_AXIS, this.prevYaw + wrap(this.yaw - this.prevYaw) * alpha).multiply(this.tilt);
     this.body.advance(dt, this.travel);
     this.travel = 0;
     this.body.pose();
@@ -180,16 +215,21 @@ export class SeaLions {
       const cow = add('Cow', c.x, c.z, c.yaw, i);
       cow.body.lift = c.lift;
       cow.body.rest = c.lift > 0 ? 0 : 0.8;
+      // Her solid body follows how she lies or sits.
+      cow.body.pose();
+      cow.syncBody(true);
       this.cows.push(cow);
     });
     PUPS.forEach((p, i) => {
       const pup = add('Pup', p.x, p.z, p.yaw, 10 + i);
       pup.body.rest = 0.6;
+      pup.body.pose();
       this.pups.push(new Pup(pup, p));
     });
     const x = (BULL_BEAT.x0 + BULL_BEAT.x1) / 2;
     this.bull = add('Bull', x, shoreZ(x) - BULL_BEAT.off, Math.PI / 2, 20);
     this.bull.body.lift = 0.6;
+    this.bull.body.pose();
   }
 
   get danger(): 'none' | 'watched' | 'chased' {
@@ -433,7 +473,10 @@ export class SeaLions {
       const near = Math.hypot(l.pos.x - eye.x, l.pos.z - eye.z) < 4;
       l.body.root.visible = near || l === this.bull || Math.hypot(l.pos.x - eye.x, l.pos.z - eye.z) < 7;
       if (near) l.draw(alpha, dt);
-      else l.body.root.position.copy(l.pos);
+      else {
+        l.body.root.position.copy(l.pos);
+        l.body.root.quaternion.setFromAxisAngle(Y_AXIS, l.yaw).multiply(l.tilt);
+      }
     }
   }
 }

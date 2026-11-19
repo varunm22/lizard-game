@@ -13,7 +13,7 @@ import type { BeachRun } from '../beach/run';
 import type { SeaLions } from '../beach/sealions';
 import type { Rivals } from '../beach/rivals';
 import type { Birds } from '../beach/birds';
-import { depthAt, DISPLAY_ROCKS, onBullStretch, shoreZ, START } from '../beach/layout';
+import { depthAt, DISPLAY_ROCKS, onBullStretch, shoreZ, START, SWIM_LOOPS } from '../beach/layout';
 
 interface BeachHookContext {
   world: RAPIER.World;
@@ -100,7 +100,24 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
       const nose = b.nose(v);
       return {
         bull: { state: sealions.bullState, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, nose: { x: nose.x, z: nose.z }, swim: b.body.swim, dodged: sealions.dodged, hits: sealions.hits },
-        cows: sealions.cows.map((c) => ({ x: c.pos.x, z: c.pos.z, yaw: c.yaw, lift: c.body.lift })),
+        cows: sealions.cows.map((c) => ({
+          x: c.pos.x,
+          z: c.pos.z,
+          yaw: c.yaw,
+          lift: c.body.lift,
+          gaps: c.colliders
+            .map((k) => {
+              // The capsule's lower end: its axis lies along its local Y.
+              const t = k.translation();
+              const r = k.rotation();
+              const axis = v.set(0, k.halfHeight(), 0).applyQuaternion(new THREE.Quaternion(r.x, r.y, r.z, r.w));
+              const end = axis.y < 0 ? 1 : -1;
+              const x = t.x + end * axis.x;
+              const z = t.z + end * axis.z;
+              return t.y - Math.abs(axis.y) - k.radius() - terrainHeight(x, z);
+            })
+            .reverse(),
+        })),
         pups: sealions.pups.map((p) => ({ state: p.state, x: p.lion.pos.x, z: p.lion.pos.z, yaw: p.lion.yaw })),
         nudges: sealions.nudges,
       };
@@ -150,6 +167,7 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
       ...birds.penguins.map((b) => ({ kind: 'penguin', x: b.pos.x, y: b.pos.y, z: b.pos.z, swim: b.swim })),
       ...birds.cormorants.map((b) => ({ kind: 'cormorant', x: b.pos.x, y: b.pos.y, z: b.pos.z, swim: b.swim })),
     ],
+    swimLoops: () => SWIM_LOOPS.map((l) => ({ ...l })),
     birdGoals: () => ({ penguin: birds.nearPenguin, cormorant: birds.nearCormorant }),
     vitals: () => ({ health: vitals.health, warmth: vitals.warmth, fullness: vitals.fullness, air: vitals.air, down: wounds.down, downBy: wounds.downBy }),
     setVitals: (s) => Object.assign(vitals, s),

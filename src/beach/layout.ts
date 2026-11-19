@@ -83,13 +83,13 @@ export const PUPS = [
   { x: 1.3, z: -0.85, yaw: 1.9, mother: 4 },
 ] as const;
 
-/** Where the penguins stand on the point, and the loop the swimmers follow off it. */
+/** Where the penguins stand on the point, and the loops the swimmers follow off it, in open water clear of the point's lava (tests/beach.spec.ts checks). */
 export const PENGUIN_ROCKS = [
   { x: 3.25, z: -3.9, yaw: -2.6 },
   { x: 3.55, z: -3.45, yaw: -1.9 },
 ] as const;
 export const SWIM_LOOPS = [
-  { x: 1.6, z: -4.2, rx: 1.5, rz: 0.6 },
+  { x: 1.45, z: -4.2, rx: 1.05, rz: 0.55 },
   { x: 0.0, z: -3.75, rx: 2.1, rz: 0.45 },
 ] as const;
 /** The cormorants' rocks on the point: one dries its wings, the other comes and goes from the sea. */

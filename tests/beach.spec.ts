@@ -67,7 +67,10 @@ test('the bull warns a lizard on his beach, then charges: standing still it is h
     g.teleport(0, 2.8, 0);
     for (let i = 0; i < 150 && g.sealions().bull.state !== 'patrol'; i++) steps(0.1);
     steps(4.5);
-    x = g.sealions().bull.x;
+    // Straight up the beach from in front of him, in a lane clear of the cows and pups lying there.
+    const s = g.sealions();
+    const lying = [...s.cows, ...s.pups].map((c) => c.x);
+    x = [0, -0.3, 0.3, -0.6, 0.6].map((d) => s.bull.x + d).find((lx) => lying.every((cx) => Math.abs(cx - lx) > 0.3))!;
     g.teleport(x, g.shoreZ(x) + 0.7, 0);
     for (let i = 0; i < 40 && g.sealions().bull.state !== 'rear'; i++) steps(0.1);
     const reared = g.sealions().bull.state;
@@ -218,5 +221,48 @@ test('swimming beside a penguin ticks its goal', async ({ page }) => {
   });
   expect(r.player.swimming).toBe(true);
   expect(r.birds.penguin).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('the penguins swim only over open water: their loops keep clear of the lava and the rocks', async ({ page }) => {
+  const errors = await bootBeach(page);
+  const bad = await page.evaluate(() => {
+    const g = window.__beach!;
+    g.advance(1);
+    const out: string[] = [];
+    for (const l of g.swimLoops()) {
+      for (let k = 0; k < 96; k++) {
+        const a = (k / 96) * Math.PI * 2;
+        const x = l.x + Math.cos(a) * l.rx;
+        const z = l.z + Math.sin(a) * l.rz;
+        // A penguin's body round its middle, as well as the middle itself.
+        for (const [dx, dz] of [[0, 0], [0.06, 0], [-0.06, 0], [0, 0.06], [0, -0.06]]) {
+          const top = Math.max(g.terrainHeight(x + dx, z + dz), g.groundAt(x + dx, z + dz, 2) ?? -9);
+          if (top > -0.07) out.push(`${x.toFixed(2)},${z.toFixed(2)}: ${top.toFixed(3)}`);
+        }
+      }
+    }
+    return out;
+  });
+  expect(bad).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('the sea lions lie on the sand: a cow lying down or sitting up rests her belly and rump on it, never above', async ({ page }) => {
+  const errors = await bootBeach(page);
+  const cows = await page.evaluate(() => {
+    window.__beach!.advance(1);
+    return window.__beach!.sealions().cows;
+  });
+  for (const c of cows) {
+    // Rump to mid-belly: on the sand (a little sunk in, at most), lying or sitting up.
+    for (const gap of c.gaps.slice(0, 4)) {
+      expect(gap).toBeGreaterThan(-0.01);
+      expect(gap).toBeLessThan(0.008);
+    }
+  }
+  // Sitting up, her chest is lifted off the sand on her fore-flippers.
+  const sitting = cows.find((c) => c.lift === 1)!;
+  expect(sitting.gaps[sitting.gaps.length - 2]).toBeGreaterThan(0.02);
   expect(errors).toEqual([]);
 });

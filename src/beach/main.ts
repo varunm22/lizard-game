@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
-import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from '../world/terrain';
+import { buildTerrain, EDGE_WALL_GROUP, IGNORE_IGUANAS, IGUANA_GROUP, PLANT_STEM_GROUP, PLAYER_GROUP, terrainHeight } from '../world/terrain';
 import { updateUnderwaterView, WATER_Y, waterDepth } from '../world/shore';
 import { covers } from '../world/obstacles';
 import { Cover } from '../world/cover';
@@ -64,6 +64,9 @@ const TEXT: HudText = {
   ],
 };
 
+/** Rays for the ground itself: past plants, sea lions, iguanas, the lizard and the edge walls. */
+const SURFACE_ONLY = (0xffff << 16) | (0xffff & ~(EDGE_WALL_GROUP | PLANT_STEM_GROUP | IGUANA_GROUP | PLAYER_GROUP));
+
 /** The sea lion beach (`?level=beach`), the last stage: ashore past the bull, and win a rock on the lek. */
 export async function beach() {
   await (RAPIER as { init?: () => Promise<void> }).init?.();
@@ -96,7 +99,18 @@ export async function beach() {
   feeding.onMouthful = () => vitals.eat();
 
   const sealions = new SeaLions(await loadSeaLionKit(seaLionsUrl), scene, world, player);
-  const birds = await Birds.load(penguinUrl, cormorantUrl, scene, (out) => (player.swimming ? player.feetAt(1, out) : null));
+  const down = { x: 0, y: -1, z: 0 };
+  const birds = await Birds.load(
+    penguinUrl,
+    cormorantUrl,
+    scene,
+    (out) => (player.swimming ? player.feetAt(1, out) : null),
+    // The top of the sand, lava or a rock (not plants, animals or the lizard).
+    (x, z) => {
+      const hit = world.castRay(new RAPIER.Ray({ x, y: 2, z }, down), 4, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, SURFACE_ONLY, undefined, player.body);
+      return Math.max(terrainHeight(x, z), hit ? 2 - hit.timeOfImpact : -Infinity);
+    },
+  );
   // The rival males in their breeding colours, each a little different; the females plain and smaller-looking, duller.
   const rivalModels: LizardModel[] = [];
   for (const r of RIVALS) {

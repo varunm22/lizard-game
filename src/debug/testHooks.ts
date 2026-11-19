@@ -570,7 +570,8 @@ export interface BeachTestHooks
   /** The bull: state, where he is and faces, his muzzle, whether he's swimming, and counts; the cows and pups. */
   sealions(): {
     bull: { state: string; x: number; y: number; z: number; yaw: number; nose: { x: number; z: number }; swim: number; dodged: number; hits: number };
-    cows: { x: number; z: number; yaw: number; lift: number }[];
+    /** `gaps`: for each solid part of her trunk, rump to head, how far its underside is above the sand (m). */
+    cows: { x: number; z: number; yaw: number; lift: number; gaps: number[] }[];
     pups: { state: string; x: number; z: number; yaw: number }[];
     nudges: number;
   };
@@ -603,6 +604,8 @@ export interface BeachTestHooks
   displayRocks(): { x: number; z: number; r: number; top: number }[];
   /** The penguins and cormorants: where each is, swimming or not; whether the lizard has swum with each kind. */
   birds(): { kind: string; x: number; y: number; z: number; swim: number }[];
+  /** The ellipses the swimming penguins follow (middle and half-widths, m). */
+  swimLoops(): { x: number; z: number; rx: number; rz: number }[];
   birdGoals(): { penguin: boolean; cormorant: boolean };
   /** The island's bars, as the lagoon's. */
   vitals(): { health: number; warmth: number; fullness: number; air: number; down: boolean; downBy: string | null };

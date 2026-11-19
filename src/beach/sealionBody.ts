@@ -22,11 +22,80 @@ export async function loadSeaLionKit(url: string): Promise<SeaLionKit> {
   return kit;
 }
 
+/** One piece of a sea lion's solid body: a capsule lying across it (along its X), carried by `bone`. */
+export interface BodyPart {
+  bone: string;
+  /** Its middle at rest (model space), radius and half the length of its straight part (m). */
+  centre: THREE.Vector3;
+  radius: number;
+  half: number;
+}
+
+/** Slices along the body (body lengths from the middle, +Z forward) and the bone each is carried by. */
+const SLICES: [number, string][] = [
+  [0.44, 'head'],
+  [0.34, 'neck'],
+  [0.23, 'chest'],
+  [0.12, 'chest'],
+  [0.01, 'spine'],
+  [-0.1, 'spine'],
+  [-0.21, 'hips'],
+  [-0.31, 'hips'],
+];
+const TRUNK = new Set(['hips', 'spine', 'chest', 'neck', 'head', 'jaw']);
+/** A part sits this much inside the skin over the back and sides, so the lizard touches the coat, not air. */
+const INSET = 0.9;
+
+/**
+ * Fit the body's solid parts to its mesh: for each slice, the trunk's vertices there (not the
+ * flippers'), as a capsule across the body as wide and deep as they are.
+ */
+function fitParts(root: THREE.Object3D, length: number): BodyPart[] {
+  let mesh: THREE.SkinnedMesh | null = null;
+  root.traverse((o) => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh && !mesh) mesh = o as THREE.SkinnedMesh;
+  });
+  if (!mesh) throw new Error('sea lion has no skinned mesh');
+  const m = mesh as THREE.SkinnedMesh;
+  root.updateMatrixWorld(true);
+  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(m.matrixWorld);
+  const pos = m.geometry.getAttribute('position');
+  const si = m.geometry.getAttribute('skinIndex');
+  const sw = m.geometry.getAttribute('skinWeight');
+  const trunk = m.skeleton.bones.map((b) => TRUNK.has(b.name.replace(/_\d+$/, '')));
+  const box = SLICES.map(() => ({ x: 0, lo: Infinity, hi: -Infinity, n: 0 }));
+  const p = new THREE.Vector3();
+  const band = 0.05 * length;
+  for (let i = 0; i < pos.count; i++) {
+    let w = 0;
+    for (let k = 0; k < 4; k++) if (trunk[si.getComponent(i, k)]) w += sw.getComponent(i, k);
+    if (w < 0.5) continue;
+    p.fromBufferAttribute(pos, i).applyMatrix4(toRoot);
+    SLICES.forEach(([z], j) => {
+      if (Math.abs(p.z - z * length) > band) return;
+      const b = box[j];
+      b.x = Math.max(b.x, Math.abs(p.x));
+      b.lo = Math.min(b.lo, p.y);
+      b.hi = Math.max(b.hi, p.y);
+      b.n++;
+    });
+  }
+  return SLICES.flatMap(([z], j) => {
+    const b = box[j];
+    if (!b.n) return [];
+    const radius = ((b.hi - b.lo) / 2) * INSET;
+    // Its underside on the belly's, so it lies on the sand as the body does.
+    return [{ bone: SLICES[j][1], centre: new THREE.Vector3(0, b.lo + radius, z * length), radius, half: Math.max(0, b.x * INSET - radius) }];
+  });
+}
+
 const SIDES = [
   ['_L', 1],
   ['_R', -1],
 ] as const;
 const UP = new THREE.Vector3(0, 1, 0);
+/** A Rapier capsule stands along Y; this lays it along X, across the body. */
+const ACROSS = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
 const q = new THREE.Quaternion();
 const v = new THREE.Vector3();
 const w = new THREE.Vector3();
@@ -49,6 +118,8 @@ export class SeaLionBody {
   readonly rig: FreeRig;
   readonly length: number;
   readonly height: number;
+  /** Its solid parts, fitted to the mesh at rest; `partAt` says where each is posed now. */
+  readonly parts: BodyPart[];
   lift = 0;
   gait = 0;
   swim = 0;
@@ -74,6 +145,7 @@ export class SeaLionBody {
     this.rig = new FreeRig(this.root);
     this.length = k.length;
     this.height = k.height;
+    this.parts = fitParts(this.root, k.length);
     const r = (n: string) => this.rig.rest(n);
     this.arm = r('fore_L').distanceTo(r('arm_L'));
     this.fore = r('hand_L').distanceTo(r('fore_L'));
@@ -110,12 +182,14 @@ export class SeaLionBody {
     const ph = this.phase;
     const heave = Math.sin(ph) * g;
     const breathe = Math.sin(this.breath * 1.6) * 0.02;
-    // Spine: pivoting up off the hips when propped, heaving as it galumphs, level in the water.
-    const hipUp = (0.1 * lift + 0.04 * heave) * (1 - sw);
-    const spineUp = (0.28 * lift + 0.08 * heave) * (1 - sw) + 0.03 * Math.sin(ph) * sw + breathe;
-    const chestUp = (0.32 * lift + 0.1 * heave) * (1 - sw) + 0.05 * Math.sin(ph + 0.6) * sw;
-    const neckUp = 0.45 * lift - 0.2 * this.rest * (1 - lift) + 0.15 * g - 0.05 * sw - 0.1 * heave;
-    const headUp = -0.85 * lift + 0.1 * this.rest * (1 - lift) - 0.1 * g + this.nod;
+    // Spine: propped, the hindquarters and belly stay on the sand and the body curves up through
+    // the chest onto the fore-flippers, the neck high (each turn below adds to its parent's);
+    // heaving as it galumphs, level in the water.
+    const hipUp = 0.04 * heave * (1 - sw);
+    const spineUp = (0.07 * lift + 0.08 * heave) * (1 - sw) + 0.03 * Math.sin(ph) * sw + breathe;
+    const chestUp = (0.62 * lift + 0.1 * heave) * (1 - sw) + 0.05 * Math.sin(ph + 0.6) * sw;
+    const neckUp = 0.55 * lift - 0.2 * this.rest * (1 - lift) + 0.15 * g - 0.05 * sw - 0.1 * heave;
+    const headUp = -1.12 * lift + 0.1 * this.rest * (1 - lift) - 0.1 * g + this.nod;
     const bodyYaw = this.look * 0.15;
     const hipsAt = v.copy(rig.rest('hips'));
     hipsAt.y += 0.004 * L * Math.max(0, heave);
@@ -168,6 +242,13 @@ export class SeaLionBody {
       ankle.y = Math.max(ankle.y, 0.01 * L);
       rig.place('foot' + s, ankle, aimFlat(q, footRest, UP, dir, sw > 0.5 ? w.set(side, 0, 0) : UP));
     }
+  }
+
+  /** Where part `i` is posed now (model space): its middle, and its turn with the capsule lying across the body. */
+  partAt(i: number, centre: THREE.Vector3, turnOut: THREE.Quaternion) {
+    const part = this.parts[i];
+    this.rig.point(part.bone, part.centre, centre);
+    return turnOut.copy(this.rig.turn.get(part.bone)!).multiply(ACROSS);
   }
 
   private restDir(from: string, to: string) {

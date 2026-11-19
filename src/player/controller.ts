@@ -639,11 +639,12 @@ export class PlayerController {
 
   /**
    * Something big walked into the lizard: slide it (dx, dz) along the ground, stopping at anything
-   * solid except `pusher` itself and plant stems. Returns how far it actually went (m).
+   * solid except `pusher` itself (and anything else on its body) and plant stems. Returns how far it actually went (m).
    */
   shove(dx: number, dz: number, pusher: RAPIER.Collider): number {
     this.desired.set(dx, 0, dz);
-    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, IGNORE_STEMS, (c) => c.handle !== pusher.handle);
+    const body = pusher.parent();
+    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, IGNORE_STEMS, (c) => c.handle !== pusher.handle && !(body && c.parent()?.handle === body.handle));
     const m = this.kcc.computedMovement();
     this.position.x += m.x;
     this.position.z += m.z;

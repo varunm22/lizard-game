@@ -92,11 +92,13 @@ export class Birds {
     cormorant: THREE.Object3D,
     scene: THREE.Scene,
     private swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null,
+    private surface: (x: number, z: number) => number,
   ) {
     PENGUIN_ROCKS.forEach((p, i) => this.penguins.push(this.add(penguin, scene, i, p.x, p.z, p.yaw)));
     SWIM_LOOPS.forEach((l, i) => {
-      const b = this.add(penguin, scene, 2 + i, l.x + l.rx, l.z, 0);
-      b.swim = 1;
+      const b = this.add(penguin, scene, 2 + i, l.x, l.z, 0);
+      this.swimLoop(b, i);
+      b.begin();
       this.penguins.push(b);
     });
     CORMORANT_ROCKS.forEach((c, i) => this.cormorants.push(this.add(cormorant, scene, 5 + i, c.x, c.z, c.yaw)));
@@ -107,9 +109,10 @@ export class Birds {
     this.goer.loop = w;
   }
 
-  static async load(penguinUrl: string, cormorantUrl: string, scene: THREE.Scene, swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null) {
+  /** `surface(x, z)`: the top of whatever is there, sand, lava or a rock. */
+  static async load(penguinUrl: string, cormorantUrl: string, scene: THREE.Scene, swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null, surface: (x: number, z: number) => number) {
     const [p, c] = await Promise.all([loadBird(penguinUrl, 'Penguin'), loadBird(cormorantUrl, 'Cormorant')]);
-    return new Birds(p, c, scene, swimmerFeet);
+    return new Birds(p, c, scene, swimmerFeet, surface);
   }
 
   private add(source: THREE.Object3D, scene: THREE.Scene, seed: number, x: number, z: number, yaw: number) {
@@ -121,25 +124,36 @@ export class Birds {
     return b;
   }
 
+  /**
+   * Put a bird at (x, z): floating `floatAt` deep if it's swimming and there's water enough under
+   * it, otherwise standing on what's there. A swimmer never swims over rock: where a rock or the
+   * lava comes up under it, it stands (it is wading in or out).
+   */
   private place(b: Bird, x: number, z: number, floatAt: number) {
-    const ground = terrainHeight(x, z);
-    b.pos.set(x, b.swim > 0.5 ? Math.max(ground, WATER_Y - floatAt) : ground, z);
+    const ground = this.surface(x, z);
+    if (b.swim > 0.5 && ground > WATER_Y - floatAt) b.swim = 0;
+    b.pos.set(x, b.swim > 0.5 ? WATER_Y - floatAt : ground, z);
+  }
+
+  /** A swimming penguin where its time `t` puts it round loop `i`. */
+  private swimLoop(b: Bird, i: number) {
+    const l = SWIM_LOOPS[i];
+    const r = (l.rx + l.rz) / 2;
+    const a = (b.t * PENGUIN_SPEED) / r + i * 2;
+    b.yaw = Math.atan2(-Math.sin(a) * l.rx, Math.cos(a) * l.rz);
+    b.swim = 1;
+    this.place(b, l.x + Math.cos(a) * l.rx, l.z + Math.sin(a) * l.rz, 0.022);
   }
 
   step(dt: number) {
     this.time += dt;
     const lizard = this.swimmerFeet(v);
     // The swimmers' loops.
-    SWIM_LOOPS.forEach((l, i) => {
+    SWIM_LOOPS.forEach((_, i) => {
       const b = this.penguins[2 + i];
       b.begin();
       b.t += dt;
-      const r = (l.rx + l.rz) / 2;
-      const a = (b.t * PENGUIN_SPEED) / r + i * 2;
-      const x = l.x + Math.cos(a) * l.rx;
-      const z = l.z + Math.sin(a) * l.rz;
-      b.yaw = Math.atan2(-Math.sin(a) * l.rx, Math.cos(a) * l.rz);
-      this.place(b, x, z, 0.022);
+      this.swimLoop(b, i);
     });
     for (const b of this.penguins.slice(0, 2)) {
       b.begin();
