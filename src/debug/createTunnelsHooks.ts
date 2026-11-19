@@ -9,6 +9,7 @@ import type { TunnelsTestHooks } from './testHooks';
 import type { TunnelsRun } from '../tunnels/run';
 import type { Owls } from '../tunnels/owl';
 import type { Sharks } from '../tunnels/sharks';
+import type { RockSection } from '../tunnels/section';
 import { FINISH, floorOpen, FLOORS, HOLES, ISLET, lightAt, POOLS, RAMPS, ROOSTS, SKYLIGHTS, START, STEPS, TOP } from '../tunnels/layout';
 
 interface TunnelsHookContext {
@@ -21,13 +22,14 @@ interface TunnelsHookContext {
   run: TunnelsRun;
   owls: Owls;
   sharks: Sharks;
+  section: RockSection;
   setInput: TunnelsTestHooks['setInput'];
   viewFrom: TunnelsTestHooks['viewFrom'];
 }
 
 /** The lava tunnels' test hooks (`window.__tunnels`); the tunnels' main owns input and view overrides. */
 export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
-  const { world, player, states, camera, followCam, fade, run, owls, sharks, setInput, viewFrom } = ctx;
+  const { world, player, states, camera, followCam, fade, run, owls, sharks, section, setInput, viewFrom } = ctx;
   const down = (x: number, z: number, from: number) => {
     const hit = world.castRay(new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }), 10, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
     return hit ? from - hit.timeOfImpact : null;
@@ -42,13 +44,24 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
     floorBelow: (x, z, from) => down(x, z, from),
     floorOpen,
     cameraClear: () => {
-      // Along the line from the camera to the point it looks at: anything in between is in the way.
+      // Along the line from the camera to the point it looks at: anything drawn in between is in
+      // the way. Rock the section cuts away isn't drawn, so the line carries on past it.
       const t = followCam.target;
       const d = new THREE.Vector3().subVectors(t, camera.position);
       const length = d.length();
       d.divideScalar(length);
-      const hit = world.castRay(new RAPIER.Ray(camera.position, d), length, false, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
-      return hit === null;
+      const from = camera.position.clone();
+      let left = length;
+      for (let i = 0; i < 64 && left > 0; i++) {
+        const hit = world.castRay(new RAPIER.Ray(from, d), left, false, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
+        if (!hit) return true;
+        const at = from.clone().addScaledVector(d, hit.timeOfImpact);
+        if (!section.cuts(at)) return false;
+        const skip = hit.timeOfImpact + 0.002;
+        from.addScaledVector(d, skip);
+        left -= skip;
+      }
+      return true;
     },
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
@@ -65,7 +78,7 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
         state: states.state,
       };
     },
-    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded, lift: followCam.lift }),
+    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded }),
     setInput,
     viewFrom,
     teleport: (x, z, yaw, y) => {

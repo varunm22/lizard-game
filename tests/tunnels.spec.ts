@@ -352,7 +352,7 @@ test('pushing into the walls round the flooded pool and the cove never gets the 
   expect(s).toEqual([]);
 });
 
-test('the camera stays inside the tubes as it turns: nothing between it and the lizard, and no jumps', async ({ page }) => {
+test('the camera holds its distance as it turns in the tubes, with nothing drawn between it and the lizard', async ({ page }) => {
   const errors = await bootTunnels(page);
   const spots = await page.evaluate(() => {
     const g = window.__tunnels!;
@@ -384,7 +384,7 @@ test('the camera stays inside the tubes as it turns: nothing between it and the 
   expect(errors).toEqual([]);
   for (const s of spots) {
     expect(s.blocked).toBe(0);
-    // Eased: never more than 6 cm a frame, even turning half a circle a second.
-    expect(s.jump).toBeLessThan(0.06);
+    // Steady: the rock never pulls the arm in.
+    expect(s.jump).toBeLessThan(0.005);
   }
 });

@@ -4,7 +4,7 @@ import { loadGltf } from '../render/gltf';
 import { FLOORS, JAMEO, rockColour, rockShade, SKYLIGHTS, TOP } from './layout';
 
 /** Colour of the rock's inside (its back faces). */
-const ROCK_INSIDE = [0.05, 0.043, 0.037];
+const ROCK_INSIDE = [0.025, 0.021, 0.018];
 
 /**
  * The tunnels' rock (`tunnels.glb`, from `assets-src/tunnels.py`): one mesh of every wall, roof and

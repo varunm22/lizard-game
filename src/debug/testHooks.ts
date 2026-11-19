@@ -231,7 +231,7 @@ export interface GameTestHooks {
   /** Ripples spreading on the pond: where each started, seconds since, and its strength (0.35 wake to 1.2 splash). */
   ripples: () => { x: number; z: number; age: number; strength: number }[];
   /** `faded` names the obstacles currently blocking the view of the lizard. */
-  camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[]; lift?: number };
+  camera: () => { x: number; y: number; z: number; yaw: number; pitch: number; arm: number; distance: number; faded: string[] };
   /**
    * Override player input fields (merged over the real devices) for exactly `forSteps` physics
    * steps, or until called with null when `forSteps` is 0. Camera look is not affected.
@@ -525,7 +525,7 @@ export interface TunnelsTestHooks
   floorBelow(x: number, z: number, from: number): number | null;
   /** Whether (x, z) is open on the lower floor (a tube, room, the jameo or the cove), not inside the rock between them. */
   floorOpen(x: number, z: number): boolean;
-  /** Whether nothing solid lies between the follow camera and the point on the lizard it looks at. */
+  /** Whether nothing drawn lies between the follow camera and the point on the lizard it looks at (rock the section cuts away doesn't count). */
   cameraClear(): boolean;
 }
 

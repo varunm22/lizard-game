@@ -72,6 +72,8 @@ export function floorOpen(x: number, z: number): boolean {
   const n = k * sx + i;
   return (floorAirBits[n >> 3] & (1 << (n & 7))) !== 0;
 }
+/** The lower floor's open grid as `floorOpen` reads it: origin and cell (m), size (cells), one bit a cell. */
+export const floorAirGrid = () => ({ origin: FLOOR_AIR.origin, cell: FLOOR_AIR.cell, size: FLOOR_AIR.size, bits: floorAirBits });
 export const RAMPS = LAYOUT.ramps as Ramp[];
 /** A rubble pile's steps: how many, each riser's height and each tread's depth (m). */
 export const STEPS = LAYOUT.steps as { count: number; riser: number; tread: number };
