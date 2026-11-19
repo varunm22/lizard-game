@@ -31,15 +31,15 @@ export const CHARGE_TIME = 2.5;
 const COOLDOWN = 4;
 /** Swimming his beat, this fast (m/s). */
 const PATROL_SPEED = 0.16;
-/** His muzzle this near the lizard (m) hits it, and throws it this far. */
-const HIT_REACH = 0.12;
+/** His head this near the lizard's body (m, skin to skin) hits it, and throws it this far. */
+const HIT_REACH = 0.02;
 const THROW = 0.12;
 /** A pup gets curious about the lizard within this (m), comes at this speed, and nudges it this far over this long (s). */
 export const PUP_CURIOUS = 0.55;
 const PUP_SPEED = 0.12;
 const NUDGE = 0.05;
-/** Its nose this near the middle of the lizard (m) touches it: half the lizard's length, and the gap the lizard keeps from a body pressing into it. */
-const NOSE_REACH = 0.12;
+/** Its head this near the lizard's body (m, skin to skin) touches it. */
+const NOSE_REACH = 0.008;
 const NUDGE_TIME = 0.4;
 /** After a nudge, a pup goes back to its mother and rests at least this long (s). */
 const PUP_REST = 6;
@@ -197,7 +197,6 @@ export class SeaLions {
   private beatTo = BULL_BEAT.x1;
   private hit = false;
   private feet = new THREE.Vector3();
-  private v = new THREE.Vector3();
   private time = 0;
 
   constructor(
@@ -346,9 +345,7 @@ export class SeaLions {
         jaw = 0.35 * Math.max(0, Math.sin(this.timer * 7));
         body.look = 0;
         body.nod = 0;
-        const nose = b.nose(this.v);
-        const nd = Math.hypot(feet.x - nose.x, feet.z - nose.z);
-        if (nd < HIT_REACH && this.prey) {
+        if (this.touching(b, HIT_REACH) && this.prey) {
           const fx = Math.sin(b.yaw);
           const fz = Math.cos(b.yaw);
           if (this.prey.struck(fx, fz)) {
@@ -399,8 +396,6 @@ export class SeaLions {
     const body = l.body;
     let gait = 0;
     let lift = 0;
-    const nose = l.nose(this.v);
-    const nd = Math.hypot(feet.x - nose.x, feet.z - nose.z);
     const onLand = huntable && !this.prey!.swimming();
     switch (p.state) {
       case 'rest':
@@ -413,7 +408,7 @@ export class SeaLions {
           p.state = 'back';
           break;
         }
-        if (nd < NOSE_REACH) {
+        if (this.touching(l, NOSE_REACH)) {
           p.state = 'nudge';
           p.nudgeLeft = NUDGE_TIME;
           this.nudges++;
@@ -463,6 +458,15 @@ export class SeaLions {
   }
 
   /** Whether a pup has walked into a cow (it goes round by stopping and turning on). */
+  /** Its forebody (head, neck or chest) within `reach` (m) of the lizard's body: their solid bodies, skin to skin. */
+  private touching(l: SeaLion, reach: number) {
+    const lizard = this.player.collider;
+    return l.colliders.slice(0, 4).some((c) => {
+      const hit = c.contactCollider(lizard, reach);
+      return !!hit && hit.distance < reach;
+    });
+  }
+
   private blocked(l: SeaLion) {
     return this.cows.some((c) => Math.hypot(c.pos.x - l.pos.x, c.pos.z - l.pos.z) < 0.5 * (c.body.length + l.body.length) * 0.55);
   }

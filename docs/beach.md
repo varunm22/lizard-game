@@ -34,9 +34,8 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   `CHARGE_TIME` at most, never past `BULL_STRETCH` up the sand). His muzzle within `HIT_REACH` takes
   `VITALS.bullHit` (cause `'sealion'`) and shoves the lizard aside. A charge or warning that ends
   without a hit counts as dodged. Pups come over to a lizard within `PUP_CURIOUS`, nudge it
-  (`player.shove`) and go back to their mothers. The reaches are measured to the lizard's middle and
-  include the gap the controller keeps from a body pressing into it (about 0.12 m), so don't shrink
-  them to "touching" distances.
+  (`player.shove`) and go back to their mothers. The bull's hit and a pup's nudge only count when its forebody
+  (head, neck or chest capsules) actually touches the lizard's body (`touching`, skin to skin), not a distance to its middle.
 - **Rival males and females** (`rivals.ts`): each an `Npc`, a `PlayerController` + `LizardVisual`
   driven by an `InputState` like the island's iguanas. A male warns a lizard within `WARN` of his
   rock, displaying (`displayNod`, three head-bobs) every 1.8 s; a display back (B, gamepad Y) within
