@@ -604,6 +604,8 @@ export interface BeachTestHooks
   displayRocks(): { x: number; z: number; r: number; top: number }[];
   /** The penguins and cormorants: where each is, swimming or not; whether the lizard has swum with each kind. */
   birds(): { kind: string; x: number; y: number; z: number; swim: number }[];
+  /** The penguin and the cormorant that go to sea and back: what each is doing, and how far under it is on a dive (0..1). */
+  birdTrips(): { kind: string; state: string; under: number; x: number; y: number; z: number }[];
   /** The ellipses the swimming penguins follow (middle and half-widths, m). */
   swimLoops(): { x: number; z: number; rx: number; rz: number }[];
   birdGoals(): { penguin: boolean; cormorant: boolean };

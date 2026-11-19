@@ -266,3 +266,30 @@ test('the sea lions lie on the sand: a cow lying down or sitting up rests her be
   expect(sitting.gaps[sitting.gaps.length - 2]).toBeGreaterThan(0.02);
   expect(errors).toEqual([]);
 });
+
+test('a penguin and a cormorant go to sea and come back: in from the edge, swimming and diving clear of rock, out onto the rock', async ({ page }) => {
+  const errors = await bootBeach(page);
+  const r = await page.evaluate(() => {
+    const g = window.__beach!;
+    const seen = ['', ''];
+    const dived = [false, false];
+    const bad: string[] = [];
+    for (let i = 0; i < 1100 && !seen.every((s) => /wisob a$/.test(s)); i++) {
+      g.advance(6);
+      g.birdTrips().forEach((t, k) => {
+        const mark = t.state === 'ashore' ? ' a' : t.state[0];
+        if (!seen[k].endsWith(mark)) seen[k] += mark;
+        if (t.under > 0.5) dived[k] = true;
+        const top = Math.max(g.terrainHeight(t.x, t.z), g.groundAt(t.x, t.z, 2) ?? -9);
+        // At sea, water under it all the way round; ashore and walking, on the ground, not in it or floating.
+        if (t.state === 'sea' && top > t.y - 0.005) bad.push(`${t.kind} sea over rock ${t.x.toFixed(2)},${t.z.toFixed(2)}`);
+        if ((t.state === 'walk' || t.state === 'back' || t.state === 'ashore') && Math.abs(t.y - top) > 0.004) bad.push(`${t.kind} ${t.state} off the ground by ${(t.y - top).toFixed(3)}`);
+      });
+    }
+    return { seen, dived, bad: bad.slice(0, 5) };
+  });
+  for (const s of r.seen) expect(s).toMatch(/ awisob a$/);
+  expect(r.dived).toEqual([true, true]);
+  expect(r.bad).toEqual([]);
+  expect(errors).toEqual([]);
+});

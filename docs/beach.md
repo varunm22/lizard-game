@@ -47,8 +47,14 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   `CLAIM_TIME` claims it; seeing off the male who comes back for it counts as `defended` and brings
   the nearest female over; two displays to her (`COURTSHIP`) and she chooses the lizard: the run is won.
 - **Seabirds** (`birds.ts`, `assets-src/penguin.py`, `assets-src/cormorant.py`): Galápagos penguins
-  (two standing, two swimming loops low in the water, head up) and flightless cormorants (one holding
-  its stubby wings out to dry, one going to sea and back). Swimming within `WITH` of a swimming bird
+  (one standing, two swimming loops low in the water, head up) and flightless cormorants (one holding
+  its stubby wings out to dry). One of each goes to sea and back (`Trip`, `TRIPS`), the way its
+  species does: down to the water's edge or the top of a drop to it (`plan`), the penguin waddling
+  and hopping in headfirst, the cormorant leaning out and sliding in breast first. At sea they swim
+  an oval kept clear of rock and dive now and then; the cormorant rides low, back awash, neck up in
+  an S, kicking with both feet together, wings folded. Back, the penguin leaps out onto the rock and
+  lands on its feet; the cormorant scrambles out with its wings half open and holds them out to dry.
+  Hook `birdTrips()`. Swimming within `WITH` of a swimming bird
   ticks its goal. The swimming loops (`SWIM_LOOPS`) keep to open water clear of the point's lava
   (a test samples them); and a bird only swims where there's water under it (`Birds.place` casts
   down past animals and plants): where rock comes up under a swimmer it stands on it, wading in or out.
