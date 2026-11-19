@@ -13,7 +13,7 @@ import { PlayerController } from '../player/controller';
 import { MovementStateMachine, movementFacts } from '../player/state';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
-import { FollowCamera } from '../camera/followCamera';
+import { FollowCamera, type SoftArm } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createTunnelsHooks } from '../debug/createTunnelsHooks';
 import { createGoalsPanel } from '../goalsPanel';
@@ -29,7 +29,6 @@ import sealionUrl from '../assets/sealion.glb?url';
 import { loadFreeRigKit } from '../render/freeRig';
 import { FINISH, lightAt, outside, setLight, START, START_Y, terrainOrUpper } from './layout';
 import { buildRock, buildSunbeams } from './rock';
-import { RockCutaway } from './cutaway';
 import { TunnelsRun } from './run';
 import { HEARING, Owls } from './owl';
 import { Sharks } from './sharks';
@@ -52,6 +51,8 @@ const TEXT: HudText = {
  * Fog in the tubes: dark, close, warm grey; out in the cove, the sky's and far off, so the islet
  * shows across the water. Under water: dark green in the tunnels, blue-green in the sea.
  */
+/** The follow camera's eased arm in the tubes (see `SoftArm`): it keeps 3.5 cm off the walls. */
+const CAMERA_ARM: SoftArm = { radius: 0.035, inRate: 8, outRate: 2.5 };
 const CAVE_FOG = { colour: new THREE.Color(0x1d1916), near: 1.2, far: 5 };
 const OPEN_FOG = { colour: new THREE.Color(PALETTE.sky), near: 4, far: 24 };
 const UNDERWATER_FOG = { colour: new THREE.Color(0x16302f), near: 0.05, far: 0.9 };
@@ -76,8 +77,7 @@ export async function tunnels() {
   camera.add(fill);
   scene.add(camera);
   buildTerrain(scene, world);
-  const rock = await buildRock(rockUrl, scene, world);
-  const cutaway = new RockCutaway(rock.mesh, scene);
+  await buildRock(rockUrl, scene, world);
   const beams = buildSunbeams(scene, SUN_OFFSET);
   const water = new Water(scene);
   const splashes = new Splashes(water);
@@ -101,8 +101,10 @@ export async function tunnels() {
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
   const fade = new OccluderFade(world, []);
-  // The camera keeps its distance through the rock; the rock in the way is cut away instead.
-  const followCam = new FollowCamera(camera, world, player.body, new Set([...fade.handles, rock.collider.handle]));
+  // The camera stays inside the tubes: it never goes into the rock (from in there every face of the
+  // rock is a back face, so the outside world shows through) and nothing is cut away. A wider sweep
+  // leads the arm so the tube's lumps ease it in and out rather than jerk it.
+  const followCam = new FollowCamera(camera, world, player.body, new Set(fade.handles), CAMERA_ARM);
   followCam.yaw = START.yaw;
   const input = new Input(renderer.domElement);
 
@@ -225,7 +227,6 @@ export async function tunnels() {
       camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
-    cutaway.update(camera.position, viewOffset ? (viewTarget ?? feet) : followCam.target);
     lizard.updateBodySpheres();
     owls.pose(frameDt);
     sharks.pose();

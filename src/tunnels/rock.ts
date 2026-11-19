@@ -3,6 +3,9 @@ import RAPIER from '@dimforge/rapier3d';
 import { loadGltf } from '../render/gltf';
 import { FLOORS, JAMEO, rockColour, rockShade, SKYLIGHTS, TOP } from './layout';
 
+/** Colour of the rock's inside (its back faces). */
+const ROCK_INSIDE = [0.05, 0.043, 0.037];
+
 /**
  * The tunnels' rock (`tunnels.glb`, from `assets-src/tunnels.py`): one mesh of every wall, roof and
  * upper floor, coloured here from the baked light and drawn unlit. The same triangles are its
@@ -41,7 +44,17 @@ export async function buildRock(url: string, scene: THREE.Scene, world: RAPIER.W
   }
   flat.deleteAttribute('normal');
   flat.setAttribute('color', new THREE.BufferAttribute(colours, 3));
-  const mesh = new THREE.Mesh(flat, new THREE.MeshBasicMaterial({ vertexColors: true }));
+  // Back faces are the rock's inside: should the camera ever graze into the rock, it sees dark
+  // stone there rather than straight through to the sky and the tubes beyond.
+  const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+  if (!gl_FrontFacing) diffuseColor.rgb = vec3(${ROCK_INSIDE.map((v) => v.toFixed(3)).join(', ')});`,
+    );
+  };
+  const mesh = new THREE.Mesh(flat, material);
   mesh.name = 'rock';
   scene.add(mesh);
 

@@ -322,3 +322,40 @@ test('pushing into the walls round the flooded pool and the cove never gets the 
   });
   expect(s).toEqual([]);
 });
+
+test('the camera stays inside the tubes as it turns: nothing between it and the lizard, and no jumps', async ({ page }) => {
+  const errors = await bootTunnels(page);
+  const spots = await page.evaluate(() => {
+    const g = window.__tunnels!;
+    const [lower, upper] = g.layout().floors;
+    // A straight upper tube, the start's breakdown-strewn tube end, and a lower tube.
+    const at = [
+      { x: -2.5, z: -1.0, y: upper },
+      { x: -3.0, z: 0.0, y: upper },
+      { x: -0.6, z: -1.4, y: lower },
+    ];
+    return at.map(({ x, z, y }) => {
+      g.teleport(x, z, 0, y + 0.01);
+      g.advance(30);
+      let blocked = 0;
+      let jump = 0;
+      let arm = g.camera().arm;
+      // A full turn of the camera in two seconds (a teleport turns the camera with the lizard).
+      for (let i = 1; i <= 120; i++) {
+        g.teleport(x, z, (2 * Math.PI * i) / 120, y + 0.005);
+        g.advance(1);
+        if (!g.cameraClear()) blocked++;
+        const c = g.camera();
+        jump = Math.max(jump, Math.abs(c.arm - arm));
+        arm = c.arm;
+      }
+      return { blocked, jump };
+    });
+  });
+  expect(errors).toEqual([]);
+  for (const s of spots) {
+    expect(s.blocked).toBe(0);
+    // Eased: never more than 6 cm a frame, even turning half a circle a second.
+    expect(s.jump).toBeLessThan(0.06);
+  }
+});

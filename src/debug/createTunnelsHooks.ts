@@ -41,6 +41,15 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
     groundAt: (x, z, from = 5) => down(x, z, from),
     floorBelow: (x, z, from) => down(x, z, from),
     floorOpen,
+    cameraClear: () => {
+      // Along the line from the camera to the point it looks at: anything in between is in the way.
+      const t = followCam.target;
+      const d = new THREE.Vector3().subVectors(t, camera.position);
+      const length = d.length();
+      d.divideScalar(length);
+      const hit = world.castRay(new RAPIER.Ray(camera.position, d), length, false, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, player.body);
+      return hit === null;
+    },
     player: () => {
       const f = player.feetAt(1, new THREE.Vector3());
       return {
@@ -56,7 +65,7 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
         state: states.state,
       };
     },
-    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded }),
+    camera: () => ({ ...camera.position, yaw: followCam.yaw, pitch: followCam.pitch, arm: followCam.arm, distance: followCam.distance, faded: fade.faded, lift: followCam.lift }),
     setInput,
     viewFrom,
     teleport: (x, z, yaw, y) => {
