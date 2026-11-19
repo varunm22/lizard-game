@@ -146,7 +146,10 @@ the armature's extras.
   tails barely moving. A swimmer within 0.42 m wakes one: it bolts down the channel and out to sea,
   stays away 9 s, and cruises back to its spot. Harmless; startling one is a goal.
 - **Sea lions** (`sealions.ts`): a herd on the islet's north beach (a bull, cows, pups: one model
-  scaled and tinted), breathing and now and then lifting a head. Scenery for the stage to come.
+  scaled and tinted), breathing and now and then lifting a head. Each lies along the beach's slope
+  (pitched nose to tail, rolled flank to flank) and is let down until its lowest skin is 1 cm into
+  the sand (`lieDown`): level, they buried an end up to half a metre and held the other in the air.
+  Out of reach (past the physics terrain), so no colliders. Scenery for the stage to come.
 
 ## Run and goals (`run.ts`)
 

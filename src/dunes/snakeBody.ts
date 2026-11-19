@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
+import { terrainHeight } from '../world/terrain';
 
 /** The racer model from assets-src/snake.py, with the measurements written on its armature. */
 export interface SnakeKit {
@@ -193,7 +194,9 @@ export class SnakeBody {
     const b = tr[Math.min(1, tr.length - 1)];
     const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
     const over = a.d - want;
-    return out.set(a.x - ((b.x - a.x) / len) * over, a.y, a.z - ((b.z - a.z) / len) * over);
+    const x = a.x - ((b.x - a.x) / len) * over;
+    const z = a.z - ((b.z - a.z) / len) * over;
+    return out.set(x, a.y + terrainHeight(x, z) - terrainHeight(a.x, a.z), z);
   }
 
   /**
@@ -219,7 +222,9 @@ export class SnakeBody {
       const len = Math.hypot(this.b.x - this.a.x, this.b.z - this.a.z);
       px += Math.sin(yaw) * len;
       pz += Math.cos(yaw) * len;
-      this.front[i].set(px, this.b.y, pz);
+      // Off its track the body lies on the ground there, not at the track's height: across a slope
+      // that would bury the curve on the uphill side and hold it in the air on the other.
+      this.front[i].set(px, this.b.y + terrainHeight(px, pz) - terrainHeight(this.b.x, this.b.z), pz);
     }
   }
 

@@ -44,7 +44,9 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   course). The course bends no tighter than `bend` rad/m, so a turn spreads along the body as a
   curve instead of a kink. With a small sway the body read as straight with one sharp bend. Held still, a
   racer looks round by curving its forebody (`turn`, spread over `turnReach` with an eased share
-  so there's no corner; most of the look goes there, the rest at the head), and lifts the front
+  so there's no corner; most of the look goes there, the rest at the head; the bent part takes the
+  ground's height where it now lies, by the terrain's rise from the track, or across a slope it sank
+  or floated by centimetres), and lifts the front
   over `liftReach` 0.26 m. The strike's lunge turns no quicker than a chase. Turning the head alone
   at one joint, and the old 30 rad/s strike turn, left sharp corners in the body. Bones
   are flat (unparented) and the mesh is never frustum-culled.
@@ -68,7 +70,10 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   `layout.ts`) ringed by big boulders (`COLONY_ROCKS`, placed last in `props.ts` so nothing before
   them moves); they turn their heads and sneeze salt (`SaltSpray`, `sneezeNod` from `iguana.ts`).
   Four Sally Lightfoot crabs (`crab.glb`, idle and graze clips only). Adults and crabs animate only
-  within 4 m of the camera. Adults are solid (a ball per spine joint) until the walk-in. Keep the
+  within 4 m of the camera. Each adult lies along the lava under it,
+  pitched and rolled to the slope, then let down until the lowest 2% of its skin sags 8 mm into the
+  rock (`lieOnGround`, `settle`; level and at a fixed height, some buried a flank 4 cm). Adults are
+  solid (a ball per spine joint, placed after that) until the walk-in. Keep the
   adults within about 0.75 m of the middle: the shore rocks and cactus start beyond that.
 - `grove.ts`: the island's forest edge on the shore south of the colony (`GROVE`): tree daisies and
   palo santo from the island's `props.glb`, solid trunks, placed after the plants from their own

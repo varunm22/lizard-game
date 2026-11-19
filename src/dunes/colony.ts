@@ -48,6 +48,53 @@ const TINT = new THREE.Color(0.62, 0.58, 0.56);
 /** Animals further than this from the camera (m) aren't animated: all that shows from out on the dunes is the heap. */
 const ANIMATE_WITHIN = 4;
 
+/** An adult's slope is read this far (m, at hatchling size) ahead of and behind its middle, and to each side. */
+const SPAN = { along: 0.065, side: 0.03 };
+const UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Lay an adult at (x, z) facing `yaw`, along the lava under it: pitched to the slope nose to tail and
+ * rolled to it side to side (not level on it, which buries its uphill side and holds the other in
+ * the air).
+ */
+function lieOnGround(root: THREE.Object3D, x: number, z: number, yaw: number, sc: number) {
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const a = SPAN.along * sc;
+  const w = SPAN.side * sc;
+  const nose = terrainHeight(x + fx * a, z + fz * a);
+  const tail = terrainHeight(x - fx * a, z - fz * a);
+  // Its left is +X in its own space: (cos yaw, -sin yaw) on the ground.
+  const left = terrainHeight(x + fz * w, z - fx * w);
+  const right = terrainHeight(x - fz * w, z + fx * w);
+  const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.atan2(tail - nose, 2 * a), 0, Math.atan2(left - right, 2 * w), 'XYZ'));
+  root.quaternion.setFromAxisAngle(UP, yaw).multiply(tilt);
+  root.position.set(x, (nose + tail + left + right) / 4 - 0.004 * sc, z);
+  // (Then `settle` lets it down onto its belly once it's posed.)
+}
+
+/** Settled, about the lowest 2% of an adult's skin is this far (m) into the rock: its belly sags into the hollows. */
+const SAG = 0.008;
+
+/** Raise or lower a posed adult so that its belly rests on the lava under it, sagging in by `SAG`. */
+function settle(root: THREE.Object3D) {
+  root.updateMatrixWorld(true);
+  const gaps: number[] = [];
+  const v = new THREE.Vector3();
+  root.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    const pos = mesh.geometry.getAttribute('position');
+    for (let k = 0; k < pos.count; k += 2) {
+      mesh.getVertexPosition(k, v).applyMatrix4(mesh.matrixWorld);
+      gaps.push(v.y - terrainHeight(v.x, v.z));
+    }
+  });
+  if (!gaps.length) return;
+  gaps.sort((a, b) => a - b);
+  root.position.y -= gaps[Math.floor(gaps.length * 0.02)] + SAG;
+}
+
 interface Adult {
   model: LizardModel;
   yaw: number;
@@ -99,10 +146,10 @@ export class Colony {
       const z = COLONY.z + spot.z;
       const sc = SCALE * spot.s;
       model.root.scale.setScalar(sc);
-      model.root.position.set(x, terrainHeight(x, z) - 0.004 * sc, z);
-      model.root.rotation.y = spot.yaw;
+      lieOnGround(model.root, x, z, spot.yaw, sc);
       model.play('idle', 0);
       model.update(0.5 + i * 0.7);
+      settle(model.root);
       model.updateBodySpheres();
       for (const s of model.bodySpheres) {
         colony.colliders.push(world.createCollider(RAPIER.ColliderDesc.ball(s.r * sc).setTranslation(s.x, s.y, s.z)));

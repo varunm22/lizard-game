@@ -25,10 +25,18 @@ const UP = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
 const q = new THREE.Quaternion();
 const r = new THREE.Quaternion();
+const v = new THREE.Vector3();
+const e = new THREE.Euler();
+/** Its slope is read this far either side of its middle: nose to tail and flank to flank (body lengths). */
+const SLOPE_SPAN = 0.35;
+/** Lying, a sea lion's skin sinks this far into the sand (m, at full size): it settles in, the way a heavy body does. */
+const SETTLE = 0.01;
 
 class SeaLion {
   readonly rig: FreeRig;
   readonly at = new THREE.Vector3();
+  /** Its turn: facing `yaw`, pitched and rolled to lie along the sand under it. */
+  readonly turn = new THREE.Quaternion();
   private time: number;
 
   constructor(
@@ -44,6 +52,7 @@ class SeaLion {
     this.rig.root.name = `sealion-${i}`;
     this.at.set(x, terrainHeight(x, z), z);
     this.time = i * 2.3;
+    this.lieDown(x, z);
     this.rig.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -58,12 +67,56 @@ class SeaLion {
     });
   }
 
+  /**
+   * Lie along the beach rather than level on it: pitched to the slope nose to tail, rolled to it
+   * flank to flank, then let down until the belly rests on the sand (a lying body isn't a plank: on
+   * a slope a level one buries its uphill end and holds the other up in the air).
+   */
+  private lieDown(x: number, z: number) {
+    const mesh = this.mesh();
+    const pos = mesh.geometry.getAttribute('position');
+    const box = new THREE.Box3().setFromBufferAttribute(pos as THREE.BufferAttribute);
+    const half = SLOPE_SPAN * (box.max.z - box.min.z) * this.scale;
+    const side = SLOPE_SPAN * (box.max.x - box.min.x) * this.scale;
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    // Its left (+X in its own space), on the ground.
+    const lx = fz;
+    const lz = -fx;
+    const nose = terrainHeight(x + fx * half, z + fz * half);
+    const tail = terrainHeight(x - fx * half, z - fz * half);
+    const left = terrainHeight(x + lx * side, z + lz * side);
+    const right = terrainHeight(x - lx * side, z - lz * side);
+    e.set(Math.atan2(tail - nose, 2 * half), 0, Math.atan2(left - right, 2 * side), 'XYZ');
+    this.turn.setFromAxisAngle(UP, this.yaw).multiply(r.setFromEuler(e));
+    // Then down (or up) until its lowest skin is just into the sand.
+    this.at.y = (nose + tail + left + right) / 4;
+    this.pose(0);
+    this.rig.root.updateMatrixWorld(true);
+    let gap = Infinity;
+    const step = Math.max(1, Math.floor(pos.count / 2000));
+    for (let k = 0; k < pos.count; k += step) {
+      mesh.getVertexPosition(k, v).applyMatrix4(mesh.matrixWorld);
+      gap = Math.min(gap, v.y - terrainHeight(v.x, v.z));
+    }
+    this.at.y -= gap + SETTLE * this.scale;
+  }
+
+  private mesh(): THREE.SkinnedMesh {
+    let found: THREE.SkinnedMesh | null = null;
+    this.rig.root.traverse((o) => {
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh && !found) found = o as THREE.SkinnedMesh;
+    });
+    if (!found) throw new Error('sea lion has no skinned mesh');
+    return found;
+  }
+
   /** Breathing, and now and then the head up to look about before it sinks back to sleep (each frame). */
   pose(dt: number) {
     this.time += dt;
     const t = this.time;
     const rig = this.rig;
-    rig.place(this.at, q.setFromAxisAngle(UP, this.yaw), this.scale);
+    rig.place(this.at, this.turn, this.scale);
     const breath = 1 + 0.012 * Math.sin(t * 1.3);
     rig.part('body', q.identity(), undefined, breath);
     // Head up for a few seconds in every twenty or so, turning slowly.

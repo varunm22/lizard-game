@@ -42,6 +42,22 @@ test('the dunes load: the ground, the props on it, the snakes lying up, the run 
   await screenshot(page, 'dunes-start.png');
 });
 
+test('racers lie on the sand along their whole length, a turned neck included', async ({ page }) => {
+  await bootDunes(page, { racers: true });
+  // A second in, lurking racers turn their heads to look about, bending the neck off its track:
+  // the bent part must follow the slope there, not keep the track's height (it sank 4 cm).
+  const deepest = await page.evaluate(() => {
+    const g = window.__dunes!;
+    g.advance(60);
+    let worst = 0;
+    g.racers().forEach((_, i) => {
+      for (const j of g.racerBody(i).joints) worst = Math.min(worst, j.y - g.terrainHeight(j.x, j.z));
+    });
+    return worst;
+  });
+  expect(deepest).toBeGreaterThan(-0.004);
+});
+
 test('a racer sees a lizard moving, chases it and strikes, its body sliding along its own track; the run starts over', async ({ page }) => {
   await bootDunes(page, { racers: [RACER] });
   const s = await page.evaluate(({ ri, lookout }) => {
