@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type RAPIER from '@dimforge/rapier3d';
+import { SolidBody } from '../creatures/solidBody';
 import { FreeRig, type FreeRigKit } from '../render/freeRig';
 import { WATER_Y } from '../world/shore';
 import { terrainHeight } from '../world/terrain';
@@ -154,12 +156,16 @@ export class Sharks {
   /** Called as a pup bolts from the lizard. */
   onBolt: ((shark: Shark) => void) | null = null;
 
-  constructor(kit: FreeRigKit, scene: THREE.Scene) {
+  /** Each pup's body, head to tail stock, as the lizard bumps into it (fins and tail fin left out). */
+  readonly solids: SolidBody[];
+
+  constructor(kit: FreeRigKit, scene: THREE.Scene, world: RAPIER.World) {
     this.list = SPOTS.map((s, i) => new Shark(kit, s, i));
     for (const s of this.list) {
       scene.add(s.rig.root);
       s.pose();
     }
+    this.solids = this.list.map((s) => SolidBody.fitted(world, s.rig.root, [['spine_0', 'spine_1'], ['spine_2'], ['spine_3'], ['spine_4', 'spine_5']], true, 0.8));
   }
 
   step(dt: number, feet: THREE.Vector3, inWater: boolean) {
@@ -167,6 +173,9 @@ export class Sharks {
   }
 
   pose() {
-    for (const s of this.list) s.pose();
+    this.list.forEach((s, i) => {
+      s.pose();
+      this.solids[i].update();
+    });
   }
 }

@@ -35,12 +35,19 @@ export const IGUANA_GROUP = 0x0008;
 export const PLAYER_GROUP = 0x0010;
 /** Lava cactus trunks: solid, but no iguana climbs onto one, and the lizard can't stay on top (src/player/spines.ts). */
 export const CACTUS_GROUP = 0x0020;
-/** Queries that see everything but the other iguanas. */
-export const IGNORE_IGUANAS = (0xffff << 16) | (0xffff & ~IGUANA_GROUP);
-/** Queries that see everything but the iguanas' bodies, the player's included. */
-export const IGNORE_BODIES = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~PLAYER_GROUP);
-/** Queries that see neither plant stems nor the other iguanas. */
-export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP;
+/**
+ * Every other animal's fitted body (src/creatures/solidBody.ts): solid to the lizard, and looked past
+ * wherever the iguanas are.
+ */
+export const ANIMAL_GROUP = 0x0040;
+/** Queries that see everything but the other iguanas and animals. */
+export const IGNORE_IGUANAS = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~ANIMAL_GROUP);
+/** Queries that see everything but the iguanas' bodies, the player's included, and the animals'. */
+export const IGNORE_BODIES = (0xffff << 16) | (0xffff & ~IGUANA_GROUP & ~PLAYER_GROUP & ~ANIMAL_GROUP);
+/** Queries that see neither plant stems nor the other iguanas and animals. */
+export const IGNORE_STEMS_AND_IGUANAS = IGNORE_STEMS & ~IGUANA_GROUP & ~ANIMAL_GROUP;
+/** Bodies that see past the animals: the other iguanas and hatchlings, on their own errands. */
+export const IGNORE_ANIMALS = (0xffff << 16) | (0xffff & ~ANIMAL_GROUP);
 
 /**
  * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`), the

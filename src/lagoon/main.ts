@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff } from '../creatures/solidBody';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
 import { toonGradient } from '../render/toon';
@@ -103,12 +104,12 @@ export async function lagoon() {
   const log = new DriftLog(world, logGeometry, logExtras, logMaterial, player);
   scene.add(log.mesh);
   const ground = new GroundProbe(world, player.body);
-  const swimmers = new Swimmers(kit.geometry, scene);
+  const swimmers = new Swimmers(kit.geometry, scene, world);
   // Juvenile fish darting about among the prop roots, bolting from the lizard and the shark pups.
   const fries = new Fries(scene, kit.geometry, kit.extras as Map<string, Record<string, number>>, { rootPosts }, [
     player.position,
     ...swimmers.list.filter((s) => s.kind === 'shark').map((s) => s.pos),
-  ]);
+  ], world);
   const heronKit = await loadHeronKit(heronUrl);
   const herons = new Herons(heronKit, scene, world, ground, obstacles, mangroves, player.body);
   const run = new LagoonRun(player, wounds, vitals, herons, log, swimmers);
@@ -215,6 +216,7 @@ export async function lagoon() {
     wounds.step(dt);
     if (frameInput.bite && !wounds.down) feeding.bite();
     player.speedScale = vitals.speedScale;
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);

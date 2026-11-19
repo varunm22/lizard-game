@@ -61,7 +61,7 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
 
 ## Hatchlings, colony, run
 
-- `hatchlings.ts`: four nest-mates on the lizard's own controller and drawing, never solid to it.
+- `hatchlings.ts`: four nest-mates on the lizard's own controller and drawing, never solid to it (and passing through the racers' solid bodies, `moveGroups`).
   They come up from burrows round the nest, dash and freeze toward the colony, freeze while watched,
   dive for a bush when chased, and are replaced after being caught or getting home.
 - `colony.ts`: meant to look like the island's colony, where the hatchling is headed. Six adults

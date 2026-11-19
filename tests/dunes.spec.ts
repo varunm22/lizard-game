@@ -58,6 +58,38 @@ test('racers lie on the sand along their whole length, a turned neck included', 
   expect(deepest).toBeGreaterThan(-0.004);
 });
 
+test("a lizard walking into a racer's coils is stopped by its body or climbs over it, never through it", async ({ page }) => {
+  await bootDunes(page);
+  const s = await page.evaluate(({ ri, lookout }) => {
+    const g = window.__dunes!;
+    g.placeRacer(ri, lookout.x, lookout.z, lookout.yaw);
+    g.advance(2);
+    const joints = g.racerBody(ri).joints;
+    const mid = joints[Math.floor(joints.length / 2)];
+    // From 15 cm off, straight at the middle of the coil's outer loop, for 1.5 s.
+    const yaw = Math.atan2(mid.x - lookout.x, mid.z - lookout.z);
+    g.teleport(mid.x - Math.sin(yaw) * 0.15, mid.z - Math.cos(yaw) * 0.15, yaw);
+    g.setInput({ move: { x: 0, y: 1 }, run: false }, 90);
+    let closest = Infinity;
+    for (let i = 0; i < 90; i++) {
+      g.advance(1);
+      const p = g.player();
+      // The lizard's capsule: a segment along its facing, its centre 2 cm over its feet.
+      const fx = Math.sin(p.yaw);
+      const fz = Math.cos(p.yaw);
+      for (const j of g.racerBody(ri).joints.slice(4)) {
+        const cy = j.y + 0.008;
+        const t = Math.max(-0.048, Math.min(0.048, (j.x - p.x) * fx + (j.z - p.z) * fz));
+        closest = Math.min(closest, Math.hypot(j.x - (p.x + fx * t), cy - (p.y + 0.02), j.z - (p.z + fz * t)));
+      }
+    }
+    return closest;
+  }, { ri: RACER, lookout: LOOKOUT });
+  // Centre lines about the two bodies' radii apart (lizard 1.2 cm, racer under 1, its capsules a
+  // little inside the skin); walking through, they met (under 3 mm).
+  expect(s).toBeGreaterThan(0.011);
+});
+
 test('a racer sees a lizard moving, chases it and strikes, its body sliding along its own track; the run starts over', async ({ page }) => {
   await bootDunes(page, { racers: [RACER] });
   const s = await page.evaluate(({ ri, lookout }) => {

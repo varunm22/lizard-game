@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
-import { EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { ANIMAL_GROUP, EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 
 const CAM = {
   /** Look-at point above the lizard's feet (m). */
@@ -143,7 +143,7 @@ export class FollowCamera {
       undefined,
       // The other iguanas don't pull it in either: one passing behind the lizard would snap the
       // camera right up to the lizard's back and out again.
-      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP & ~IGUANA_GROUP),
+      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP & ~IGUANA_GROUP & ~ANIMAL_GROUP),
       undefined,
       this.ignoreBody,
       this.skip,

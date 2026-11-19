@@ -142,6 +142,8 @@ export class PlayerController {
   private lastCarriedLevel = 0;
   /** Collision groups standing still checks against (Rapier's packed membership and filter); default everything. */
   stillGroups: number | undefined = undefined;
+  /** Collision groups moving checks against; default everything. */
+  moveGroups: number | undefined = undefined;
   /** What it can climb onto (Rapier's packed membership and filter): anything but plant stems by default. */
   climbGroups = IGNORE_STEMS;
   /** Colliders the last step's move on land ran into from the side. */
@@ -285,11 +287,11 @@ export class PlayerController {
     // Standing still, bodies passing close by (the other iguanas) are left out: near a moving
     // kinematic body the controller lets a lizard on a slope slip, and nothing should nudge a still one.
     const still = this.grounded && !hasInput && Math.hypot(vx, vz) < 1e-3;
-    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, still ? this.stillGroups : undefined);
+    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, still ? this.stillGroups : this.moveGroups);
     let moved = this.kcc.computedMovement();
     if (Math.hypot(this.desired.x, this.desired.z) > JAM_MOVE && this.jammed(moved)) {
       for (const lift of [0, JAM_LIFT]) {
-        this.kcc.computeColliderMovement(this.collider, { x: this.desired.x, y: Math.max(this.desired.y, lift), z: this.desired.z });
+        this.kcc.computeColliderMovement(this.collider, { x: this.desired.x, y: Math.max(this.desired.y, lift), z: this.desired.z }, undefined, this.moveGroups);
         moved = this.kcc.computedMovement();
         if (!this.jammed(moved)) break;
       }
@@ -667,11 +669,12 @@ export class PlayerController {
 
   /**
    * Something big walked into the lizard: slide it (dx, dz) along the ground, stopping at anything
-   * solid except `pusher` itself and plant stems. Returns how far it actually went (m).
+   * solid except `pusher` itself (and anything else on its body) and plant stems. Returns how far it actually went (m).
    */
   shove(dx: number, dz: number, pusher: RAPIER.Collider): number {
     this.desired.set(dx, 0, dz);
-    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, IGNORE_STEMS, (c) => c.handle !== pusher.handle);
+    const body = pusher.parent();
+    this.kcc.computeColliderMovement(this.collider, this.desired, undefined, IGNORE_STEMS, (c) => c.handle !== pusher.handle && !(body && c.parent()?.handle === body.handle));
     const m = this.kcc.computedMovement();
     this.position.x += m.x;
     this.position.z += m.z;

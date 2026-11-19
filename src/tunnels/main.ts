@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff } from '../creatures/solidBody';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, PALETTE, SUN_OFFSET } from '../render/scene';
 import { loadBinary } from '../render/gltf';
@@ -110,8 +111,8 @@ export async function tunnels() {
     loadFreeRigKit(whitetipUrl, 'Whitetip'),
     loadFreeRigKit(sealionUrl, 'SeaLion'),
   ]);
-  const owls = new Owls(owlKit, scene);
-  const sharks = new Sharks(whitetipKit, scene);
+  const owls = new Owls(owlKit, scene, world);
+  const sharks = new Sharks(whitetipKit, scene, world);
   const sealions = new SeaLions(sealionKit, scene);
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
@@ -231,6 +232,7 @@ export async function tunnels() {
       if (vitals.dead) run.caught((vitals.cause ?? 'cold') as CaughtBy);
     }
     player.speedScale = vitals.speedScale;
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
