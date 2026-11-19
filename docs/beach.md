@@ -29,7 +29,11 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   the mesh's trunk vertices (`fitParts`, flippers left out) and moved each step to where the pose put
   that slice (`partAt`); all on one kinematic body in `PLANT_STEM_GROUP` (solid, never ground to climb).
   `player.shove` looks past every collider on the pusher's body. Hook `sealions().cows[].gaps`.
-  The bull swims his beat 0.7 m off the waterline; a lizard on his stretch within `NOTICE` gets a
+  The bull swims his beat 1.2 m off the waterline (about 17 cm deep; nearer in there's too little
+  water to dive). He plays under water (`SeaLion.play`, `swimAttitude`): weaving, darting
+  (`DART_TIME`, every third dart a barrel roll), banking into turns, pitching with his climb, and
+  surfacing every `DIVE_TIME` to breathe for `BREATH_TIME`. `under` blends floating to swimming deep.
+  A lizard on his stretch within `NOTICE` gets a
   rear-and-bark (`REAR_TIME`, HUD "watched") then a charge (`CHARGE_SPEED`, slow to turn,
   `CHARGE_TIME` at most, never past `BULL_STRETCH` up the sand). His muzzle within `HIT_REACH` takes
   `VITALS.bullHit` (cause `'sealion'`) and shoves the lizard aside. A charge or warning that ends

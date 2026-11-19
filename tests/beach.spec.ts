@@ -31,7 +31,7 @@ test('the beach loads: the reef start, the sea lions, the lek and its males, the
   expect(s.sealions.pups.length).toBe(3);
   expect(s.sealions.bull.state).toBe('patrol');
   // He swims his beat in water deep enough to swim in.
-  expect(s.bullDepth).toBeGreaterThan(0.03);
+  expect(s.bullDepth).toBeGreaterThan(0.14);
   // Each male on top of his rock, each rock his.
   expect(s.rivals.owner).toEqual([0, 1, 2]);
   s.rivals.males.forEach((m, i) => {
@@ -57,7 +57,7 @@ test('the bull warns a lizard on his beach, then charges: standing still it is h
     let x = bull.x;
     g.teleport(x, g.shoreZ(x) + 0.5, Math.PI);
     let seen = '';
-    for (let i = 0; i < 40 && g.sealions().bull.hits === 0; i++) {
+    for (let i = 0; i < 80 && g.sealions().bull.hits === 0; i++) {
       steps(0.1);
       const st = g.sealions().bull.state[0];
       if (!seen.endsWith(st)) seen += st;
@@ -70,7 +70,7 @@ test('the bull warns a lizard on his beach, then charges: standing still it is h
     // Straight up the beach from in front of him, in a lane clear of the cows and pups lying there.
     const s = g.sealions();
     const lying = [...s.cows, ...s.pups].map((c) => c.x);
-    x = [0, -0.3, 0.3, -0.6, 0.6].map((d) => s.bull.x + d).find((lx) => lying.every((cx) => Math.abs(cx - lx) > 0.3))!;
+    x = [0, -0.2, 0.2, -0.4, 0.4, -0.6, 0.6].map((d) => s.bull.x + d).find((lx) => lying.every((cx) => Math.abs(cx - lx) > 0.25))!;
     g.teleport(x, g.shoreZ(x) + 0.7, 0);
     for (let i = 0; i < 40 && g.sealions().bull.state !== 'rear'; i++) steps(0.1);
     const reared = g.sealions().bull.state;

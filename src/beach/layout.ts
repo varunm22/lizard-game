@@ -64,8 +64,8 @@ export const FEMALE_SPOTS = [
   { x: 0.3, z: 3.7, yaw: 1.7 },
 ] as const;
 
-/** The bull's beat: he swims to and fro along the beach this far off the waterline (m), between these x. */
-export const BULL_BEAT = { x0: -3.8, x1: 2.0, off: 0.7 };
+/** The bull's beat: he swims to and fro along the beach this far off the waterline (m), where it's deep enough to dive and play (about 17 cm), between these x. */
+export const BULL_BEAT = { x0: -3.8, x1: 2.0, off: 1.2 };
 /** His stretch of shore: the beach within this far above the waterline, between the beat's ends. */
 export const BULL_STRETCH = 1.5;
 

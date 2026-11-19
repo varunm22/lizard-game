@@ -21,12 +21,12 @@ export type BullState = 'patrol' | 'rear' | 'charge' | 'back';
 export type PupState = 'rest' | 'come' | 'nudge' | 'back';
 
 /** The bull notices the lizard on his stretch this near (m), rears and barks this long (s), then charges. */
-export const NOTICE = 1.8;
+export const NOTICE = 2.3;
 export const REAR_TIME = 0.9;
 /** His charge: this fast (m/s) on land, turning at most this fast (rad/s), for at most this long (s). */
 export const CHARGE_SPEED = 0.42;
 const CHARGE_TURN = 1.6;
-export const CHARGE_TIME = 2.5;
+export const CHARGE_TIME = 3.5;
 /** After a charge he won't charge again for this long (s). */
 const COOLDOWN = 4;
 /** Swimming his beat, this fast (m/s). */
@@ -49,6 +49,12 @@ const yawQ = new THREE.Quaternion();
 const tiltE = new THREE.Euler();
 const partAt = new THREE.Vector3();
 const partTurn = new THREE.Quaternion();
+/** Under water he stays down this long (s), and up for a breath this long; a dart lasts this long, a roll right over this long. */
+const DIVE_TIME = 9;
+const BREATH_TIME = 2.5;
+const DART_TIME = 0.7;
+const ROLL_TIME = 1.1;
+const ease = (k: number) => k * k * (3 - 2 * k);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** One sea lion in the world: its body, where it is and which way it faces, and its solid body. */
@@ -58,8 +64,12 @@ class SeaLion {
   yaw: number;
   prevYaw: number;
   travel = 0;
-  /** Lying along the ground: its pitch and roll to the sand under it (level afloat). */
+  /** Lying along the ground: its pitch and roll to the sand under it; afloat, `swimPitch` and `swimRoll`. */
   readonly tilt = new THREE.Quaternion();
+  /** Afloat: how far under it is (0 at the surface, 1 swimming deep), and its pitch (nose up) and roll (left side up), radians. */
+  under = 0;
+  swimPitch = 0;
+  swimRoll = 0;
   readonly rb: RAPIER.RigidBody;
   /** One capsule per slice of its trunk (`SeaLionBody.parts`), following its pose. */
   readonly colliders: RAPIER.Collider[];
@@ -93,7 +103,14 @@ class SeaLion {
     const float = WATER_Y - 0.55 * this.body.height;
     this.pos.set(x, Math.max(ground, float), z);
     if (float >= ground) {
-      this.tilt.identity();
+      // Afloat: only its back and head out at the surface; under water, as deep as `under` takes it
+      // (clear of the bottom), pitched and rolled as it swims.
+      const h = this.body.height;
+      const top = WATER_Y - 0.82 * h;
+      const deep = Math.max(ground + 0.02, WATER_Y - 3.2 * h);
+      this.pos.y = top + (Math.min(top, deep) - top) * this.under;
+      tiltE.set(-this.swimPitch, 0, this.swimRoll, 'XYZ');
+      this.tilt.setFromEuler(tiltE);
       return;
     }
     const half = 0.35 * this.body.length;
@@ -198,6 +215,14 @@ export class SeaLions {
   private hit = false;
   private feet = new THREE.Vector3();
   private time = 0;
+  /** His play under water (`play`): breathing at the surface or not and until when, the next dart, the one under way, and a roll. */
+  private breathing = false;
+  private breathIn = 3;
+  private dartIn = 1.5;
+  private dartLeft = 0;
+  private dartTurn = 0;
+  private darts = 0;
+  private rollLeft = 0;
 
   constructor(
     kit: SeaLionKit,
@@ -239,6 +264,14 @@ export class SeaLions {
   /** Everything back where it started (a new run). */
   reset() {
     this.bullState = 'patrol';
+    this.breathing = false;
+    this.breathIn = 3;
+    this.dartIn = 1.5;
+    this.dartLeft = 0;
+    this.dartTurn = 0;
+    this.darts = 0;
+    this.rollLeft = 0;
+    this.bull.under = this.bull.swimPitch = this.bull.swimRoll = 0;
     this.timer = 0;
     this.cooldown = 0;
     const x = (BULL_BEAT.x0 + BULL_BEAT.x1) / 2;
@@ -306,10 +339,18 @@ export class SeaLions {
       case 'patrol': {
         if (Math.abs(b.pos.x - this.beatTo) < 0.1) this.beatTo = this.beatTo === BULL_BEAT.x1 ? BULL_BEAT.x0 : BULL_BEAT.x1;
         const ax = b.pos.x + Math.sign(this.beatTo - b.pos.x) * 0.3;
-        const want = Math.atan2(ax - b.pos.x, shoreZ(ax) - BULL_BEAT.off - b.pos.z);
-        b.head(want, 1.2, PATROL_SPEED, dt);
+        let want = Math.atan2(ax - b.pos.x, shoreZ(ax) - BULL_BEAT.off - b.pos.z);
+        let speed = PATROL_SPEED;
+        if (deep) {
+          // Under water he plays: weaving, darting off at a sharp angle now and then and rolling
+          // over, each stroke of the fore-flippers a surge; up every so often to breathe.
+          this.play(dt);
+          want += 0.55 * Math.sin(this.time * 0.8) + this.dartTurn;
+          speed = PATROL_SPEED * (1.25 + 0.45 * Math.max(0, body.beat)) * (this.dartLeft > 0 ? 2.6 : 1);
+        }
+        b.head(want, this.dartLeft > 0 ? 4 : 1.8, speed, dt);
         // Swimming low, the head up, looking to the beach now and then.
-        body.look = 0.4 * Math.sin(this.time * 0.5);
+        body.look = deep ? 0 : 0.4 * Math.sin(this.time * 0.5);
         if (stretch && dist < NOTICE && this.cooldown <= 0) {
           this.bullState = 'rear';
           this.timer = 0;
@@ -335,7 +376,8 @@ export class SeaLions {
       }
       case 'charge': {
         this.timer += dt;
-        const speed = deep ? CHARGE_SPEED * 0.8 : CHARGE_SPEED;
+        // Faster in the water than galumphing up the sand.
+        const speed = deep ? CHARGE_SPEED * 1.3 : CHARGE_SPEED;
         b.head(atLizard, CHARGE_TURN, speed, dt);
         // Up the beach no further than his stretch.
         const s = b.pos.z - shoreZ(b.pos.x);
@@ -371,11 +413,63 @@ export class SeaLions {
       }
     }
     body.swim += ((deep ? 1 : 0) - body.swim) * (1 - Math.exp(-4 * dt));
+    this.swimAttitude(b, dt, deep);
     body.lift += (lift - body.lift) * (1 - Math.exp(-5 * dt));
     body.gait += (gait - body.gait) * (1 - Math.exp(-6 * dt));
     body.jaw += (jaw - body.jaw) * (1 - Math.exp(-14 * dt));
     if (this.bullState !== 'rear') body.nod *= Math.exp(-6 * dt);
     b.syncBody();
+  }
+
+  /**
+   * The bull's play under water on his beat: when to go up for a breath and back down, darts off at
+   * a sharp angle (a burst of speed, now and then a roll right over), all on fixed timers so a run
+   * replays the same.
+   */
+  private play(dt: number) {
+    this.breathIn -= dt;
+    if (this.breathIn <= 0) {
+      this.breathing = !this.breathing;
+      this.breathIn = this.breathing ? BREATH_TIME : DIVE_TIME;
+    }
+    this.dartIn -= dt;
+    this.dartLeft -= dt;
+    if (this.dartLeft <= 0) this.dartTurn *= Math.exp(-3 * dt);
+    if (this.dartIn <= 0 && !this.breathing) {
+      this.darts++;
+      this.dartLeft = DART_TIME;
+      this.dartIn = 2.6 + 1.6 * ((this.darts * 0.618) % 1);
+      this.dartTurn = (this.darts % 2 ? 1 : -1) * (0.7 + 0.4 * ((this.darts * 0.382) % 1));
+      if (this.darts % 3 === 0) this.rollLeft = ROLL_TIME;
+    }
+  }
+
+  /**
+   * How far under he is, and his pitch and roll: down and up by breath, nosing down as he goes under
+   * and up as he rises, banking into turns, and rolling right over on some darts. Ashore, level.
+   */
+  private swimAttitude(b: SeaLion, dt: number, deep: boolean) {
+    const playing = deep && (this.bullState === 'patrol' || this.bullState === 'back');
+    const want = playing && !this.breathing ? 1 : 0;
+    const before = b.under;
+    b.under += (want - b.under) * (1 - Math.exp(-(want ? 1.6 : 2.2) * dt));
+    if (!deep) b.under = 0;
+    const turnRate = wrap(b.yaw - b.prevYaw) / dt;
+    const climb = (before - b.under) / dt;
+    b.swimPitch += (Math.max(-0.7, Math.min(0.7, climb * 1.8)) - b.swimPitch) * (1 - Math.exp(-6 * dt));
+    let roll = Math.max(-0.8, Math.min(0.8, -turnRate * 0.35)) * b.under;
+    this.rollLeft -= dt;
+    if (this.rollLeft > 0) roll += Math.PI * 2 * ease((ROLL_TIME - this.rollLeft) / ROLL_TIME);
+    b.swimRoll += (roll - b.swimRoll) * (1 - Math.exp(-10 * dt));
+    if (this.rollLeft <= 0 && Math.abs(b.swimRoll) > Math.PI) b.swimRoll -= Math.sign(b.swimRoll) * Math.PI * 2;
+    if (!deep) {
+      b.swimPitch = 0;
+      b.swimRoll = 0;
+    }
+    // Looking into his turns; nose up at the surface for a breath.
+    if (playing) b.body.look += (Math.max(-0.6, Math.min(0.6, turnRate * 0.4)) * b.under - b.body.look) * (1 - Math.exp(-6 * dt));
+    if (deep && this.bullState === 'patrol') b.body.nod = 0.25 * (1 - b.under);
+    b.place(b.pos.x, b.pos.z);
   }
 
   /** The charge is over, caught or not (or the warning, if `warned` and the lizard got off his stretch first). */

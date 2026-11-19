@@ -129,6 +129,10 @@ export class SeaLionBody {
   /** Lying, the head down on the sand (1) or held up (0). */
   rest = 0;
   private phase: number;
+  /** Where its fore-flippers are in their beat, swimming: 1 at the end of the power stroke down and back. */
+  get beat() {
+    return Math.sin(this.phase);
+  }
   private breath: number;
   /** Rest lengths of each fore-flipper's two bones, and the blade. */
   private arm: number;
