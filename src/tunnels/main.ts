@@ -107,8 +107,8 @@ export async function tunnels() {
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
   const fade = new OccluderFade(world, []);
-  // The camera eases in where the tube closes in (gently, never right up to the lizard); any rock
-  // still hiding the lizard is cut away (`RockSection`), showing the cut as dark stone.
+  // The camera eases in where the tube closes in (gently, never right up to the lizard); rock nearer
+  // the camera than the lizard is cut away (`RockSection`), showing the cut as dark stone.
   const followCam = new FollowCamera(camera, world, player.body, new Set(fade.handles), CAMERA_ARM);
   followCam.distance = CAMERA_DISTANCE;
   followCam.yaw = START.yaw;
@@ -242,7 +242,7 @@ export async function tunnels() {
       camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
-    section.update(camera, viewOffset ? (viewTarget ?? feet) : followCam.target, feet, player.yawAt(alpha));
+    section.update(camera.position, viewOffset ? (viewTarget ?? feet) : followCam.target, feet.y);
     lizard.updateBodySpheres();
     owls.pose(frameDt);
     sharks.pose();

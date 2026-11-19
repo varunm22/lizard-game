@@ -4,42 +4,23 @@ import { floorAirGrid } from './layout';
 /** Colour of the rock's inside, as `rock.ts` draws its back faces. */
 const INSIDE = "vec3(0.025, 0.021, 0.018)";
 
-/** The cut stops this far (m, along the view) short of the point on the lizard the camera looks at. */
-export const SECTION_SHORT = 0.035;
 /** Rock up to this far (m) over the lizard's feet is kept: the floor it stands on and any just ahead. */
 const FLOOR_KEEP = 0.008;
-/** All rock this share of the way from the camera to the lizard is cut (the camera's own surroundings). */
-const NEAR_SHARE = 0.45;
-/** The lizard as the cut sees it, from its feet along its facing (m): snout, tail tip, and how wide round them. */
-const SNOUT = 0.08;
-const TAIL = 0.13;
-const WIDTH = 0.04;
-
-const fwd = new THREE.Vector3();
-const head = new THREE.Vector3();
-const tail = new THREE.Vector3();
-const ndc = new THREE.Vector3();
 
 /**
- * Keeps the lizard in sight in the tubes by cutting away only the rock that hides it. Rock nearer
- * the camera than a plane just short of the lizard, square to the view, is not drawn where it lies
- * over the lizard on screen (a band from snout to tail, a few centimetres wider), nor anywhere in the
- * nearer part of the way from the camera (the rock the eased camera may sit in). Rock beside the
- * lizard, past it, or at and below its feet is drawn as usual. Through a cut the eye sees into the
- * solid: the rock's back faces draw as its dark inside (`rock.ts`) and so does the ground inside the
- * rock (`darkenGroundUnderRock`), so nothing outside the maze shows except through real openings.
+ * Keeps the camera's view in the tubes clear by cutting away the rock nearer the camera than the
+ * lizard: rock closer to the camera than to the point on the lizard it looks at isn't drawn (except
+ * at and below the lizard's feet). Everything nearer the lizard, beside it, past it or under it is
+ * drawn as usual. With the eased camera that's the rock round the camera, which it may sit in, and
+ * anything on the near half of the way. Through a cut the eye sees into the solid: the rock's back
+ * faces draw as its dark inside (`rock.ts`) and so does the ground inside the rock
+ * (`darkenGroundUnderRock`), so nothing outside the maze shows except through real openings.
  */
 export class RockSection {
   private uniforms = {
-    sectionFrom: { value: new THREE.Vector3() },
-    sectionDir: { value: new THREE.Vector3(0, 0, -1) },
-    sectionDepth: { value: 0 },
-    sectionNear: { value: 0 },
+    sectionCamera: { value: new THREE.Vector3() },
+    sectionTarget: { value: new THREE.Vector3() },
     sectionFloor: { value: -10 },
-    sectionA: { value: new THREE.Vector2() },
-    sectionB: { value: new THREE.Vector2() },
-    sectionWidth: { value: 0 },
-    sectionAspect: { value: 1 },
   };
 
   constructor(rock: THREE.Mesh) {
@@ -49,84 +30,33 @@ export class RockSection {
       before(shader, renderer);
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vSectionWorld;\nvarying vec4 vSectionClip;')
-        .replace(
-          '#include <project_vertex>',
-          '#include <project_vertex>\nvSectionWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvSectionClip = gl_Position;',
-        );
+        .replace('#include <common>', '#include <common>\nvarying vec3 vSectionWorld;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvSectionWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          `#include <common>
-varying vec3 vSectionWorld;
-varying vec4 vSectionClip;
-uniform vec3 sectionFrom;
-uniform vec3 sectionDir;
-uniform float sectionDepth;
-uniform float sectionNear;
-uniform float sectionFloor;
-uniform vec2 sectionA;
-uniform vec2 sectionB;
-uniform float sectionWidth;
-uniform float sectionAspect;`,
+          '#include <common>\nvarying vec3 vSectionWorld;\nuniform vec3 sectionCamera;\nuniform vec3 sectionTarget;\nuniform float sectionFloor;',
         )
         .replace(
           'void main() {',
           `void main() {
-  float sectionT = dot(vSectionWorld - sectionFrom, sectionDir);
-  if (sectionT < sectionDepth && vSectionWorld.y > sectionFloor) {
-    vec2 p = vSectionClip.xy / vSectionClip.w;
-    p.x *= sectionAspect;
-    vec2 ab = sectionB - sectionA;
-    float h = clamp(dot(p - sectionA, ab) / max(dot(ab, ab), 1e-8), 0.0, 1.0);
-    if (sectionT < sectionNear || length(p - sectionA - ab * h) < sectionWidth) discard;
-  }`,
+  if (vSectionWorld.y > sectionFloor && distance(vSectionWorld, sectionCamera) < distance(vSectionWorld, sectionTarget)) discard;`,
         );
     };
     material.customProgramCacheKey = () => 'rock-section';
   }
 
-  /**
-   * Each frame, after the camera is placed: the point on the lizard it looks at, and the lizard's
-   * feet and facing (as its yaw).
-   */
-  update(camera: THREE.PerspectiveCamera, target: THREE.Vector3, feet: THREE.Vector3, yaw: number) {
-    const u = this.uniforms;
-    camera.updateMatrixWorld();
-    u.sectionFrom.value.copy(camera.position);
-    const dir = u.sectionDir.value.subVectors(target, camera.position);
-    const length = dir.length();
-    dir.divideScalar(Math.max(length, 1e-5));
-    u.sectionDepth.value = Math.max(0, length - SECTION_SHORT);
-    u.sectionNear.value = length * NEAR_SHARE;
-    u.sectionFloor.value = feet.y + FLOOR_KEEP;
-    fwd.set(Math.sin(yaw), 0, Math.cos(yaw));
-    head.copy(feet).addScaledVector(fwd, SNOUT).y += 0.025;
-    tail.copy(feet).addScaledVector(fwd, -TAIL).y += 0.01;
-    u.sectionAspect.value = camera.aspect;
-    this.screen(head, camera, u.sectionA.value);
-    this.screen(tail, camera, u.sectionB.value);
-    u.sectionWidth.value = WIDTH / (Math.max(length, 0.01) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+  /** Each frame, after the camera is placed: the point on the lizard it looks at, and the lizard's feet height. */
+  update(camera: THREE.Vector3, target: THREE.Vector3, feetY: number) {
+    this.uniforms.sectionCamera.value.copy(camera);
+    this.uniforms.sectionTarget.value.copy(target);
+    this.uniforms.sectionFloor.value = feetY + FLOOR_KEEP;
   }
 
   /** Whether a world point is cut away (not drawn) right now, for the tests. */
-  cuts(p: THREE.Vector3, camera: THREE.PerspectiveCamera) {
+  cuts(p: THREE.Vector3) {
     const u = this.uniforms;
-    if (p.y <= u.sectionFloor.value) return false;
-    const t = new THREE.Vector3().subVectors(p, u.sectionFrom.value).dot(u.sectionDir.value);
-    if (t >= u.sectionDepth.value) return false;
-    if (t < u.sectionNear.value) return true;
-    const q = this.screen(p, camera, new THREE.Vector2());
-    const a = u.sectionA.value;
-    const ab = new THREE.Vector2().subVectors(u.sectionB.value, a);
-    const h = THREE.MathUtils.clamp(q.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-8), 0, 1);
-    return q.sub(a).sub(ab.multiplyScalar(h)).length() < u.sectionWidth.value;
-  }
-
-  /** A world point on screen, x scaled by the aspect so screen distances are even both ways. */
-  private screen(p: THREE.Vector3, camera: THREE.PerspectiveCamera, out: THREE.Vector2) {
-    ndc.copy(p).project(camera);
-    return out.set(ndc.x * camera.aspect, ndc.y);
+    return p.y > u.sectionFloor.value && p.distanceTo(u.sectionCamera.value) < p.distanceTo(u.sectionTarget.value);
   }
 }
 

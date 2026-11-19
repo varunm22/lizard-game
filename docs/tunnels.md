@@ -67,11 +67,9 @@ the rock mesh at `FLOORS[1]` (0.42 m, on a grid plane so it's exactly flat). The
   slanted additive cylinders under each skylight and into the jameo.
 - Camera (`section.ts`): the follow camera eases in where the tube closes in (`EasedArm`: 0.3 m,
   never under 0.17 m, in at 2.5/s, out at 1.5/s; no snapping in, which the user found jerky), and
-  the rock still hiding the lizard is cut away (`RockSection`). Only rock nearer the camera than a
-  plane 3.5 cm short of the lizard is ever cut, and of that only where it lies over the lizard on
-  screen (a band snout to tail, 4 cm wider) or in the nearer 45% of the way (round the camera,
-  which may sit in the rock), never at or below the lizard's feet. Rock beside or past the lizard
-  stays (the user's ask, 2026-11-18). Through a cut the eye sees into the solid: the rock's back
+  rock nearer the camera than the lizard is cut away (`RockSection`): rock closer to the camera than
+  to the point on the lizard it looks at, never at or below the lizard's feet. Rock nearer the
+  lizard, beside it or past it stays (the user's asks, 2026-11-18). Through a cut the eye sees into the solid: the rock's back
   faces draw as its dark inside, and the ground inside the rock (where the lower floor isn't open,
   `floorOpen`), which closes the rock's underside, draws the same dark (`darkenGroundUnderRock`),
   so nothing outside the maze shows except through real openings. Don't bring back a cut that is
