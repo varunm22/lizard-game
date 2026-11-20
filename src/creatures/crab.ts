@@ -249,7 +249,7 @@ class Crab {
 
   /** Put it down at (x, z), on the surface below `y`. */
   place(x: number, y: number, z: number) {
-    const h = this.crabs.surface(x, z, y) ?? y;
+    const h = this.crabs.surface(x, z, y, true) ?? y;
     this.pos.set(x, h, z);
     this.fit();
     this.prevPos.copy(this.pos);
@@ -265,7 +265,7 @@ class Crab {
     if (this.state === 'hop' || this.state === 'groom' || this.state === 'dead' || this.gone) return;
     const x = this.pos.x + dx;
     const z = this.pos.z + dz;
-    const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX);
+    const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX, true);
     if (h === null || h - this.pos.y > HOP_MAX || this.pos.y - h > DROP_MAX || !this.crabs.dryAt(x, z, h)) return;
     this.pos.set(x, h, z);
   }
@@ -456,7 +456,7 @@ class Crab {
     const uz = -Math.sin(this.yaw) * this.side;
     const nx = this.pos.x + ux * d;
     const nz = this.pos.z + uz * d;
-    const h = this.crabs.surface(nx, nz, this.pos.y + HOP_MAX);
+    const h = this.crabs.surface(nx, nz, this.pos.y + HOP_MAX, true);
     const rise = h === null ? -Infinity : h - this.pos.y;
     if (h === null || rise > HOP_MAX || rise < -DROP_MAX || h < WATER_Y + DRY) return this.blocked();
     if (rise > STEP_UP || rise < -STEP_DOWN) return this.startHop(ux, uz, rise > 0);
@@ -478,7 +478,7 @@ class Crab {
     for (let s = 0.004; s <= HOP_REACH; s += 0.004) {
       const x = this.pos.x + ux * s;
       const z = this.pos.z + uz * s;
-      const h = this.crabs.surface(x, z, top);
+      const h = this.crabs.surface(x, z, top, true);
       if (h === null) break;
       const rise = h - this.pos.y;
       if (up ? rise > STEP_UP : rise < -STEP_DOWN) {
@@ -487,7 +487,7 @@ class Crab {
       }
     }
     if (!edge || edge.y < WATER_Y + DRY) return this.blocked();
-    const past = this.crabs.surface(edge.x + ux * LAND_PAST, edge.z + uz * LAND_PAST, top);
+    const past = this.crabs.surface(edge.x + ux * LAND_PAST, edge.z + uz * LAND_PAST, top, true);
     const to = past !== null && Math.abs(past - edge.y) < STEP_UP && past >= WATER_Y + DRY
       ? new THREE.Vector3(edge.x + ux * LAND_PAST, past, edge.z + uz * LAND_PAST)
       : edge;
@@ -520,13 +520,13 @@ class Crab {
       const x = this.pos.x + w.x * HOP_OFF;
       const z = this.pos.z + w.z * HOP_OFF;
       // Looking down from well above its back, so a rock beside the host is landed on, not hopped into.
-      const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX);
+      const h = this.crabs.surface(x, z, this.pos.y + HOP_MAX, true);
       if (h !== null && h < this.pos.y + 0.01 && this.pos.y - h < DROP_MAX && this.crabs.dryAt(x, z, h + STEP_UP)) {
         to = new THREE.Vector3(x, h, z);
         break;
       }
     }
-    to ??= new THREE.Vector3(this.pos.x, this.crabs.surface(this.pos.x, this.pos.z, this.pos.y + HOP_MAX) ?? this.pos.y, this.pos.z);
+    to ??= new THREE.Vector3(this.pos.x, this.crabs.surface(this.pos.x, this.pos.z, this.pos.y + HOP_MAX, true) ?? this.pos.y, this.pos.z);
     // Leaping to whichever of its sides faces that way.
     const side = (to.x - this.pos.x) * Math.cos(this.yaw) - (to.z - this.pos.z) * Math.sin(this.yaw) >= 0 ? 1 : -1;
     this.hop = { from: this.pos.clone(), to, side, then: 'idle' };
@@ -678,12 +678,13 @@ export class Crabs {
   }
 
   /** Height of the surface under (x, z) at or below `below` (plus a little), or null. Ignores the lizard and the other iguanas. */
-  surface(x: number, z: number, below: number): number | null {
+  surface(x: number, z: number, below: number, recheck = false): number | null {
     // A ray onto a rock's convex hull can catch a phantom face a centimetre or more above the real
-    // top, depending on where it starts from; it's a second ray from higher up that tells. The lower
-    // of the two is the rock's top.
+    // top, depending on where it starts from; a second ray from higher up tells, and the lower of the
+    // two is the rock's top. Only where a crab is put down (`recheck`): its leg fitting and way-finding
+    // look down far more often and make do with one.
     let top: number | null = null;
-    for (const from of [below + RAY_HEAD, below + RAY_HEAD + RAY_RECHECK]) {
+    for (const from of recheck ? [below + RAY_HEAD, below + RAY_HEAD + RAY_RECHECK] : [below + RAY_HEAD]) {
       this.ray.origin = { x, y: from, z };
       const hit = this.world.castRay(this.ray, from + 1, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, this.player.body);
       if (hit) top = Math.min(top ?? Infinity, from - hit.timeOfImpact);
