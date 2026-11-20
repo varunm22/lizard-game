@@ -20,6 +20,8 @@ export const VITALS = {
   start: { health: 1, warmth: 0.7, fullness: 0.7, air: 1 },
   /** On the island it wakes up starving, this full, and has to forage on algae first (about 25 s before it's out of food). */
   islandStartFullness: 0.05,
+  /** In the lava tunnels it starts (and comes back after going down) this cold, though still well fed: find a skylight to bask in. */
+  tunnelsStartWarmth: 0.3,
 
   /** Health mends at up to this rate (a full bar in 50 s), scaled by how fed and how warm it is. */
   regen: 0.02,

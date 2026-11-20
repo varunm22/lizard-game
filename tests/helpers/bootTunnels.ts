@@ -9,6 +9,6 @@ export async function bootTunnels(page: Page, { vitals = false } = {}) {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/?level=tunnels&test');
   await page.waitForFunction(() => window.__tunnels?.ready === true);
-  if (!vitals) await page.evaluate(() => window.__tunnels!.setVitals({ frozen: true }));
+  if (!vitals) await page.evaluate(() => window.__tunnels!.setVitals({ frozen: true, warmth: 0.7 }));
   return errors;
 }
