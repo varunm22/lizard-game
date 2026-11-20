@@ -185,7 +185,7 @@ export function createTestHooks({
       while (figs.list.length <= i) figs.drop(true);
       figs.place(i, x, z);
     },
-    figTree: () => ({ x: figs.tree.position.x, z: figs.tree.position.z }),
+    figTree: () => ({ x: figs.tree.position.x, z: figs.tree.position.z, roots: figs.roots.map((r) => ({ ...r })) }),
     snag: () => {
       const tip = snag.tip;
       return { state: snag.state, x: snag.position.x, y: snag.position.y, z: snag.position.z, angle: snag.angle, tip: { x: tip.x, y: tip.y, z: tip.z } };

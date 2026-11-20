@@ -18,7 +18,8 @@ object so the game can fade each placed prop on its own. Objects:
   flat base at z = -0.55 * squash; the game scales and sinks them. Grey, so the game tints them per place.
 - algae_green, algae_red: sea lettuce and red turf tufts a few cm across, growing up from the origin.
 - fig_tree: the island puzzle's wild fig, ripe figs on its limbs; extras `trunk_radius` and
-  `trunk_height` (up to the fork) as for the trees, and `crown_y`, the underside of its leaves.
+  `trunk_height` (up to the fork) as for the trees, `crown_y`, the underside of its leaves, and
+  `roots`, its surface roots as capsules, 7 floats each: both ends (Blender axes, Z up) and a radius.
 - snag: the island puzzle's dead tree, standing on the origin; extras `length` and `radius`, the
   straight collider it falls as and lies across the lava crack as.
 - slab_0..3: blocky lava slabs for the rock piles, convex, about 2 m across (radius ~1), the top a
@@ -646,6 +647,7 @@ def fig_tree(rng):
     trunk = path((0, 0, 0), lean, fork, 7, rng=rng, wobble=0.06)
     # Fluted: a few deep grooves running up the trunk, fading out toward the fork.
     tube(mb, trunk, flare(r0, r0 * 0.85, 0.9, 0.07, fork), col, sides=12, cap=False, rough=0.22, seed=seed)
+    roots = []
     # Surface roots: buttresses running out from the foot, tall where they leave the trunk and
     # sinking into the ground within a short way, then showing only as low ridges snaking off.
     n = rng.randint(5, 7)
@@ -662,6 +664,10 @@ def fig_tree(rng):
             s_ = k / (len(root) - 1)
             p.z = min(p.z, start.z * (1 - s_) ** 2 - rr * 0.45 * s_)
         tube(mb, root, lambda s, rr=rr: rr * (1 - 0.55 * s), col, sides=7, rough=0.2, seed=seed + i)
+        # Solid in the game: a capsule over every other stretch of the root, as thick as the tube there.
+        for k in range(0, len(root) - 2, 2):
+            a, b = root[k], root[k + 2]
+            roots.extend((a.x, a.y, a.z, b.x, b.y, b.z, rr * (1 - 0.55 * (k + 1) / (len(root) - 1))))
     tips = []
     twigs = []
 
@@ -732,7 +738,7 @@ def fig_tree(rng):
             body = [base + out * fig_r * f for f in (0.0, 0.4, 1.0, 1.7, 2.2)]
             radii = (0.3, 0.75, 1.0, 0.8, 0.25)
             tube(mb, body, lambda s, radii=radii: fig_r * radii[min(4, round(s * 4))], lambda co, s: colour(co, 1 - s), sides=9)
-    return mb, r0 * 1.2, fork, min(p.z for p, _ in clumps) - 0.05
+    return mb, r0 * 1.2, fork, min(p.z for p, _ in clumps) - 0.05, roots
 
 
 def snag(rng):
@@ -879,8 +885,8 @@ def main():
     for i, top in enumerate((0.3, 0.35, 0.25, 0.4)):
         objects.append(make_object(f'slab_{i}', slab(srng, top), mat, smooth=False, extras={'top': top, 'bottom': -0.5}))
     # The island puzzle's fig tree, likewise from its own generator.
-    mb, r, h, crown_y = fig_tree(random.Random(37))
-    objects.append(make_object('fig_tree', mb, mat, extras={'trunk_radius': r, 'trunk_height': h, 'crown_y': crown_y}))
+    mb, r, h, crown_y, roots = fig_tree(random.Random(37))
+    objects.append(make_object('fig_tree', mb, mat, extras={'trunk_radius': r, 'trunk_height': h, 'crown_y': crown_y, 'roots': roots}))
     # And its dead tree, the same way.
     mb, length, radius = snag(random.Random(43))
     objects.append(make_object('snag', mb, mat, extras={'length': length, 'radius': radius}))

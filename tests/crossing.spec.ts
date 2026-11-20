@@ -255,3 +255,37 @@ test('a lizard that stops with its middle out over the rim tips in, whichever wa
   for (const r of runs) expect(r.fallen).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test("the fig tree's surface roots are solid: the lizard climbs over one rather than walking through it", async ({ page }) => {
+  const errors = await bootGame(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    g.advance(2, false);
+    const tree = g.figTree();
+    // Every stretch of root standing out of the ground is solid at the top.
+    const pieces = tree.roots.map((p) => ({ ...p, rise: p.y + p.r - g.terrainHeight(p.x, p.z) }));
+    const shown = pieces.filter((p) => p.rise > 0.01);
+    const solid = shown.filter((p) => g.groundAt(p.x, p.z, p.y + 0.2)! > g.terrainHeight(p.x, p.z) + p.rise * 0.6);
+    // Walk straight at the tallest from outside the tree, across it.
+    const root = shown.reduce((a, b) => (b.rise > a.rise ? b : a));
+    const out = Math.atan2(root.x - tree.x, root.z - tree.z);
+    const sx = Math.sin(out + Math.PI / 2);
+    const sz = Math.cos(out + Math.PI / 2);
+    g.teleport(root.x - sx * 0.15, root.z - sz * 0.15, Math.atan2(sx, sz));
+    g.advance(20, false);
+    g.setInput({ move: { x: 0, y: 1 } }, 90);
+    let over = 0;
+    for (let i = 0; i < 90; i++) {
+      g.advance(1, false);
+      const p = g.player();
+      // Right over the root, the lizard is up on it, not down at the ground inside it.
+      if (Math.hypot(p.x - root.x, p.z - root.z) < root.r) over = Math.max(over, p.y - g.terrainHeight(p.x, p.z));
+    }
+    return { shown: shown.length, solid: solid.length, rise: root.rise, over };
+  });
+  expect(r.shown).toBeGreaterThan(3);
+  expect(r.solid).toBe(r.shown);
+  // It got over it (or was stopped by it); when over, it stood on the root.
+  if (r.over > 0) expect(r.over).toBeGreaterThan(r.rise * 0.5);
+  expect(errors).toEqual([]);
+});

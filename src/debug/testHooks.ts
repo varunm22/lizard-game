@@ -141,7 +141,7 @@ export interface GameTestHooks {
   figs: () => { x: number; y: number; z: number; state: string; pushed: number }[];
   /** Lay fig `i` (making more if there are fewer) on the ground at (x, z). */
   figPlace: (i: number, x: number, z: number) => void;
-  figTree: () => { x: number; z: number };
+  figTree: () => { x: number; z: number; roots: { x: number; y: number; z: number; r: number }[] };
   /** The dead tree on the crack's rim: standing, falling or fallen, its foot, how far over it is (radians) and its tip. */
   snag: () => { state: string; x: number; y: number; z: number; angle: number; tip: { x: number; y: number; z: number } };
   /** Knock the dead tree over now. */

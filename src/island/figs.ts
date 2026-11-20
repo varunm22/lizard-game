@@ -32,6 +32,14 @@ const NOSE_CENTRE = 0.97;
 /** How far up it bounces off the ground the first time (share of its fall speed). */
 const BOUNCE = 0.25;
 
+/** A solid stretch of the fig tree's surface roots: its middle and radius (m). */
+export interface RootPiece {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+}
+
 export interface Fig {
   x: number;
   y: number;
@@ -57,6 +65,8 @@ export interface Fig {
 export class Figs {
   readonly list: Fig[] = [];
   readonly tree: Obstacle;
+  /** The middles of the solid stretches of its surface roots, and how thick each is (m). */
+  readonly roots: RootPiece[] = [];
   private rand = rng(61);
   private ripen: number;
   private mesh: THREE.InstancedMesh;
@@ -71,7 +81,7 @@ export class Figs {
     model: PropsResult['figTree'],
     private obstacles: () => readonly Obstacle[],
   ) {
-    this.tree = plantTree(scene, world, at, model);
+    this.tree = plantTree(scene, world, at, model, this.roots);
     this.crownY = model.extras.crown_y;
     const geometry = figGeometry();
     const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
@@ -285,7 +295,7 @@ function figGeometry(): THREE.BufferGeometry {
 }
 
 /** The fig tree from props.glb, standing at `at`; solid at the trunk, up to where it forks. */
-function plantTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }, model: PropsResult['figTree']): Obstacle {
+function plantTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: number }, model: PropsResult['figTree'], solidRoots: RootPiece[]): Obstacle {
   const { trunk_radius: radius, trunk_height: height } = model.extras;
   const mesh = new THREE.Mesh(model.geometry, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }));
   const y = terrainHeight(at.x, at.z) - 0.01;
@@ -296,5 +306,27 @@ function plantTree(scene: THREE.Scene, world: RAPIER.World, at: { x: number; z: 
   const collider = world.createCollider(
     RAPIER.ColliderDesc.cylinder(height / 2 + 0.03, radius).setTranslation(at.x, y + height / 2 - 0.03, at.z).setFriction(0.9),
   );
+  // Its surface roots are solid too, a capsule along each stretch (`roots` extra: two ends in
+  // Blender's axes, Z up, and a radius), so the lizard climbs over them rather than through.
+  const roots = (model.extras.roots ?? []) as number[];
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const turn = new THREE.Quaternion();
+  for (let i = 0; i + 7 <= roots.length; i += 7) {
+    a.set(roots[i], roots[i + 2], -roots[i + 1]).add(mesh.position);
+    b.set(roots[i + 3], roots[i + 5], -roots[i + 4]).add(mesh.position);
+    const r = roots[i + 6];
+    const along = b.clone().sub(a);
+    const half = along.length() / 2;
+    turn.setFromUnitVectors(up, along.normalize());
+    solidRoots.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2, r });
+    world.createCollider(
+      RAPIER.ColliderDesc.capsule(half, r)
+        .setTranslation((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2)
+        .setRotation({ x: turn.x, y: turn.y, z: turn.z, w: turn.w })
+        .setFriction(0.9),
+    );
+  }
   return { name: 'fig-tree', kind: 'tree', position: mesh.position, height, radius, mesh, collider };
 }
