@@ -197,6 +197,7 @@ export function createLagoonHooks(ctx: LagoonHookContext): LagoonTestHooks {
       safe: run.safe,
       danger: run.danger,
       goals: run.goals.list.map((g) => ({ ...g })),
+      objective: run.objective,
     }),
     restart: () => run.restart(),
     mangroves: () => mangroves.map((m) => ({ name: m.name, x: m.x, z: m.z, reach: m.reach, sapling: m.sapling })),

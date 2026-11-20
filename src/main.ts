@@ -44,6 +44,7 @@ import { LagoonView } from './island/lagoonView';
 import { WalkOut } from './island/walkOut';
 import { Goals } from './goals';
 import { createGoalsPanel } from './goalsPanel';
+import { createObjectivePanel } from './objective';
 import { createTestHooks } from './debug/createTestHooks';
 import lizardUrl from './assets/lizard.glb?url';
 import plantsUrl from './assets/plants.glb?url';
@@ -142,7 +143,7 @@ async function main() {
   const input = new Input(renderer.domElement);
   const hud = createHud();
   stageSelect();
-  // One goal per creature, the algae and the fish.
+  // One goal per creature and the fish. Eating algae isn't one: the lizard has to, to keep going.
   let basking = false;
   let canEat = false;
   const goals = new Goals([
@@ -150,13 +151,15 @@ async function main() {
     { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
-    { id: 'algae', label: 'Eat some algae', met: () => feeding.mouthfuls > 0 },
     { id: 'fish', label: 'Touch a fish', met: () => fishes.touched > 0 },
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);
   // The objective: over the crack. Once there, the run's end screen: R from the start, C on.
   const run = new IslandRun(player, tortoise, snag);
-  run.onHome = () => hud.message('Across the crack!', 'Over the bank to the west lies the mangrove lagoon.', endKeys('island'));
+  run.onHome = () => {
+    objective.show(run.objective);
+    hud.message('Across the crack!', 'Over the bank to the west lies the mangrove lagoon.', endKeys('island'));
+  };
   // Going on (C): the lizard walks on west up the bank to where the mangrove lagoon, the next stage,
   // opens out below, as the screen fades; then it's the lagoon.
   const lagoonView = new LagoonView(scene);
@@ -169,7 +172,8 @@ async function main() {
   runKeys('island', run, (go) => leave(go));
   let introShown = true;
   hud.intro(true);
-  hud.objective(run.objective.text, run.objective.hint);
+  const objective = createObjectivePanel(hud.corner);
+  objective.show(run.objective);
   goals.onDone = (goal) => goalsPanel.done(goal);
   // A strike that lands: dust and feathers fly off the lizard's back, the view jolts and reddens.
   const puff = new StrikePuff(scene);
@@ -281,8 +285,7 @@ async function main() {
     tortoise.update(alpha, frameDt);
     snag.update(alpha);
     figs.update();
-    const { text, hint } = run.objective;
-    hud.objective(text, hint);
+    objective.show(run.objective);
     hud.banner(run.banner);
     visual.downed = wounds.down;
     visual.update(states.state, alpha, frameDt);

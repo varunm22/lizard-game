@@ -25,6 +25,7 @@ import { FollowCamera } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createLagoonHooks } from '../debug/createLagoonHooks';
 import { createGoalsPanel } from '../goalsPanel';
+import { createObjectivePanel } from '../objective';
 import { stageSelect } from '../stageSelect';
 import { GroundProbe } from '../dunes/ground';
 import { Markers } from '../dunes/markers';
@@ -129,6 +130,9 @@ export async function lagoon() {
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
+  // The objective over the goals: the one thing that finishes the stage.
+  const objective = createObjectivePanel(hud.corner);
+  objective.show(run.objective);
   let introShown = true;
   let messageLeft: number | null = null;
   const flashMessage = (title: string, detail: string) => {
@@ -158,6 +162,7 @@ export async function lagoon() {
     followCam.yaw = START.yaw;
   };
   run.onHome = () => {
+    objective.show(run.objective);
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`Across! ${clock(run.time)}`, best, endKeys('lagoon'));
   };
@@ -269,6 +274,7 @@ export async function lagoon() {
     const distance = Math.max(0, Math.hypot(FINISH.x - feet.x, FINISH.z - feet.z) - FINISH.r);
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
+    objective.show(run.objective);
     hud.danger(run.danger);
     vitalsPanel({
       health: vitals.health,

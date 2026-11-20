@@ -6,7 +6,7 @@ import { goToLevel, LEVEL_NAMES, nextLevel, type Level } from '../level';
  * lizard, a big message when it's caught or makes it, and the controls row at the bottom.
  */
 export interface DunesHud {
-  /** The bottom-left corner, where the goals go. */
+  /** The bottom-left corner, where the objective and the goals go. */
   corner: HTMLElement;
   intro(show: boolean): void;
   /** The clock (s) and best time, and the way to the finish: metres and the bearing on screen (radians, 0 straight ahead, positive to the right). */

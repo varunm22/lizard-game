@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
+import type { ObjectiveView } from '../objective';
 import type { PlayerController } from '../player/controller';
 import type { LizardVisual } from '../player/visual';
 import { FINISH, FLOORS, HOLES, lightAt, overHole, ROOSTS, SKYLIGHTS, START, START_Y } from './layout';
@@ -67,16 +68,23 @@ export class TunnelsRun {
     private player: PlayerController,
     private visual: LizardVisual,
   ) {
-    // Few and distinctive: the way out, then side quests. Dropping, climbing and leaping the gap are
-    // just how the maze is crossed, so they aren't goals (the user's rule, as on the dunes), and
-    // there's no time goal: the run's best time already covers that.
+    // Few and distinctive side quests; the way out is the objective, not a goal. Dropping, climbing and
+    // leaping the gap are just how the maze is crossed, so they aren't goals (the user's rule, as on
+    // the dunes), and there's no time goal: the run's best time already covers that.
     const specs: GoalSpec[] = [
-      { id: 'out', label: 'Reach the sea', met: () => this.finishes > 0 },
       { id: 'bask', label: `Bask under all ${SKYLIGHTS.length} skylights`, met: () => this.basked.every(Boolean) },
       { id: 'owl', label: 'Bask under an owl unheard', met: () => this.baskedByOwl },
       { id: 'shark', label: 'Swim over a sleeping whitetip', met: () => this.startledShark },
     ];
     this.goals = new Goals(specs);
+  }
+
+  /** The stage's objective (out to the sea) and a hint toward it, for the box over the goals. */
+  get objective(): ObjectiveView {
+    const text = 'Find the way out to the sea';
+    if (this.state === 'home') return { text, done: true, hint: 'Out in the cove, by the sea.' };
+    if (this.swam) return { text, done: false, hint: 'Swim out through the sea mouth to the beach.' };
+    return { text, done: false, hint: 'Follow the golden light. Drop through holes; climb rubble back up.' };
   }
 
   /** Back at the start on the upper floor, the clock reset. */

@@ -17,6 +17,7 @@ import { FollowCamera } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createDunesHooks } from '../debug/createDunesHooks';
 import { createGoalsPanel } from '../goalsPanel';
+import { createObjectivePanel } from '../objective';
 import { stageSelect } from '../stageSelect';
 import { ViewCheck } from '../render/viewCheck';
 import { COLONY, NEST, RACER_HOMES, SAFE_POINTS } from './layout';
@@ -93,6 +94,9 @@ export async function dunes() {
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
+  // The objective over the goals: the one thing that finishes the stage.
+  const objective = createObjectivePanel(hud.corner);
+  objective.show(run.objective);
   let introShown = true;
   /** Seconds left showing a passing message (a safe point reached, put back at one), else null. */
   let messageLeft: number | null = null;
@@ -118,6 +122,7 @@ export async function dunes() {
     followCam.yaw = NEST.yaw;
   };
   run.onHome = () => {
+    objective.show(run.objective);
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`You made it! ${clock(run.time)}`, best, endKeys('dunes'));
   };
@@ -213,6 +218,7 @@ export async function dunes() {
     const distance = Math.max(0, Math.hypot(COLONY.x - feet.x, COLONY.z - feet.z) - COLONY.r);
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
+    objective.show(run.objective);
     hud.danger(run.danger);
     hud.fade(arrival.fade);
     water.update(frameDt);

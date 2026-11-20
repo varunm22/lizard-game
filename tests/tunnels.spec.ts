@@ -51,7 +51,8 @@ test('the tunnels load: the lizard on the upper floor at the start; holes and ru
   expect(Math.abs(s.player.y - s.L.floors[1])).toBeLessThan(0.01);
   expect(Math.hypot(s.player.x - s.L.start.x, s.player.z - s.L.start.z)).toBeLessThan(0.02);
   expect(s.run.state).toBe('ready');
-  expect(s.run.goals.length).toBe(4);
+  expect(s.run.goals.length).toBe(3);
+  expect(s.run.objective).toMatchObject({ text: 'Find the way out to the sea', done: false });
   for (const h of s.holes) expect(Math.abs(h.floor! - h.ground), h.name).toBeLessThan(0.01);
   for (const treads of s.ramps) {
     // The lower floor has shallow sags, up to a centimetre or so.
@@ -222,7 +223,7 @@ test('the flooded stretch is swum, and the beach past the sea mouth is the way o
   expect(s.out.swimming).toBe(false);
   expect(s.run.state).toBe('home');
   expect(s.run.finishes).toBe(1);
-  expect(s.run.goals.find((goal) => goal.id === 'out')!.done).toBe(true);
+  expect(s.run.objective.done).toBe(true);
 });
 
 test('a barn owl misses a lizard keeping still under it, and drops on one running', async ({ page }) => {

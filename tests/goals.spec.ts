@@ -5,11 +5,11 @@ import { screenshot } from './helpers/screenshot';
 test('the goals tab lists one unticked goal per creature, and ticking one off animates it', async ({ page }) => {
   const errors = await bootGame(page);
   const before = await page.evaluate(() => window.__game!.goals());
-  expect(before.map((g) => g.id)).toEqual(['hawk', 'tortoise', 'crab', 'iguana', 'algae', 'fish']);
+  expect(before.map((g) => g.id)).toEqual(['hawk', 'tortoise', 'crab', 'iguana', 'fish']);
   expect(before.every((g) => !g.done)).toBe(true);
   const rows = page.locator('.goals .goal');
-  await expect(rows).toHaveCount(6);
-  await expect(page.locator('.goals .count')).toHaveText('0/6');
+  await expect(rows).toHaveCount(5);
+  await expect(page.locator('.goals .count')).toHaveText('0/5');
   // The tab sits in the bottom-left corner.
   const box = (await page.locator('.goals').boundingBox())!;
   const view = page.viewportSize()!;
@@ -25,7 +25,7 @@ test('the goals tab lists one unticked goal per creature, and ticking one off an
   const row = page.locator('.goals .goal[data-goal="tortoise"]');
   await expect(row).toHaveClass(/done/);
   await expect(row).toHaveClass(/just/);
-  await expect(page.locator('.goals .count')).toHaveText('1/6');
+  await expect(page.locator('.goals .count')).toHaveText('1/5');
   await expect(page.locator('.goal-toast')).toHaveClass(/show/);
   await expect(page.locator('.goal-toast')).toContainText('Ride a giant tortoise');
   // Caught mid-pop for people to look at.
@@ -86,7 +86,7 @@ test('diving out of sight as the hawk stoops dodges it, and once it gives up the
   expect(errors).toEqual([]);
 });
 
-test("ticked goals are kept across visits, and the stage picker shows each stage's share of them", async ({ page }) => {
+test("ticked goals are kept across visits, and the stage picker shows each stage's share of them and whether it's cleared", async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => localStorage.setItem('lizard-goals-dunes', JSON.stringify(['freeze', 'shore'])));
@@ -96,14 +96,19 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
 
   await page.locator('.stage-button').click();
   const bar = (stage: string) => page.locator(`.stage-tile[data-stage="${stage}"] .stage-progress`);
-  await expect(bar('island').locator('.seg')).toHaveCount(6);
+  await expect(bar('island').locator('.seg')).toHaveCount(5);
   await expect(bar('island').locator('.seg.on')).toHaveCount(1);
-  await expect(bar('island')).toHaveAttribute('aria-label', '1 of 6 goals done');
-  await expect(bar('dunes').locator('.seg.on')).toHaveCount(2);
-  await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 4 goals done');
-  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 5 goals done');
-  await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 4 goals done');
+  await expect(bar('island')).toHaveAttribute('aria-label', '1 of 5 goals done');
+  // The dunes' old finish goal ('shore') is its objective now: it marks the tile cleared, off the bar.
+  await expect(bar('dunes').locator('.seg')).toHaveCount(3);
+  await expect(bar('dunes').locator('.seg.on')).toHaveCount(1);
+  await expect(bar('dunes')).toHaveAttribute('aria-label', '1 of 3 goals done');
+  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 4 goals done');
+  await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 3 goals done');
   await expect(bar('beach')).toHaveAttribute('aria-label', '0 of 10 goals done');
+  const cleared = (stage: string) => page.locator(`.stage-tile[data-stage="${stage}"] .stage-cleared`);
+  await expect(cleared('dunes')).toBeVisible();
+  for (const stage of ['island', 'lagoon', 'tunnels', 'beach']) await expect(cleared(stage)).toBeHidden();
   // Once the picker has faded in.
   await page.waitForTimeout(300);
   await screenshot(page, 'stage-progress.png');
@@ -113,6 +118,6 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   await page.waitForFunction(() => window.__game?.ready === true);
   expect(await page.evaluate(() => window.__game!.goals().filter((g) => g.done).map((g) => g.id))).toEqual(['tortoise']);
   await expect(page.locator('.goals .goal[data-goal="tortoise"]')).toHaveClass('goal done');
-  await expect(page.locator('.goals .count')).toHaveText('1/6');
+  await expect(page.locator('.goals .count')).toHaveText('1/5');
   expect(errors).toEqual([]);
 });

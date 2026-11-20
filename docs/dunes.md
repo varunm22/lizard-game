@@ -1,9 +1,18 @@
 # Nesting dunes (`?level=dunes`)
 
 The first stage and the default load (the island is `?level=island`), also opened with `?level=dunes` or from the "Select stage" picker in the top-right corner (`src/stageSelect.ts`, a tile per stage with a still from `src/assets/stages/`; the choice is remembered for the tab where the URL can't carry it, as in the embedded preview). Each tile has a thin segmented bar along the foot of its still, filled for
-the goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
+the side goals ticked off on that stage: `Goals` keeps them in `localStorage` (`src/progress.ts`, which
 also holds each stage's goal count, `GOAL_COUNT`, checked under `?test`), so a stage reloads with its
-goals as they were left. The picker is off in tests unless the URL has `picker`. The lizard hatches in a
+goals as they were left. A tile is marked "✓ Cleared" once its stage's objective has been done.
+
+Every stage splits its **objective** (the one thing that finishes it: reach the colony, cross the
+crack, cross the channel, reach the sea) from its **goals** (optional side quests, the checklist).
+The objective is its own box over the goals in the bottom-left corner (`src/objective.ts`,
+`createObjectivePanel`), fed each frame from the stage run's `objective` getter (`{ text, hint, done }`,
+the hint following the step reached); it's kept as `lizard-objective-<level>` in `localStorage` once
+done. The objective is never also a goal (the user's rule, 2026-11-20). A finish ticked as a goal before
+the split (`shore`, `cross`, `out`) counts as the objective done (`OLD_FINISH_GOAL` in `progress.ts`).
+Hooks: each stage's `run().objective`, and the island's `islandRun()`. The picker is off in tests unless the URL has `picker`. The lizard hatches in a
 burrow on the western nesting flat and has to cross the dunes to the adult colony on the shore
 rocks in the east, past racer snakes (*Pseudalsophis occidentalis*), as Fernandina hatchlings do
 each May and June. Everything lives in `src/dunes/`; shared systems (controller, camera, water,
@@ -92,8 +101,8 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   catch puts the lizard back there with the clock still running; caught before the first, it starts
   over at the nest. R restarts; once the run is won, C goes on to the next stage (`runKeys` and
   `endKeys` in `hud.ts`, shared with the lagoon, the tunnels and the beach; after the beach, back to the
-  dunes). Goals are few and short, things worth doing rather than a checklist of the level: reach
-  the colony, freeze until a watching racer looks away, outrun one, cross without being chased.
+  dunes). The objective is reaching the colony. Goals (3) are few and short, things worth doing rather
+  than a checklist of the level: freeze until a watching racer looks away, outrun one, cross without being chased.
   The warnings are one word ("Freeze!" while watched, "Run!" while chased) and the intro card three
   lines.
 - `markers.ts`: a pale ring at the nest; a faint teal ring on the ground at each safe point

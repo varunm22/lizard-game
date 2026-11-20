@@ -31,12 +31,6 @@ const CSS = `
 .island-intro .health{color:#c8402e}.island-intro .warmth{color:#d87a1a}.island-intro .food{color:#4a8a2a}.island-intro .air{color:#3a7ab8}
 .island-intro .go{font-weight:600;color:#3a7a2a}
 .island-intro.hidden{opacity:0}
-.objective{padding:7px 12px 8px;border-radius:10px;background:#fffc;font:14.4px system-ui,sans-serif;color:#2f3a2a;max-width:300px}
-.objective .title{font:600 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.08em;color:#8a6a10}
-.objective .text{font-weight:600}
-.objective .hint{font-size:13px;color:#5a6a50;margin-top:2px}
-.objective.new{animation:objective-new 1.6s ease-out}
-@keyframes objective-new{0%{background:#ffd84a00}15%{background:#ffe38acc}100%{background:#fffc}}
 .island-banner{position:fixed;left:50%;top:60px;transform:translateX(-50%);padding:8px 26px;border-radius:14px;font:800 30px system-ui,sans-serif;
   letter-spacing:.02em;box-shadow:0 4px 16px #0003;pointer-events:none;opacity:0;transition:opacity .25s;white-space:nowrap;background:#ffd6ccf0;color:#9a2a10}
 .island-banner.show{opacity:1}
@@ -56,7 +50,7 @@ const CSS = `
  * countdown while it lies knocked down.
  */
 export function createHud(): {
-  /** The bottom-left corner, where the goals go. */
+  /** The bottom-left corner, where the objective and the goals go. */
   corner: HTMLElement;
   hideHint(): void;
   vitals(v: HudVitals): void;
@@ -66,8 +60,6 @@ export function createHud(): {
   canEat(show: boolean): void;
   /** The card at the start saying what the bars are, until the lizard first moves. */
   intro(show: boolean): void;
-  /** The stage's objective over the goals, and a hint toward it. */
-  objective(text: string, hint: string): void;
   /** A big word at the top of the screen (like the dunes' "Freeze!"), e.g. "Stuck!" down in the lava crack; null hides it. */
   banner(text: string | null): void;
   /** Fade the screen to black (0 to 1), as the lizard walks out at the end. */
@@ -82,14 +74,6 @@ export function createHud(): {
   corner.style.cssText =
     'position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none';
   document.body.appendChild(corner);
-  const objective = document.createElement('div');
-  objective.className = 'objective';
-  const objectiveText = document.createElement('div');
-  objectiveText.className = 'text';
-  const objectiveHint = document.createElement('div');
-  objectiveHint.className = 'hint';
-  objective.append(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Objective' }), objectiveText, objectiveHint);
-  corner.appendChild(objective);
 
   const intro = document.createElement('div');
   intro.className = 'island-intro';
@@ -154,16 +138,6 @@ export function createHud(): {
     canEat: eat,
     intro(show) {
       intro.classList.toggle('hidden', !show);
-    },
-    objective(text, hint) {
-      if (objectiveText.textContent !== text) objectiveText.textContent = text;
-      if (objectiveHint.textContent !== hint) {
-        objectiveHint.textContent = hint;
-        // A new hint flashes, so it's seen.
-        objective.classList.remove('new');
-        void objective.offsetWidth;
-        objective.classList.add('new');
-      }
     },
     fade(amount) {
       const o = amount.toFixed(3);

@@ -581,8 +581,7 @@ test('the log: the wrack dam holds the pool still; cleared, it drains; shoved lo
   expect(s.onLog).toBe(true);
   expect(s.crossed.player.swimming).toBe(false);
   expect(s.crossed.run.state).toBe('home');
-  const done = Object.fromEntries(s.crossed.run.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ cross: true });
+  expect(s.crossed.run.objective.done).toBe(true);
   await screenshot(page, 'lagoon-bridge.png');
   // Starting over puts the log back, stuck in its pool, and the wrack back in the creek's mouth.
   const reset = await page.evaluate(() => {
@@ -628,7 +627,7 @@ test('the channel: its ebb carries a swimmer south and a riding lizard with the 
   expect(s.goals.find((g) => g.id === 'ride')!.done).toBe(true);
 });
 
-test('shark pups and rays cruise the pools, and swimming beside them ticks their goals', async ({ page }) => {
+test('shark pups and rays cruise the pools, and swimming beside the rays ticks their goal', async ({ page }) => {
   await bootLagoon(page, { swimmers: true });
   const s = await page.evaluate(() => {
     const g = window.__lagoon!;
@@ -650,7 +649,42 @@ test('shark pups and rays cruise the pools, and swimming beside them ticks their
   for (const d of s.deep) expect(d).toBeGreaterThan(0.08);
   for (const u of s.under) expect(u).toBeGreaterThan(0.005);
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ shark: true, rays: true });
+  expect(done).toMatchObject({ rays: true });
+});
+
+test('a shark pup facing a swimmer coming at it bites, and that ticks the goal if the lizard survives; one swum at steadily from behind bolts', async ({ page }) => {
+  await bootLagoon(page, { swimmers: true });
+  const s = await page.evaluate(() => {
+    const g = window.__lagoon!;
+    // Swimming east at a steady pace toward a pup that hangs in the water facing it.
+    const swimAt = (yaw: number) => {
+      const seq: string[] = [];
+      g.teleport(-2.7, 1.9, Math.PI / 2, -0.12);
+      for (let i = 0; i < 60 && !seq.includes('bite') && !seq.includes('bolt'); i++) {
+        // Held where it is, so only how the lizard comes at it matters.
+        if (i === 0 || g.swimmers()[0].state === 'cruise' || g.swimmers()[0].state === 'curious') g.placeSwimmer(0, -2.1, 1.9, yaw);
+        g.setInput({ move: { x: 0, y: 1 } }, 5);
+        g.advance(5);
+        const f = g.swimmers()[0];
+        if (seq[seq.length - 1] !== f.state) seq.push(f.state);
+      }
+      return { seq, gap: g.swimmers()[0].x - g.player().x };
+    };
+    const faced = swimAt(-Math.PI / 2);
+    for (let i = 0; i < 12 && g.swimmers()[0].bites === 0; i++) g.advance(5);
+    const bitten = { run: g.run(), bites: g.swimmers()[0].bites };
+    g.restart();
+    const behind = swimAt(Math.PI / 2);
+    return { faced, bitten, behind };
+  });
+  expect(s.faced.seq).toContain('bite');
+  // It went for the lizard from further off than a pup it surprises from the side would.
+  expect(s.faced.gap).toBeGreaterThan(0.3);
+  expect(s.bitten.bites).toBe(1);
+  expect(s.bitten.run.state).not.toBe('caught');
+  expect(s.bitten.run.goals.find((o) => o.id === 'shark')!.done).toBe(true);
+  expect(s.behind.seq).toContain('bolt');
+  expect(s.behind.seq).not.toContain('bite');
 });
 
 test('a shark pup comes over to circle a swimmer, bites one that suddenly turns on it, and rays veer off from a swimmer heading at them', async ({ page }) => {

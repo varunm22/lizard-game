@@ -207,7 +207,7 @@ test('a safe point keeps the lizard out of reach, and a catch after it sends the
   expect(Math.hypot(s.player.x - s.p.x, s.player.z - s.p.z)).toBeLessThan(0.02);
 });
 
-test('reaching the adults under the light wins the run and ticks off its goals', async ({ page }) => {
+test('reaching the adults under the light wins the run, clears the objective and ticks off its goals', async ({ page }) => {
   await bootDunes(page);
   const s = await page.evaluate(() => {
     const g = window.__dunes!;
@@ -221,8 +221,14 @@ test('reaching the adults under the light wins the run and ticks off its goals',
   expect(s.state).toBe('home');
   expect(s.finishes).toBe(1);
   expect(s.best).toBeGreaterThan(0);
+  // Getting there is the objective, in its own box over the goals, not one of them.
+  expect(s.objective.done).toBe(true);
+  expect(s.goals.map((g) => g.id)).not.toContain('shore');
   const done = Object.fromEntries(s.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ shore: true, unseen: true, outrun: false });
+  expect(done).toMatchObject({ unseen: true, outrun: false });
+  await expect(page.locator('.objective')).toContainText('Reach the adults');
+  await expect(page.locator('.objective')).toHaveClass(/cleared/);
+  expect(await page.evaluate(() => localStorage.getItem('lizard-objective-dunes'))).toBe('1');
   // The end screen offers another go or the next stage. C walks the hatchling on past the adults and
   // down the lane toward the island's trees as the screen fades, then goes on to the island.
   await expect(page.locator('.dunes-message')).toHaveClass(/show/);

@@ -19,6 +19,7 @@ import { FollowCamera, type EasedArm } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createTunnelsHooks } from '../debug/createTunnelsHooks';
 import { createGoalsPanel } from '../goalsPanel';
+import { createObjectivePanel } from '../objective';
 import { stageSelect } from '../stageSelect';
 import { Markers } from '../dunes/markers';
 import { clock, createDunesHud, endKeys, runKeys, type HudText } from '../dunes/hud';
@@ -129,6 +130,9 @@ export async function tunnels() {
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
+  // The objective over the goals: the one thing that finishes the stage.
+  const objective = createObjectivePanel(hud.corner);
+  objective.show(run.objective);
   let introShown = true;
   let messageLeft: number | null = null;
   const flashMessage = (title: string, detail: string) => {
@@ -154,6 +158,7 @@ export async function tunnels() {
     run.startledShark = true;
   };
   run.onHome = () => {
+    objective.show(run.objective);
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     messageLeft = null;
     hud.message(`Out to the sea! ${clock(run.time)}`, `${best}. Across the water, sea lions bask on the outer islet.`, endKeys('tunnels'));
@@ -283,6 +288,7 @@ export async function tunnels() {
     const distance = Math.max(0, Math.hypot(FINISH.x - feet.x, FINISH.z - feet.z) - FINISH.r);
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
+    objective.show(run.objective);
     vitalsPanel({
       health: vitals.health,
       warmth: vitals.warmth,

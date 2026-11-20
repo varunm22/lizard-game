@@ -16,8 +16,9 @@ import { depthAt, POOLS } from './layout';
  *
  * A shark pup is curious about a lizard swimming in its pool: now and then it comes over and circles
  * it, closer as it gets bolder, and once in a while, out of mild aggression, it tenses and darts in to
- * bite. A lizard that suddenly turns to swim straight at a pup close by startles it into a bite; one
- * that swims at it steadily just makes it bolt. A bite takes health, like a heron's stab.
+ * bite. A lizard that swims straight at a pup close by suddenly (turning sharply or putting on a burst
+ * of speed), or while the pup faces it, startles it into a bite; one that swims at it steadily from its
+ * side or behind just makes it bolt. A bite takes health, like a heron's stab.
  *
  * The rays gather into loose schools that form and break up again (each ray drifts between keeping
  * company and going its own way) and veer off from a swimming lizard heading at them close.
@@ -45,9 +46,18 @@ export const SHARK = {
   dart: 0.45,
   dartTime: 0.7,
   bite: 0.045,
-  /** A lizard swimming at it within this, and turning this much in the last half second, startles it. */
+  /**
+   * A lizard swimming at it within `startle` startles it into a bite if it came on suddenly: turned
+   * this much (radians) in the last half second, or sped up by `surge` (m/s) over its pace of the
+   * last half second or so. One swimming at it while it faces the lizard is bitten whether sudden
+   * or not, and from further off (`startleFacing`): the pup's head within `face` (radians) of it.
+   * Anything else swimming steadily at it, it bolts from.
+   */
   startle: 0.3,
-  sudden: 0.7,
+  sudden: 0.5,
+  surge: 0.05,
+  face: 0.6,
+  startleFacing: 0.38,
   /** Bolting off, and how long before it takes an interest again. */
   bolt: 0.35,
   boltTime: 1.4,
@@ -149,6 +159,9 @@ export class Swimmers {
   nearRay = false;
   /** How much the lizard has turned lately (radians, fading over half a second): a sudden turn startles a pup. */
   turned = 0;
+  /** The lizard's speed, and its pace smoothed over the last half second or so: a burst of speed startles a pup. */
+  private preySpeed = 0;
+  private pace = 0;
   private lastYaw: number | null = null;
   /** Each kind's snout ahead of its middle (m). */
   private nose: Record<Kind, number> = { shark: 0, ray: 0 };
@@ -295,6 +308,8 @@ export class Swimmers {
       speed = prey.speed();
       this.turned = this.turned * Math.exp(-dt / 0.5) + (this.lastYaw === null ? 0 : Math.abs(wrapAngle(yaw - this.lastYaw)));
       this.lastYaw = yaw;
+      this.pace += (speed - this.pace) * (1 - Math.exp(-dt / 0.4));
+      this.preySpeed = speed;
     }
     if (this.paused) return;
     for (const s of this.list) {
@@ -321,9 +336,13 @@ export class Swimmers {
     const inPool = Math.hypot(this.feet.x - pool.x, this.feet.z - pool.z) < pool.r * 1.1 && depthAt(this.feet.x, this.feet.z) > MIN_DEPTH.shark * 0.8;
     const reachable = swimming && inPool;
     s.cool -= dt;
-    // Startled: a lizard close by that suddenly turns to swim straight at it gets bitten; one swimming at it steadily, it bolts from.
-    if (reachable && at && near < SHARK.startle && s.state !== 'bite' && s.state !== 'bolt') {
-      if (this.turned > SHARK.sudden) this.toBite(s);
+    // Startled: a lizard close by that swims straight at it suddenly (a sharp turn or a burst of
+    // speed), or while it's facing the lizard, gets bitten; one coming at it steadily from its side or
+    // behind, it bolts from.
+    if (reachable && at && s.state !== 'bite' && s.state !== 'bolt') {
+      const facing = Math.abs(wrapAngle(Math.atan2(lx, lz) - s.yaw)) < SHARK.face;
+      const sudden = this.turned > SHARK.sudden || this.preySpeed - this.pace > SHARK.surge;
+      if (facing ? near < SHARK.startleFacing : sudden && near < SHARK.startle) this.toBite(s);
       else if (near < SHARK.startle * 0.75) this.toBolt(s, SHARK.cool);
     }
     switch (s.state) {

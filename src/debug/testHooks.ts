@@ -152,7 +152,7 @@ export interface GameTestHooks {
   /** Go on from the island once it's over the crack (C): walk out west up the bank toward the mangrove lagoon as the screen fades. In tests nothing is loaded after; `left` says it would have been. `trees`: the lagoon's trees loaded into the view. */
   islandLeave: () => void;
   islandWalkOut: () => { walking: boolean; fade: number; left: boolean; lagoonInView: boolean; trees: number };
-  islandRun: () => { state: string; progress: string; falls: number; fallen: 'stuck' | 'climbing' | null; text: string; hint: string };
+  islandRun: () => { state: string; progress: string; falls: number; fallen: 'stuck' | 'climbing' | null; text: string; hint: string; done: boolean };
   /**
    * The Sally Lightfoot crabs: where each stands, its facing (yaw, as the lizard's; it walks
    * sideways), what it's doing and the clip playing, whether it lives on a rock pile, how many hops
@@ -352,7 +352,7 @@ export interface GameTestHooks {
   };
   /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */
   setVitals: (v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>) => void;
-  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'algae') and which are done. */
+  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'fish') and which are done. */
   goals: () => { id: string; label: string; done: boolean }[];
   /** Tick goal `id` off now, with its animation; false if it's unknown or already done. */
   completeGoal: (id: string) => boolean;
@@ -412,6 +412,8 @@ export interface DunesTestHooks
     danger: string;
     inCover: boolean;
     goals: { id: string; label: string; done: boolean }[];
+    /** The objective box: what finishes the stage, the hint toward it, and whether this run has done it. */
+    objective: { text: string; hint: string; done: boolean };
   };
   /** Start the run over (R). */
   restart(): void;
@@ -546,6 +548,8 @@ export interface LagoonTestHooks
     safe: boolean;
     danger: string;
     goals: { id: string; label: string; done: boolean }[];
+    /** The objective box: what finishes the stage, the hint toward it, and whether this run has done it. */
+    objective: { text: string; hint: string; done: boolean };
   };
   restart(): void;
   /** Red mangroves: where each stands and how far its roots reach. */
@@ -583,6 +587,8 @@ export interface TunnelsTestHooks
     checkpoint: { x: number; y: number; z: number; yaw: number };
     basked: boolean[];
     goals: { id: string; label: string; done: boolean }[];
+    /** The objective box: what finishes the stage, the hint toward it, and whether this run has done it. */
+    objective: { text: string; hint: string; done: boolean };
   };
   restart(): void;
   /** The barn owls: which skylight each roosts in, what it's doing, where it is, and the floor it hunts (its skylight's middle). */
