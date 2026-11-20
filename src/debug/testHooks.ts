@@ -648,6 +648,8 @@ export interface BeachTestHooks
   };
   /** Whether (x, z) is beside a cow (and she isn't barking), where the bull won't charge. */
   sheltered(x: number, z: number): boolean;
+  /** The algae patches growing: where, and how far grown (0..1). */
+  algae(): { id: number; x: number; y: number; z: number; grown: number }[];
   /** The bull as drawn: each bone's world position by name. */
   bullBones(): Record<string, { x: number; y: number; z: number }>;
   /** Stand the bull at (x, z) facing `yaw`, on his beat or charging. */

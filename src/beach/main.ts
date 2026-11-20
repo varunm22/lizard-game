@@ -250,7 +250,7 @@ export async function beach() {
   };
 
   const hooks = createBeachHooks({
-    world, obstacles, player, states, camera, followCam, fade, run, sealions, rivals, birds, vitals, wounds, display, playerDisplay: () => displayT,
+    world, obstacles, player, states, camera, followCam, fade, run, sealions, rivals, birds, vitals, wounds, algae, display, playerDisplay: () => displayT,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
