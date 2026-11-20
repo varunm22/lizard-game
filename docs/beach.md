@@ -106,9 +106,10 @@ the bull charges him off. His rock then claimed and the lizard warm, the female 
 
 ready → running (first move) → caught or home (chosen). Ashore once up on the sand, or past the
 waterline on the lava. Down, it comes back where it first came ashore (or on the reef if it never
-did), with the rivals and female reset. Goals (9, `GOAL_COUNT`; `chosen` is the objective, and an old
-saved `chosen` goal counts as it, `OLD_FINISH_GOAL`): ashore, dodge the bull, a pup's nudge, swim
-with a penguin, swim beside a cormorant, out-display a rival, win a shove, claim a rock, see off a
+did), with the rivals and female reset. Goals (7, `GOAL_COUNT`; side goals only. `chosen` is the objective,
+and an old saved `chosen` goal counts as it, `OLD_FINISH_GOAL`; coming ashore and claiming a rock
+are steps toward it, dropped as goals and ignored if saved, `RETIRED_GOALS`): dodge the bull, a pup's
+nudge, swim with a penguin, swim beside a cormorant, out-display a rival, win a shove, see off a
 challenger.
 
 ## Tests (`tests/beach.spec.ts`, `window.__beach`)
