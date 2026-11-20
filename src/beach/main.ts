@@ -9,7 +9,7 @@ import { covers } from '../world/obstacles';
 import { Cover } from '../world/cover';
 import { Plants } from '../world/plants';
 import { ClimateSense } from '../player/climate';
-import { Vitals, type DownCause } from '../player/vitals';
+import { Vitals, VITALS, type DownCause } from '../player/vitals';
 import { Wounds } from '../player/wounds';
 import { Feeding } from '../player/feeding';
 import { Algae } from '../world/algae';
@@ -26,6 +26,7 @@ import { FollowCamera } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createBeachHooks } from '../debug/createBeachHooks';
 import { createGoalsPanel } from '../goalsPanel';
+import { createObjectivePanel } from '../objective';
 import { stageSelect } from '../stageSelect';
 import { Markers } from '../dunes/markers';
 import { clock, createDunesHud, endKeys, runKeys, type HudText } from '../dunes/hud';
@@ -42,7 +43,7 @@ import { beachAlgaeSites, beachPlants, buildBeachProps } from './props';
 import { loadSeaLionKit } from './sealionBody';
 import { SeaLions } from './sealions';
 import { Birds } from './birds';
-import { displayNod, DISPLAY_TIME, EASE, Rivals, RIVALS, SURGE, WIN } from './rivals';
+import { displayNod, DISPLAY_TIME, EASE, OLD_ROCK, Rivals, RIVALS, SURGE, WIN } from './rivals';
 import { wearBreedingColours } from './breeding';
 import { BeachRun, CAUGHT_TIME } from './run';
 import { createBeachHud } from './hud';
@@ -50,12 +51,11 @@ import { createBeachHud } from './hud';
 const TEXT: HudText = {
   intro:
     '<h2>Sea lion beach</h2>' +
-    "Grown now, and in your <b>breeding colours</b>: win a <b>display rock</b> on the lava behind the beach, and a female's eye." +
-    '<ul><li>The <b>bull</b> patrols the waterline. On his stretch of sand he barks a warning, then charges: get off his beach, or dodge aside, he turns slowly.</li>' +
-    '<li>Rival males hold the three rocks. Answer each head-bob with your own (<b>B</b>): the younger ones back down.</li>' +
-    '<li>The old male never does. Walk into him and <b>shove</b>: hold <b>W</b>, and butt (<b>Space</b>) as he eases off.</li>' +
-    '<li>Stand on a vacant rock to <b>claim</b> it. See off the male who comes back for it, then display to the female who comes over.</li>' +
-    '<li>The water <b>chills</b> you: bask on the black lava. Bite (<b>F</b>) the algae at the waterline to eat.</li></ul>' +
+    "Grown now, and in your <b>breeding colours</b>: win the best <b>display rock</b> on the lava behind the beach, and a female's eye." +
+    '<ul><li>The <b>bull</b> patrols the waterline. On his stretch of sand he barks, then charges. He turns slowly, and he won\'t charge in among his <b>cows</b>, unless a pup squeals and its mother barks for him.</li>' +
+    '<li>You\'re <b>cold</b> from the sea: below half warmth your head-bobs (<b>B</b>) impress nobody and your shove is weak. Bask on the black lava. You\'re <b>hungry</b> too: bite (<b>F</b>) the algae on the lava at the waterline.</li>' +
+    '<li>Rival males hold the rocks. Answer each head-bob with your own: the younger ones back down. Or <b>shove</b>: hold <b>W</b>, butting (<b>Space</b>) as he eases off.</li>' +
+    "<li>The females only watch the <b>old male's rock</b>. He's too big to shove, and he chases intruders off. The bull isn't so patient.</li></ul>" +
     '<span class="go">Move to start.</span>',
   watched: 'A rival is warning you off!',
   chased: 'Charge!',
@@ -94,6 +94,12 @@ export async function beach() {
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
   const vitals = new Vitals();
+  // It comes in from the sea warm enough (the swim chills it) but hungry (`beachStartFullness`), and again after going down.
+  const startBars = () => {
+    vitals.reset();
+    if (!vitals.frozen) vitals.fullness = VITALS.beachStartFullness;
+  };
+  startBars();
   const wounds = new Wounds(player, lizard, vitals, () => run.afterDown(), CAUGHT_TIME);
   const cover = new Cover(world, obstacles, plants, crowns);
   const feeding = new Feeding(lizard, algae);
@@ -144,9 +150,13 @@ export async function beach() {
     free,
     pushing: () => !!rawInput && rawInput.move.y > 0,
     butting: () => pressedJump,
+    warmth: () => vitals.warmth,
   });
   const run: BeachRun = new BeachRun(player, wounds, vitals, sealions, rivals, birds);
   sealions.prey = run.prey;
+  // The bull sees rival males off his beach too: that's what gets the old male off his rock.
+  sealions.intruders = () => rivals.intruders();
+  sealions.onCharge = (i) => rivals.rout(i);
   const climate = new ClimateSense(player, cover, () => [...rivals.rivals.map((r) => r.npc), ...rivals.females.map((f) => f.npc)].map((n) => n.body.position), waterDepth, beachLava);
   const markers = new Markers(scene, { start: START, finish: { x: 1e3, z: 1e3, r: 0 }, safe: [] });
 
@@ -162,6 +172,9 @@ export async function beach() {
   let canEat = false;
   wounds.onStrike = createHitFlash();
   stageSelect();
+  // The objective over the goals: the one thing that finishes the stage.
+  const objective = createObjectivePanel(hud.corner);
+  objective.show(run.objective);
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
   let introShown = true;
@@ -182,8 +195,12 @@ export async function beach() {
   };
   run.onHurt = () => flashMessage('The bull caught you!', 'Keep off his stretch of beach, or dodge aside.');
   run.onAshore = () => flashMessage('Ashore', 'Mind the bull. The lek is on the lava behind the beach.');
-  run.onRespawn = () => hud.message(null);
+  run.onRespawn = () => {
+    startBars();
+    hud.message(null);
+  };
   run.onReset = () => {
+    startBars();
     hud.message(null);
     messageLeft = null;
     followCam.yaw = START.yaw;
@@ -192,18 +209,21 @@ export async function beach() {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`Chosen! ${clock(run.time)}`, `Her eggs will hatch in the dunes. ${best}`, endKeys('beach'));
   };
-  rivals.onEvent = (what) => {
+  rivals.onEvent = (what, rock) => {
     const say: Record<string, [string, string]> = {
       outDisplayed: ['He backs down', 'Out-displayed, he goes off to sulk.'],
       won: ['Shoved off!', 'He goes off to sulk. His rock is free.'],
       lost: ['Pushed back', 'He holds his ground. Try again, butting as he eases off.'],
       claimed: ['Your rock!', 'Hold it: he will be back for it.'],
-      defended: ['Seen off!', 'A female is coming over. Display to her (B).'],
+      defended: ['Seen off!', 'He goes off to sulk.'],
+      cold: ['Too cold', 'A cold display impresses nobody. Bask on the black lava first.'],
+      chase: ['He comes after you!', "Too big to shove. Keep just ahead of him, at a walk."],
+      routed: ['Charged off!', 'The bull sees him off the beach. His rock is free.'],
       lostRock: ['Rock lost', 'Off your rock too long, or pushed off it.'],
       chosen: ['', ''],
       female: ['', ''],
     };
-    const [t, d] = say[what];
+    const [t, d] = what === 'claimed' && rock === OLD_ROCK ? ['The best rock!', 'A female will come over. Display to her (B).'] : say[what];
     if (t) flashMessage(t, d);
   };
   runKeys('beach', run);
@@ -322,6 +342,7 @@ export async function beach() {
     toTarget.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toTarget.x, -toTarget.z));
     hud.danger(run.danger);
+    objective.show(run.objective);
     vitalsPanel({
       health: vitals.health,
       warmth: vitals.warmth,

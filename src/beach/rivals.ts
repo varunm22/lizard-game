@@ -10,6 +10,8 @@ import { LizardVisual } from '../player/visual';
 import { CACTUS_GROUP, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import { DISPLAY_ROCKS, FEMALE_SPOTS, SULK_SPOTS } from './layout';
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 /** A display: the head bobbing, three times over this long (s). */
 export const DISPLAY_TIME = 1.2;
 /** The head's nod (radians, snout up) `t` s into a display. */
@@ -50,14 +52,37 @@ const COURT = 0.2;
 const COURT_GAP = 1.0;
 export const COURTSHIP = 2;
 
-/** The three rival males: how many displays it takes to make each back down (never, the big one), and how hard each pushes. */
+/**
+ * The three rival males: how many displays it takes to make each back down (never, the big one),
+ * and how hard each pushes. The old male is twice the lizard's weight: no shove moves him. He
+ * chases an intruder off instead, and only the bull can see him off.
+ */
 export const RIVALS = [
   { backDown: 2, push: 0.9, tint: [1, 0.97, 0.95], name: 'young' },
-  { backDown: Infinity, push: 1.5, tint: [0.88, 0.84, 0.84], name: 'old' },
-  { backDown: 4, push: 1.2, tint: [0.96, 0.92, 0.9], name: 'seasoned' },
+  { backDown: Infinity, push: 2.4, tint: [0.88, 0.84, 0.84], name: 'old' },
+  { backDown: 4, push: 1.5, tint: [0.96, 0.92, 0.9], name: 'seasoned' },
+] as const;
+/** The old male's rock, the lek's best: in the middle, nearest the females, the only one they come to. */
+export const OLD_ROCK = 1;
+/** The old male chases an intruder off at a walk this fast (0 to 1), until it's this far ahead of him (m) or for this long (s). */
+const CHASE_PACE = 1;
+export const CHASE_LOSE = 1.0;
+const CHASE_TIME = 30;
+/** Charged off the bull's beach, a male flees here (out past the females) and stays away. */
+const ROUTED_SPOTS = [
+  { x: -4.6, z: 4.4 },
+  { x: 2.4, z: 5.0 },
+  { x: 4.8, z: 4.4 },
 ] as const;
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** Cold-blooded: below this warmth the lizard's displays don't impress anyone, and its shove is weak. */
+export const WARM_ENOUGH = 0.5;
+/** How much of its push (and butt) the lizard has at warmth `w`: all of it from `WARM_ENOUGH`, down to `COLD_VIGOUR` at 0.15. */
+const COLD_VIGOUR = 0.4;
+export function vigour(w: number): number {
+  return COLD_VIGOUR + (1 - COLD_VIGOUR) * clamp((w - 0.15) / (WARM_ENOUGH - 0.15), 0, 1);
+}
+
 
 /** Another marine iguana on the beach, driven like the player by an InputState. */
 export class Npc {
@@ -132,7 +157,7 @@ export class Npc {
   }
 }
 
-export type RivalState = 'hold' | 'warn' | 'shove' | 'retreat' | 'sulk' | 'return';
+export type RivalState = 'hold' | 'warn' | 'chase' | 'shove' | 'retreat' | 'sulk' | 'return' | 'routed';
 export type FemaleState = 'bask' | 'come' | 'watch' | 'chosen';
 
 export interface Rival {
@@ -149,6 +174,8 @@ export interface Rival {
   timer: number;
   /** Come back to take his rock from the lizard. */
   challenging: boolean;
+  /** Chases an intruder off rather than backing down (the old male). */
+  chaser: boolean;
 }
 
 /** The shoving match under way. */
@@ -175,17 +202,22 @@ export interface Suitor {
   /** Pressing forward this step, and the jump (a head-butt) just pressed. */
   pushing(): boolean;
   butting(): boolean;
+  /** Its warmth, 0 to 1: cold, its displays don't count and its shove is weak. */
+  warmth(): number;
 }
 
 /**
  * The lek on the lava field behind the beach: three rival males, each holding a display rock, and
  * the females basking at its back. A lizard coming near a rock gets warned off, the male facing it
  * and bobbing his head; answer each display with one of its own (B) and the young and the seasoned
- * male back down after a few exchanges. The old male never does: walk into him (or let him close
- * in) and it's a shoving match, head to head, holding forward to push, butting (Space) as he eases
- * off between surges. Beaten either way, a male goes off to sulk at the field's edge and comes back
- * later to challenge. A vacant rock is claimed by standing on it a moment; seeing off a returning
- * challenger from it brings a female over, and displaying to her wins her.
+ * male back down after a few exchanges. Walk into one (or let him close in) and it's a shoving
+ * match, head to head, holding forward to push, butting (Space) as he eases off between surges.
+ * Beaten either way, a male goes off to sulk at the field's edge and comes back later to challenge.
+ * A vacant rock is claimed by standing on it a moment; seeing off a returning challenger is a goal.
+ * The old male never backs down and can't be shoved: he comes off his rock and chases the lizard
+ * off at a walk. Led down onto the bull's beach, the bull charges him (`rout`) and he flees for good.
+ * His rock is the one the females come to: holding it brings the nearest over, and displaying to
+ * her wins her. Cold (`WARM_ENOUGH`), the lizard's displays count for nothing and its shove is weak.
  */
 export class Rivals {
   readonly rivals: Rival[] = [];
@@ -206,7 +238,7 @@ export class Rivals {
   /** Tests not about them stop them. */
   paused = false;
   /** Called as the lizard wins or loses a match, beats a male back by displays, claims a rock, sees off a challenger, wins a female. */
-  onEvent: ((what: 'won' | 'lost' | 'outDisplayed' | 'claimed' | 'defended' | 'lostRock' | 'female' | 'chosen', rock: number) => void) | null = null;
+  onEvent: ((what: 'won' | 'lost' | 'outDisplayed' | 'claimed' | 'defended' | 'lostRock' | 'female' | 'chosen' | 'cold' | 'chase' | 'routed', rock: number) => void) | null = null;
   private feet = new THREE.Vector3();
   private sinceLost = Infinity;
   private away = 0;
@@ -225,7 +257,7 @@ export class Rivals {
       const model = rivalModels[i];
       scene.add(model.root);
       const npc = new Npc(model, world, rock.x, rock.z, rock.yaw, rock.top);
-      this.rivals.push({ npc, rock: i, backDown: r.backDown, push: r.push, state: 'hold', exchanges: 0, sinceDisplay: 0, timer: 0, challenging: false });
+      this.rivals.push({ npc, rock: i, backDown: r.backDown, push: r.push, state: 'hold', exchanges: 0, sinceDisplay: 0, timer: 0, challenging: false, chaser: r.backDown === Infinity });
     });
     FEMALE_SPOTS.forEach((s, i) => {
       const model = femaleModels[i];
@@ -240,10 +272,33 @@ export class Rivals {
     return this.owner.indexOf('player');
   }
 
-  /** A rival is warning the lizard or shoving it. */
+  /** A rival is warning the lizard, chasing it or shoving it. */
   get danger(): 'none' | 'watched' | 'chased' {
     if (this.match) return 'chased';
-    return this.rivals.some((r) => r.state === 'warn') ? 'watched' : 'none';
+    return this.rivals.some((r) => r.state === 'warn' || r.state === 'chase') ? 'watched' : 'none';
+  }
+
+  /** The rival males where the bull might see them: out in the open unless already routed. */
+  intruders() {
+    return this.rivals.map((r) => ({ x: r.npc.feet.x, z: r.npc.feet.z, open: r.state !== 'routed' && !r.npc.body.swimming }));
+  }
+
+  /** The old male is out chasing the lizard. */
+  get chasing() {
+    return this.rivals.some((r) => r.chaser && r.state === 'chase');
+  }
+
+  /** The bull charges rival `i`: he flees the beach and the lek, for good this run, his rock left vacant. */
+  rout(i: number) {
+    const r = this.rivals[i];
+    if (r.state === 'routed') return;
+    if (this.match?.rival === r) this.endMatch(false, true);
+    r.state = 'routed';
+    r.timer = 0;
+    r.challenging = false;
+    r.npc.displayT = -1;
+    if (this.owner[r.rock] === i) this.owner[r.rock] = null;
+    this.onEvent?.('routed', r.rock);
   }
 
   /** The lizard displays (B). */
@@ -251,6 +306,13 @@ export class Rivals {
     const p = this.suitor;
     if (!p.free() || this.match) return;
     const pf = p.player.feetAt(1, this.feet);
+    // Too cold to put on a show: nobody's impressed.
+    if (p.warmth() < WARM_ENOUGH) {
+      const f = this.female;
+      const near = this.rivals.some((r) => r.state === 'warn' && Math.hypot(r.npc.feet.x - pf.x, r.npc.feet.z - pf.z) < WARN + 0.2) || (!!f && Math.hypot(f.npc.feet.x - pf.x, f.npc.feet.z - pf.z) < COURT + 0.25);
+      if (near) this.onEvent?.('cold', this.held);
+      return;
+    }
     for (const r of this.rivals) {
       if (r.state !== 'warn' || r.sinceDisplay > ANSWER) continue;
       if (Math.hypot(r.npc.feet.x - pf.x, r.npc.feet.z - pf.z) > WARN + 0.2) continue;
@@ -294,12 +356,15 @@ export class Rivals {
     for (const r of this.rivals) {
       const rock = DISPLAY_ROCKS[r.rock];
       r.npc.locked = false;
+      r.npc.input.run = false;
       r.npc.body.setFeet(this.feet.set(rock.x, terrainHeight(rock.x, rock.z) + rock.top + 0.005, rock.z), rock.yaw);
+      r.npc.feet.copy(this.feet);
       Object.assign(r, { state: 'hold', exchanges: 0, sinceDisplay: 0, timer: 0, challenging: false });
     }
     for (const f of this.females) {
       f.state = 'bask';
       f.npc.body.setFeet(this.feet.set(f.home.x, terrainHeight(f.home.x, f.home.z), f.home.z), f.home.yaw);
+      f.npc.feet.copy(this.feet);
     }
     this.owner.forEach((_, i) => (this.owner[i] = i));
     this.claiming = null;
@@ -359,12 +424,31 @@ export class Rivals {
           npc.display();
           r.sinceDisplay = 0;
         }
-        // The old male won't back down: after a couple of exchanges he closes in to shove.
-        if (r.backDown === Infinity && r.exchanges >= 2 && toLizard > CONTACT) npc.steer(pf.x, pf.z, 0.35);
+        // The old male won't back down or stand for it: after a display he comes off his rock and chases the lizard off.
+        if (r.chaser && free && r.sinceDisplay >= DISPLAY_TIME && r.sinceDisplay < DISPLAY_GAP) {
+          r.state = 'chase';
+          r.timer = 0;
+          this.onEvent?.('chase', r.rock);
+          break;
+        }
         if (!free || lizardToRock > LEAVE) {
           r.state = r.challenging ? 'return' : 'hold';
           r.timer = 0;
         } else if (toLizard < CONTACT && this.sinceLost > LOST_GAP && !this.match) this.startMatch(r);
+        break;
+      }
+      case 'chase':
+        // After it, at a walk, as long as it stays near; well ahead of him, or off in the water, he goes back.
+        npc.steer(pf.x, pf.z, CHASE_PACE);
+        if (!free || toLizard > CHASE_LOSE || r.timer > CHASE_TIME) {
+          r.state = 'return';
+          r.timer = 0;
+        } else if (toLizard < CONTACT && this.sinceLost > LOST_GAP && !this.match) this.startMatch(r);
+        break;
+      case 'routed': {
+        const s = ROUTED_SPOTS[i];
+        npc.input.run = npc.steer(s.x, s.z, 1) > 0.5;
+        if (Math.hypot(s.x - npc.feet.x, s.z - npc.feet.z) < 0.1) npc.face(Math.atan2(rock.x - npc.feet.x, rock.z - npc.feet.z), dt);
         break;
       }
       case 'shove':
@@ -435,11 +519,13 @@ export class Rivals {
     m.sinceButt += dt;
     const surging = m.t < SURGE;
     const his = surging ? m.rival.push : EASED;
-    const mine = this.suitor.pushing() ? PLAYER_PUSH : 0;
+    // Cold, it hasn't the strength.
+    const strength = vigour(this.suitor.warmth());
+    const mine = this.suitor.pushing() ? PLAYER_PUSH * strength : 0;
     m.push += (mine - his) * SHOVE_RATE * dt;
     if (this.suitor.butting() && m.sinceButt >= BUTT_GAP) {
       m.sinceButt = 0;
-      if (!surging) m.push += BUTT;
+      if (!surging) m.push += BUTT * strength;
     }
     // Both slide along with the push, the pair's middle moved by it.
     const half = CONTACT / 2;
@@ -515,8 +601,8 @@ export class Rivals {
 
   private stepFemales(dt: number, pf: THREE.Vector3) {
     const held = this.held;
-    // Once it has seen off a challenger from its rock, the nearest female comes over.
-    if (!this.female && held >= 0 && this.defended > 0 && !this.rivals.some((r) => r.challenging)) {
+    // Once it holds the old male's rock, the lek's best, the nearest female comes over (no challenger about).
+    if (!this.female && held === OLD_ROCK && !this.rivals.some((r) => r.challenging)) {
       const rock = DISPLAY_ROCKS[held];
       this.female = this.females.reduce((a, b) => (Math.hypot(a.home.x - rock.x, a.home.z - rock.z) <= Math.hypot(b.home.x - rock.x, b.home.z - rock.z) ? a : b));
       this.female.state = 'come';

@@ -24,6 +24,8 @@ export const VITALS = {
   islandStartFullness: 0.05,
   /** In the lava tunnels it starts (and comes back after going down) this cold, though still well fed: find a skylight to bask in. */
   tunnelsStartWarmth: 0.3,
+  /** On the sea lion beach it starts (and comes back after going down) half starved: a breeding male has fasted holding his rock. Eat on the lava shores. */
+  beachStartFullness: 0.35,
 
   /** Health mends at up to this rate (a full bar in 50 s), scaled by how fed and how warm it is. */
   regen: 0.02,
