@@ -68,14 +68,12 @@ export class BeachRun {
       },
     };
     const specs: GoalSpec[] = [
-      { id: 'ashore', label: 'Come ashore on the beach', met: () => this.ashore !== null },
       { id: 'bull', label: "Dodge the bull's charge", met: () => sealions.dodged > 0 },
       { id: 'pup', label: 'Get nudged by a sea lion pup', met: () => sealions.nudges > 0 },
       { id: 'penguin', label: 'Swim with a penguin', met: () => birds.nearPenguin },
       { id: 'cormorant', label: 'Swim beside a flightless cormorant', met: () => birds.nearCormorant },
       { id: 'display', label: 'Out-display a rival male', met: () => rivals.outDisplayed > 0 },
       { id: 'shove', label: 'Win a shoving match', met: () => rivals.shoveWins > 0 },
-      { id: 'claim', label: 'Claim a display rock', met: () => rivals.claims > 0 },
       { id: 'hold', label: 'See off a challenger from your rock', met: () => rivals.defended > 0 },
     ];
     this.goals = new Goals(specs);

@@ -40,7 +40,7 @@ test('the beach loads: the reef start, the sea lions, the lek and its males, the
   });
   expect(s.birds.filter((b) => b.kind === 'penguin').length).toBe(4);
   expect(s.birds.filter((b) => b.kind === 'cormorant').length).toBe(2);
-  expect(s.run.goals.length).toBe(9);
+  expect(s.run.goals.length).toBe(7);
   // Being chosen is the objective, not a goal.
   expect(s.run.goals.map((x) => x.id)).not.toContain('chosen');
   expect(s.run.objective).toMatchObject({ text: 'Be chosen by a female', done: false });
@@ -191,7 +191,7 @@ test('displaying back at the young male makes him back down; a vacant rock is cl
   expect(r.defended).toBe(1);
   // The females only come to the old male's rock.
   expect(r.rivals.females.every((f) => f.state === 'bask')).toBe(true);
-  expect(r.run.goals.filter((x) => x.done).map((x) => x.id)).toEqual(expect.arrayContaining(['display', 'claim', 'hold']));
+  expect(r.run.goals.filter((x) => x.done).map((x) => x.id)).toEqual(expect.arrayContaining(['display', 'hold']));
   expect(r.run.objective.hint).toMatch(/old male's rock/);
   expect(errors).toEqual([]);
 });
