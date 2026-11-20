@@ -34,7 +34,10 @@ export const REAR_TIME = 0.9;
 /** His charge: this fast (m/s) on land, turning at most this fast (rad/s), for at most this long (s). */
 export const CHARGE_SPEED = 0.42;
 const CHARGE_TURN = 1.6;
-export const CHARGE_TIME = 3.5;
+export const CHARGE_TIME = 6;
+/** Once he's charging the lizard he's committed: he runs on this far past his stretch (m), and gives up only on a hit, at `CHARGE_TIME`, or when it gets well away (`GIVE_UP`, m) or into the water. */
+export const OVERRUN = 0.5;
+const GIVE_UP = NOTICE + 0.4;
 /**
  * He won't charge into his own cows: anything this near a cow (m, past half her length, centre to
  * centre) is left alone, unless she's barking.
@@ -414,7 +417,7 @@ export class SeaLions {
     // Once he's charging a male, he keeps after him (fleeing) as long as he's still on his beach.
     const stretch = q ? this.wanted(q.x, q.z) && (q.open || this.bullState === 'charge') : onLand && this.wanted(feet.x, feet.z);
     // Brought up the beach by a barking cow, he comes a little past his stretch.
-    const reach = BULL_STRETCH + (this.alarm.some((a) => a > 0) ? ALARM_REACH : 0);
+    const reach = BULL_STRETCH + (this.alarm.some((a) => a > 0) ? ALARM_REACH : 0) + (this.bullState === 'charge' && !q ? OVERRUN : 0);
     const deep = b.depth > 0.4 * b.body.height;
     const body = b.body;
     let lift = deep ? 0 : 0.6;
@@ -485,7 +488,9 @@ export class SeaLions {
             this.hits++;
           }
           this.endCharge();
-        } else if (!stretch || this.timer >= CHARGE_TIME) this.endCharge();
+        } else if (this.timer >= CHARGE_TIME) this.endCharge();
+        // A male he keeps after only while he's on the beach; the lizard, wherever it goes, unless it gets well away or into the sea.
+        else if (q ? !stretch : !onLand || dist > GIVE_UP) this.endCharge();
         break;
       }
       case 'back': {

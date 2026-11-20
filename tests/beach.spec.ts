@@ -93,6 +93,30 @@ test('the bull warns a lizard on his beach, then charges: standing still it is h
   expect(errors).toEqual([]);
 });
 
+test("once the bull charges he's committed: walking up the beach off his stretch, the lizard is still caught and hurt", async ({ page }) => {
+  const errors = await bootBeach(page, { sealions: true });
+  const r = await page.evaluate(() => {
+    const g = window.__beach!;
+    const s = g.sealions();
+    const lying = [...s.cows, ...s.pups];
+    const x = [-1.2, -1.4, -1.0, -1.6, -0.8, -2.8, -3.0].find((lx) => lying.every((c) => Math.hypot(c.x - lx, c.z - (g.shoreZ(lx) + 1.3)) > 0.5))!;
+    g.teleport(x, g.shoreZ(x) + 1.3, 0);
+    g.placeBull(x, g.shoreZ(x) - 0.3, 0, 'patrol');
+    let offStretch = false;
+    for (let i = 0; i < 70 && g.sealions().bull.hits === 0; i++) {
+      if (g.sealions().bull.state === 'charge') g.setInput({ move: { x: 0, y: 0.5 } }, 6);
+      g.advance(6);
+      const p = g.player();
+      if (!g.onBullStretch(p.x, p.z)) offStretch = true;
+    }
+    return { offStretch, bull: g.sealions().bull, vitals: g.vitals() };
+  });
+  expect(r.offStretch).toBe(true);
+  expect(r.bull.hits).toBe(1);
+  expect(r.vitals.health).toBeLessThan(0.7);
+  expect(errors).toEqual([]);
+});
+
 test('a curious pup comes over and nudges the lizard, then goes back to its mother', async ({ page }) => {
   const errors = await bootBeach(page, { sealions: true });
   const r = await page.evaluate(() => {

@@ -35,7 +35,7 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   surfacing every `DIVE_TIME` to breathe for `BREATH_TIME`. `under` blends floating to swimming deep.
   A lizard on his stretch within `NOTICE` gets a
   rear-and-bark (`REAR_TIME`, HUD "watched") then a charge (`CHARGE_SPEED`, slow to turn,
-  `CHARGE_TIME` at most, never past `BULL_STRETCH` up the sand). His muzzle within `HIT_REACH` takes
+  `CHARGE_TIME` 6 s at most). Once charging the lizard he's committed: he follows it off his stretch, up to `OVERRUN` past `BULL_STRETCH`, and gives up only on a hit, at `CHARGE_TIME`, or when it's `GIVE_UP` away or in the water, so walking away gets it caught and only running (0.6 m/s against his 0.42) or swimming escapes. His muzzle within `HIT_REACH` takes
   `VITALS.bullHit` (cause `'sealion'`) and shoves the lizard aside. A charge or warning that ends
   without a hit counts as dodged. He won't charge into his own cows: anything within `COW_SHELTER`
   of a cow (past half her length) is left alone (`sheltered`). A rival male out on his stretch is
