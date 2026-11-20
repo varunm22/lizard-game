@@ -11,6 +11,13 @@ import { BEACH_WIDTH, rockyShore, shoreX } from './shore';
 export const SPAWN = { x: 0.1, z: 0.05, yaw: Math.PI };
 
 /**
+ * Where the lizard actually starts (and comes back after going down): out on the black lava of the
+ * south shore, facing the sea and the algae on the rocks, since it starts hungry. `SPAWN` stays the
+ * clearing every prop and plant was laid out round, so the layout doesn't move.
+ */
+export const START = { x: 1.6, z: -1.45, yaw: 2.2 };
+
+/**
  * A strip of open sand from the back of the beach into the sea, kept clear of rocks, so there is
  * always a clean way down to the water: z from - to +, and from this far up the beach.
  */

@@ -1,15 +1,24 @@
 import { expect, test } from '@playwright/test';
 import { bootGame } from './helpers/bootGame';
 
-test('the tortoise walks its round, leaving the plants it walks over flat for about a minute, and new ones come up along it', async ({ page }) => {
+test('the tortoise wanders its meadow, leaving the plants it walks over flat for about a minute, and new ones come up along it', async ({ page }) => {
   const errors = await bootGame(page);
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
     const { route } = t0;
-    // How far off the oval a point is, roughly in metres.
-    const off = (x: number, z: number) => Math.abs(Math.hypot((x - route.x) / route.rx, (z - route.z) / route.rz) - 1) * Math.min(route.rx, route.rz);
-    g.advance(600, false);
+    // Where it walked, and how far a point is from that.
+    const track: { x: number; z: number }[] = [];
+    const off = (x: number, z: number) => Math.min(...track.map((p) => Math.hypot(p.x - x, p.z - z)));
+    // How far out of its meadow it is (1 on the oval's edge).
+    const out = (x: number, z: number) => Math.hypot((x - route.x) / route.rx, (z - route.z) / route.rz);
+    const headings = new Set<string>();
+    for (let s = 0; s < 60; s++) {
+      g.advance(10, false);
+      const t = g.tortoise();
+      track.push({ x: t.x, z: t.z });
+      if (t.heading) headings.add(t.heading.kind);
+    }
     const t1 = g.tortoise();
     const flat = g.plants().filter((p) => p.crush > 0.9);
     // Follow one plant it has just flattened, and keep an eye out for seedlings.
@@ -30,7 +39,8 @@ test('the tortoise walks its round, leaving the plants it walks over flat for ab
       t0,
       t1,
       feetGap: t1.y - g.terrainHeight(t1.x, t1.z),
-      offRoute: off(t1.x, t1.z),
+      outOfMeadow: out(t1.x, t1.z),
+      headings: [...headings],
       flatCount: flat.length,
       flatOffRoute: Math.max(...flat.map((p) => off(p.x, p.z))),
       samples,
@@ -39,11 +49,12 @@ test('the tortoise walks its round, leaving the plants it walks over flat for ab
     };
   });
 
-  // It plods on round its oval, its feet on the ground.
+  // It plods about its meadow, making for one spot and another, its feet on the ground.
   expect(run.t1.along - run.t0.along).toBeGreaterThan(0.15);
-  expect(run.offRoute).toBeLessThan(0.01);
+  expect(run.outOfMeadow).toBeLessThan(1.2);
+  expect(run.headings).toContain('wander');
   expect(Math.abs(run.feetGap)).toBeLessThan(0.01);
-  // What it walked over is flat, and only that: everything flattened is on its route.
+  // What it walked over is flat, and only that: everything flattened is on its track.
   expect(run.flatCount).toBeGreaterThan(0);
   expect(run.flatOffRoute).toBeLessThan(0.12);
   // A flattened plant stays down for most of a minute, then stands back up.
@@ -110,7 +121,8 @@ test('walking onto the lizard, the tortoise tramples it: half its health gone, a
   const run = await page.evaluate(() => {
     const g = window.__game!;
     const t0 = g.tortoise();
-    // Sit the lizard across its path a little ahead.
+    // Heading straight on, past the lizard sat across its path a little ahead.
+    g.tortoiseDo({ x: t0.x + Math.sin(t0.yaw) * 1.2, z: t0.z + Math.cos(t0.yaw) * 1.2 });
     g.teleport(t0.ahead.x, t0.ahead.z, t0.yaw + Math.PI / 2);
     g.advance(10, false);
     const start = g.player();
@@ -153,6 +165,7 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
     const t0 = g.tortoise();
     // Nothing to stop and eat on the way, so how far it walks doesn't hang on where plants grew.
     g.clearPlants(t0.x, t0.z, t0.x, t0.z, 0.6);
+    g.tortoiseDo({ x: t0.x + Math.sin(t0.yaw) * 1.2, z: t0.z + Math.cos(t0.yaw) * 1.2 });
     // Dropped onto the crown of the shell, facing the way the tortoise walks.
     g.teleport(t0.x, t0.z, t0.yaw, t0.y + 0.16);
     g.advance(60, false);
@@ -192,7 +205,6 @@ test('the lizard rides on the shell, carried round with the tortoise while it st
   expect(ride.states).toEqual(['idle']);
   expect(ride.maxSpeed).toBeLessThan(0.02);
   // When the tortoise lies down, the lizard goes down with the shell, still in its spot.
-  console.log('DBG', JSON.stringify({ end: ride.end, resting: ride.resting, start: ride.start }));
   expect(ride.resting.t.state).toBe('rest');
   expect(ride.end.at.up - ride.resting.at.up).toBeGreaterThan(0.011);
   expect(Math.abs(ride.resting.at.along - ride.end.at.along)).toBeLessThan(0.01);
