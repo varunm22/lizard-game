@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff, SolidBody } from './creatures/solidBody';
 import { FIXED_DT, startLoop } from './loop';
 import { createScene, followSun } from './render/scene';
 import { ViewCheck } from './render/viewCheck';
@@ -93,7 +94,7 @@ async function main() {
   const feeding = new Feeding(lizard, algae);
   const iguanas = await Iguanas.load(lizardUrl, scene, world, player, obstacles, algae, plants, water);
   // Reef fish keep clear of the lizard and the other iguanas, unless the lizard is quick or corners one.
-  const fishes = new Fishes(scene, reefKit.geometry, reefKit.extras, obstacles, new SeaBed(obstacles), [player.position, ...iguanas.list.map((ig) => ig.body.position)], lizard.bodySpheres);
+  const fishes = new Fishes(scene, reefKit.geometry, reefKit.extras, obstacles, new SeaBed(obstacles), [player.position, ...iguanas.list.map((ig) => ig.body.position)], lizard.bodySpheres, world);
   const crabs = await Crabs.load(crabUrl, scene, world, algae, player, lizard, iguanas.list.map((ig) => ({ body: ig.body, model: ig.model })));
 
   // Health, warmth, food and air. The hawk's strikes take health; at none the lizard goes down and
@@ -108,6 +109,7 @@ async function main() {
   const climate = new ClimateSense(player, cover, () => iguanas.list.filter((ig) => !ig.down).map((ig) => ig.body.position), waterDepth);
   const prey = quarries(player, lizard, wounds, iguanas, crabs, tortoise);
   const hawk = await Hawk.load(hawkUrl, scene, (fit) => findPerches(obstacles, forestCover, PATROL, fit), cover, prey);
+  hawk.solid = SolidBody.fitted(world, hawk.root, Hawk.SOLID);
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
@@ -203,6 +205,7 @@ async function main() {
     const hop = wounds.down ? null : spines.shake(player);
     if (hop) wounds.prick(hop.x, hop.z);
     goals.step(dt);
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     // Walking into another iguana pushes it slowly out of the way.
     if (input.move.y > 0) iguanas.pushedBy(player, dt);

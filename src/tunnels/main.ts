@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff } from '../creatures/solidBody';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, PALETTE, SUN_OFFSET } from '../render/scene';
 import { loadBinary } from '../render/gltf';
@@ -11,9 +12,10 @@ import { Splashes } from '../world/splashes';
 import { Input, type InputState } from '../input';
 import { PlayerController } from '../player/controller';
 import { MovementStateMachine, movementFacts } from '../player/state';
+import { MOVEMENT } from '../player/movement';
 import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
-import { FollowCamera } from '../camera/followCamera';
+import { FollowCamera, type EasedArm } from '../camera/followCamera';
 import { OccluderFade } from '../camera/occluderFade';
 import { createTunnelsHooks } from '../debug/createTunnelsHooks';
 import { createGoalsPanel } from '../goalsPanel';
@@ -23,26 +25,46 @@ import { clock, createDunesHud, endKeys, runKeys, type HudText } from '../dunes/
 import lizardUrl from '../assets/lizard.glb?url';
 import rockUrl from '../assets/tunnels.glb?url';
 import lightUrl from '../assets/tunnels-light.bin?url';
-import { FINISH, lightAt, setLight, START, START_Y, terrainOrUpper } from './layout';
+import owlUrl from '../assets/owl.glb?url';
+import whitetipUrl from '../assets/whitetip.glb?url';
+import sealionUrl from '../assets/sealion.glb?url';
+import { loadFreeRigKit } from '../render/freeRig';
+import { FINISH, lightAt, outside, setLight, START, START_Y, terrainOrUpper } from './layout';
 import { buildRock, buildSunbeams } from './rock';
-import { TunnelsRun } from './run';
+import { darkenGroundUnderRock, RockSection } from './section';
+import { TunnelsRun, type CaughtBy } from './run';
+import { ClimateSense } from '../player/climate';
+import { Vitals } from '../player/vitals';
+import { createVitalsPanel } from '../vitalsPanel';
+import { HEARING, Owls } from './owl';
+import { Sharks } from './sharks';
+import { SeaLions } from './sealions';
 
 const TEXT: HudText = {
   intro:
     '<h2>Lava tunnels</h2>' +
-    'Find your way through the lava tubes to the <b>jameo</b>, a collapse open to the sky, under the <b>golden light</b>.' +
-    '<ul><li>The tunnels run on <b>two floors</b>. Holes in the floor drop you to the tubes below: some are dead ends, some are the way on.</li>' +
-    '<li>No jumping back up a hole. Find a <b>rubble pile</b> to climb up through a hole in the roof.</li>' +
-    '<li>One gap is narrow enough to <b>leap at a run</b> (Shift and Space).</li>' +
-    '<li>Skylights let the sun in: warm patches, and landmarks.</li></ul>' +
+    'Find the way out to the <b>sea</b>, under the <b>golden light</b>.' +
+    '<ul><li>Drop through <b>holes</b>; climb <b>rubble piles</b> back up.</li>' +
+    '<li>Leap the <b>gap</b> at a run.</li>' +
+    '<li>Owls hunt by <b>sound</b>: walk under them.</li>' +
+    '<li>Out of the sun you <b>cool</b> and slow. Bask under <b>skylights</b>; there\'s no food down here.</li></ul>' +
     '<span class="go">Move to start.</span>',
-  watched: '',
-  chased: '',
+  watched: 'Quiet!',
+  chased: 'Move!',
 };
 
-/** Fog in the tubes: dark, close, warm grey; and under the flooded stretch's water. */
-const CAVE_FOG = { colour: 0x1d1916, near: 1.2, far: 5 };
-const UNDERWATER_FOG = { colour: 0x16302f, near: 0.05, far: 0.9 };
+/**
+ * Fog in the tubes: dark, close, warm grey; out in the cove, the sky's and far off, so the islet
+ * shows across the water. Under water: dark green in the tunnels, blue-green in the sea.
+ */
+/** The follow camera's distance in the tubes (m): a little closer than elsewhere. */
+const CAMERA_DISTANCE = 0.3;
+/** In the tubes the camera zooms in gently where the space closes in, never under 0.17 m (see `EasedArm`). */
+const CAMERA_ARM: EasedArm = { minArm: 0.17, inRate: 2.5, outRate: 1.5 };
+const CAVE_FOG = { colour: new THREE.Color(0x1d1916), near: 1.2, far: 5 };
+const OPEN_FOG = { colour: new THREE.Color(PALETTE.sky), near: 4, far: 24 };
+const UNDERWATER_FOG = { colour: new THREE.Color(0x16302f), near: 0.05, far: 0.9 };
+const SEA_FOG = { colour: new THREE.Color(0x2a7f8c), near: 0.05, far: 1.4 };
 
 /** The lava tunnels (`?level=tunnels`): a two-floor maze of lava tubes, holes to fall through and rubble to climb. */
 export async function tunnels() {
@@ -54,7 +76,7 @@ export async function tunnels() {
   const { renderer, scene, camera, sun, sky } = createScene(document.body);
   const cel = new CelRenderer(renderer, sky, sun);
   cel.waterY = WATER_Y;
-  scene.fog = new THREE.Fog(CAVE_FOG.colour, CAVE_FOG.near, CAVE_FOG.far);
+  scene.fog = new THREE.Fog(CAVE_FOG.colour.clone(), CAVE_FOG.near, CAVE_FOG.far);
   const hemisphere = scene.children.find((o) => o instanceof THREE.HemisphereLight) as THREE.HemisphereLight;
   // Nothing underground casts a live shadow: the rock's shade is baked, and the lizard is lit by where it is.
   sun.castShadow = false;
@@ -63,7 +85,9 @@ export async function tunnels() {
   camera.add(fill);
   scene.add(camera);
   buildTerrain(scene, world);
-  await buildRock(rockUrl, scene, world);
+  darkenGroundUnderRock(scene.getObjectByName('terrain')!);
+  const rock = await buildRock(rockUrl, scene, world);
+  const section = new RockSection(rock.mesh);
   const beams = buildSunbeams(scene, SUN_OFFSET);
   const water = new Water(scene);
   const splashes = new Splashes(water);
@@ -75,15 +99,33 @@ export async function tunnels() {
   const lizard = await LizardModel.load(lizardUrl);
   scene.add(lizard.root);
   const visual = new LizardVisual(lizard, player, world);
-  const run = new TunnelsRun(player);
+  const run = new TunnelsRun(player, visual);
+  // The island's bars, for time pressure: out of the sun it cools, slows and at last loses health,
+  // and there's nothing to eat down here. The sun is the baked light (skylights, the cove), and the
+  // rock is all lava, so basking in a skylight warms it fast.
+  const vitals = new Vitals();
+  const sunPoint = { sun: 0, glow: 0 };
+  const climate = new ClimateSense(player, null, () => [], waterDepth, () => 1, (p) => lightAt(p.x, p.y, p.z, sunPoint).sun);
+  const [owlKit, whitetipKit, sealionKit] = await Promise.all([
+    loadFreeRigKit(owlUrl, 'Owl'),
+    loadFreeRigKit(whitetipUrl, 'Whitetip'),
+    loadFreeRigKit(sealionUrl, 'SeaLion'),
+  ]);
+  const owls = new Owls(owlKit, scene, world);
+  const sharks = new Sharks(whitetipKit, scene, world);
+  const sealions = new SeaLions(sealionKit, scene);
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: [], ground: terrainOrUpper });
 
   const fade = new OccluderFade(world, []);
-  const followCam = new FollowCamera(camera, world, player.body, fade.handles);
+  // The camera eases in where the tube closes in (gently, never right up to the lizard); rock nearer
+  // the camera than the lizard is cut away (`RockSection`), showing the cut as dark stone.
+  const followCam = new FollowCamera(camera, world, player.body, new Set(fade.handles), CAMERA_ARM);
+  followCam.distance = CAMERA_DISTANCE;
   followCam.yaw = START.yaw;
   const input = new Input(renderer.domElement);
 
   const hud = createDunesHud(TEXT);
+  const vitalsPanel = createVitalsPanel();
   stageSelect();
   const goalsPanel = createGoalsPanel(hud.corner, run.goals.list);
   run.goals.onDone = (goal) => goalsPanel.done(goal);
@@ -93,24 +135,28 @@ export async function tunnels() {
     hud.message(title, detail);
     messageLeft = 2.5;
   };
-  run.onDrop = () => {
-    if (run.drops.length === 1) flashMessage('Down to the lower tunnels', 'Find a rubble pile to climb back up.');
-  };
-  run.onClimb = () => {
-    if (run.climbs === 1) flashMessage('Back up through the roof', 'Rubble from old collapses makes a way up.');
-  };
-  run.onLeap = () => {
-    if (run.leaps === 1) flashMessage('Over the gap!', '');
-  };
   run.onReset = () => {
     hud.message(null);
     messageLeft = null;
     followCam.yaw = START.yaw;
+    owls.callOff();
+    vitals.reset();
+  };
+  run.onRespawn = () => {
+    vitals.reset();
+    owls.callOff();
+    followCam.yaw = run.checkpoint.yaw;
+  };
+  const CAUGHT_TEXT: Record<CaughtBy, string> = { owl: 'Caught!', cold: 'Too cold!', hunger: 'Starved!', air: 'Drowned!' };
+  run.onCaught = (by) => flashMessage(CAUGHT_TEXT[by], '');
+  owls.onCatch = () => run.caught();
+  sharks.onBolt = () => {
+    run.startledShark = true;
   };
   run.onHome = () => {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     messageLeft = null;
-    hud.message(`Out into the jameo! ${clock(run.time)}`, best, endKeys('tunnels'));
+    hud.message(`Out to the sea! ${clock(run.time)}`, `${best}. Across the water, sea lions bask on the outer islet.`, endKeys('tunnels'));
   };
   runKeys('tunnels', run);
 
@@ -132,6 +178,10 @@ export async function tunnels() {
     followCam,
     fade,
     run,
+    owls,
+    sharks,
+    section,
+    vitals,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -143,9 +193,46 @@ export async function tunnels() {
   });
   window.__tunnels = hooks;
 
+  const still: Partial<InputState> = { move: { x: 0, y: 0 }, run: false, jump: false };
+  const tickFeet = new THREE.Vector3();
+  const prey = { feet: tickFeet, loudness: 0, loud: false, open: true };
+  // A run is anything faster than halfway from a walk to a run (the walk itself is 0.25 m/s).
+  const RUN_SOUND = (MOVEMENT.walkSpeed + MOVEMENT.runSpeed) / 2;
+  /** Seconds in the air (about a 16 cm fall) before a landing is a thump the owls hear far off. */
+  const THUMP_AIR = 0.18;
   const tick = (dt: number) => {
-    const input = forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    let input = forcedInput ? { ...frameInput, ...forcedInput } : frameInput;
+    if (run.held) input = { ...input, ...still };
     run.step(dt, input.move.x !== 0 || input.move.y !== 0);
+    // What the owls hear: running, a jump or a landing carry; a walk barely; standing still, nothing.
+    player.feetAt(1, tickFeet);
+    const speed = player.horizontalSpeed;
+    // Landing from a real fall or a jump thumps; stepping down off a lump of breakdown doesn't.
+    const thump = (player.landed && player.lastAirTime > THUMP_AIR) || player.jumped;
+    const running = speed > RUN_SOUND * player.speedScale;
+    prey.loudness = thump ? HEARING.thump : running ? HEARING.run : speed > 0.015 ? HEARING.walk : 0;
+    prey.loud = thump || running;
+    prey.open = run.state === 'running' || run.state === 'ready';
+    owls.step(dt, prey);
+    run.owlStirred = owls.list.some((o) => o.state !== 'roost');
+    // As on the dunes, a short banner instead of messages: "Quiet!" while an owl has heard and leans
+    // out, "Move!" while one is dropping.
+    hud.danger(owls.list.some((o) => o.state === 'drop') ? 'chased' : owls.list.some((o) => o.state === 'alert') ? 'watched' : 'none');
+    sharks.step(dt, tickFeet, player.swimming);
+    climate.step(dt);
+    if (run.state !== 'home') {
+      const moving = input.move.x !== 0 || input.move.y !== 0;
+      vitals.step(dt, climate.now, {
+        still: player.grounded && !moving && player.horizontalSpeed < 0.02,
+        running: input.run && moving && player.horizontalSpeed > 0.3,
+        swimming: player.swimming,
+        groomed: false,
+      });
+      // Out of health: down like a catch, back where it last changed floors with fresh bars.
+      if (vitals.dead) run.caught((vitals.cause ?? 'cold') as CaughtBy);
+    }
+    player.speedScale = vitals.speedScale;
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
@@ -171,7 +258,11 @@ export async function tunnels() {
       camera.lookAt(at);
     }
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
+    section.update(camera.position, viewOffset ? (viewTarget ?? feet) : followCam.target, feet.y);
     lizard.updateBodySpheres();
+    owls.pose(frameDt);
+    sharks.pose();
+    sealions.pose(frameDt);
     // Light the lizard by the light where it is: dim deep in the tubes, warm in a skylight's sun.
     lightAt(feet.x, feet.y + 0.03, feet.z, lit);
     hemisphere.intensity = 0.7 + 1.0 * Math.pow(lit.glow, 0.7);
@@ -192,13 +283,22 @@ export async function tunnels() {
     const distance = Math.max(0, Math.hypot(FINISH.x - feet.x, FINISH.z - feet.z) - FINISH.r);
     toFinish.applyMatrix4(camera.matrixWorldInverse);
     hud.status(run.time, run.best, distance, Math.atan2(toFinish.x, -toFinish.z));
+    vitalsPanel({
+      health: vitals.health,
+      warmth: vitals.warmth,
+      fullness: vitals.fullness,
+      air: vitals.air,
+      healthRate: vitals.rate.health,
+      warmthRate: vitals.rate.warmth,
+    });
     water.update(frameDt);
     const under = waterDepth(camera.position) > 0;
-    const f = under ? UNDERWATER_FOG : CAVE_FOG;
-    fog.color.set(f.colour);
-    fog.near = f.near;
-    fog.far = f.far;
-    (scene.background as THREE.Color).set(under ? UNDERWATER_FOG.colour : PALETTE.sky);
+    const open = outside(camera.position.x, camera.position.z);
+    const [a, b] = under ? [UNDERWATER_FOG, SEA_FOG] : [CAVE_FOG, OPEN_FOG];
+    fog.color.copy(a.colour).lerp(b.colour, open);
+    fog.near = THREE.MathUtils.lerp(a.near, b.near, open);
+    fog.far = THREE.MathUtils.lerp(a.far, b.far, open);
+    (scene.background as THREE.Color).copy(under ? fog.color : OPEN_FOG.colour);
   };
   const draw = () => {
     cel.render(scene, camera);

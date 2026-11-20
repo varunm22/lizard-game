@@ -476,10 +476,30 @@ export interface LagoonTestHooks
     lost: number;
     ridden: number;
     rider: boolean;
+    /** How far it's rolled (radians, fork side down positive), how deep its keel reaches (m), and whether it's touching anything solid. */
+    roll: number;
+    keelDepth: number;
+    /** Hooked on a twig of the wrack racked on the snag, swinging round on it. */
+    hooked: boolean;
+    touching: boolean;
+    /** Where it touches anything this step: the bed, a piece of wrack, or anything else solid. */
+    contacts: { x: number; y: number; z: number; what: string }[];
     ends: { x: number; y: number; z: number }[];
+    /** The main limb's joints, butt to tip: the way along its top. */
+    spine: { x: number; y: number; z: number }[];
   };
-  /** Put the log floating at (x, z) along `heading`. */
-  placeLog(x: number, z: number, heading: number): void;
+  /** The drift wrack: how open the creek is (0 to 1), how many pieces are racked on the snag, and each piece (with the middle of its share of the tangle across the creek, `cellZ`). */
+  wrack(): { open: number; racked: number; pieces: { kind: string; state: string; hold: number; shake: number; cellZ: number; x: number; y: number; z: number }[] };
+  /** Rack every piece on the snag at once. */
+  rackWrack(): void;
+  /** The fallen propagules: how many shoves so far, and each one (its middle, heading, and stuck upright, toppling or loose). */
+  pods(): { shoves: number; list: { state: string; x: number; y: number; z: number; heading: number }[] };
+  /** Work a piece free of the dam at once, toppling out along (x, z) at that speed (m/s). */
+  pushWrack(i: number, x: number, z: number): void;
+  /** A point given in the log's own frame (m, X along its main limb, Y up, the big fork toward -Z), in the world. */
+  logPoint(x: number, y: number, z: number): { x: number; y: number; z: number };
+  /** Put the log at (x, z), its main limb along `heading`, rolled by `roll`, at rest. */
+  placeLog(x: number, z: number, heading: number, roll?: number): void;
   /** Sharks and rays: kind, state, home pool, where each is (its belly) and faces, the top of its fins or wingtips, speed, and a shark's bites. */
   swimmers(): { kind: string; state: string; pool: number; x: number; y: number; z: number; top: number; yaw: number; speed: number; bites: number }[];
   /** Put swimmer `i` at (x, z) facing `yaw`, calm. */
@@ -512,11 +532,15 @@ export interface LagoonTestHooks
     pool: { x: number; z: number; r: number };
     creek: { z: number; half: number };
     jam: { x: number; z: number };
+    /** Where the drift wrack lies dammed in the creek's mouth, and the drowned snag it racks up on. */
+    dam: { x: number; z: number };
+    snag: { x: number; z: number };
   };
 }
 
 export interface TunnelsTestHooks
-  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'> {
+  extends Pick<GameTestHooks, 'ready' | 'physicsSteps' | 'advance' | 'frame' | 'terrainHeight' | 'groundAt' | 'player' | 'camera' | 'setInput' | 'viewFrom' | 'teleport'>,
+    Pick<LagoonTestHooks, 'vitals' | 'setVitals'> {
   /** The run: state, clock, falls through holes (by hole name), climbs, leaps, swim, skylights basked under, goals. */
   run(): {
     state: string;
@@ -528,10 +552,17 @@ export interface TunnelsTestHooks
     climbs: number;
     leaps: number;
     swam: boolean;
+    /** Times an owl caught the lizard, and where it goes back to after one. */
+    catches: number;
+    checkpoint: { x: number; y: number; z: number; yaw: number };
     basked: boolean[];
     goals: { id: string; label: string; done: boolean }[];
   };
   restart(): void;
+  /** The barn owls: which skylight each roosts in, what it's doing, where it is, and the floor it hunts (its skylight's middle). */
+  owls(): { name: string; state: string; x: number; y: number; z: number; under: { x: number; y: number; z: number } }[];
+  /** The whitetip pups in the flooded mouth: resting, bolting, away at sea or coming back. */
+  sharks(): { state: string; x: number; y: number; z: number }[];
   /** The layout from `tunnels.json`: floors, start, finish, holes, rubble piles, skylights, the flooded dip. */
   layout(): {
     floors: number[];
@@ -544,11 +575,17 @@ export interface TunnelsTestHooks
     steps: { count: number; riser: number; tread: number };
     skylights: { name: string; x: number; z: number; r: number }[];
     pools: { x: number; z: number; rx: number; rz: number; depth: number }[];
+    roosts: { name: string; x: number; y: number; z: number; dx: number; dz: number }[];
+    islet: { x: number; z: number; r: number };
   };
   /** The baked light at a point: sun (open sky along the sun's slant) and glow, 0 to 1. */
   light(x: number, y: number, z: number): { sun: number; glow: number };
   /** The rock's surface straight down from (x, from, z), or null: the floor under a point on either floor. */
   floorBelow(x: number, z: number, from: number): number | null;
+  /** Whether (x, z) is open on the lower floor (a tube, room, the jameo or the cove), not inside the rock between them. */
+  floorOpen(x: number, z: number): boolean;
+  /** Whether nothing drawn lies between the follow camera and the point on the lizard it looks at (rock the section cuts away doesn't count). */
+  cameraClear(): boolean;
 }
 
 export interface BeachTestHooks

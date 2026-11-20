@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff } from '../creatures/solidBody';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
 import { toonGradient } from '../render/toon';
@@ -35,6 +36,8 @@ import heronUrl from '../assets/heron.glb?url';
 import { current, FINISH, lagoonLava, SAFE_POINTS, START } from './layout';
 import { buildLagoonProps, loadKit } from './props';
 import { DriftLog } from './driftLog';
+import { Wrack } from './wrack';
+import { Pods } from './pods';
 import { loadHeronKit } from './heronBody';
 import { Herons } from './herons';
 import { Swimmers } from './swimmers';
@@ -45,19 +48,14 @@ import { CAUGHT_TIME, LagoonRun } from './run';
 const TEXT: HudText = {
   intro:
     '<h2>Mangrove lagoon</h2>' +
-    'Cross the lagoon to the <b>lava field</b> beyond the channel, under the <b>golden light</b>.' +
-    '<ul><li>Lava herons stalk the shallows and stab fast: each stab costs <b>health</b>. Keep moving, and keep out of reach.</li>' +
-    '<li>No heron reaches in among the <b>mangrove roots</b>, or sees you swimming low over <b>deep water</b>. ' +
-    'Swim too near one and it strikes without stalking.</li>' +
-    '<li>Shark pups are curious, and sometimes bite. Never turn on one close up.</li>' +
-    '<li>The water <b>chills</b> you and diving costs <b>air</b>: bask on the black lava to warm up.</li>' +
-    '<li>Bite (<b>F</b>) the green <b>gutweed</b> on the lava at the waterline, or the dark red <b>moss</b> on the mangrove roots, to eat.</li>' +
-    '<li>The channel is too deep and its far bank too steep. A <b>driftwood log</b> lies in a pool by its bank: ' +
-    'swim into it to push it, out into the current.</li>' +
-    '<li>A faint teal ring marks a <b>safe point</b>. Caught after reaching it, you start again from there.</li></ul>' +
+    'Cross the channel to the <b>lava field</b>, under the <b>golden light</b>.' +
+    '<ul><li>Herons can\'t reach into <b>roots</b>, or see you over <b>deep water</b>.</li>' +
+    '<li>Never turn on a <b>shark pup</b> up close.</li>' +
+    '<li>A stuck <b>log</b> could bridge the channel.</li>' +
+    '<li>Water <b>chills</b> you: bask on black lava. Bite (<b>F</b>) weed to eat.</li></ul>' +
     '<span class="go">Move to start.</span>',
-  watched: 'A heron is stalking you. Keep moving!',
-  chased: 'It is about to strike!',
+  watched: 'Stalked!',
+  chased: 'Move!',
   controls: [['F', 'bite']],
 };
 
@@ -71,7 +69,7 @@ export async function lagoon() {
   cel.waterY = WATER_Y;
   buildTerrain(scene, world);
   const kit = await loadKit([propsUrl, lagoonUrl]);
-  const { obstacles, mangroves, crowns, rootWaterline, rootPosts } = buildLagoonProps(kit, scene, world);
+  const { obstacles, mangroves, crowns, rootWaterline, rootPosts, pods: podSpots, podLook } = buildLagoonProps(kit, scene, world);
   // Gutweed on the lava at the waterline, and Bostrychia on the mangrove roots.
   const algae = new Algae(
     scene,
@@ -97,21 +95,23 @@ export async function lagoon() {
   const feeding = new Feeding(lizard, algae);
   feeding.onMouthful = () => vitals.eat();
 
-  const logGeometry = kit.geometry.get('log_0')!;
-  const logExtras = kit.extras.get('log_0') as { radius: number; length: number };
-  const logMaterial = new THREE.MeshToonMaterial({ vertexColors: true, color: 0xd9d4cc, gradientMap: toonGradient() });
+  const logGeometry = kit.geometry.get('drift_limb')!;
+  const logExtras = kit.extras.get('drift_limb') as { segments: number[][]; keel: number[] };
+  const logMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
   const log = new DriftLog(world, logGeometry, logExtras, logMaterial, player);
   scene.add(log.mesh);
+  const wrack = new Wrack(world, kit, logMaterial, scene, player);
+  const pods = new Pods(podLook.geometry, podLook.material, scene, podSpots, player);
   const ground = new GroundProbe(world, player.body);
-  const swimmers = new Swimmers(kit.geometry, scene);
+  const swimmers = new Swimmers(kit.geometry, scene, world);
   // Juvenile fish darting about among the prop roots, bolting from the lizard and the shark pups.
   const fries = new Fries(scene, kit.geometry, kit.extras as Map<string, Record<string, number>>, { rootPosts }, [
     player.position,
     ...swimmers.list.filter((s) => s.kind === 'shark').map((s) => s.pos),
-  ]);
+  ], world);
   const heronKit = await loadHeronKit(heronUrl);
   const herons = new Herons(heronKit, scene, world, ground, obstacles, mangroves, player.body);
-  const run = new LagoonRun(player, wounds, vitals, herons, log, swimmers);
+  const run = new LagoonRun(player, wounds, vitals, herons, log, wrack, swimmers);
   herons.prey = run.prey;
   swimmers.prey = run.prey;
   const markers = new Markers(scene, { start: START, finish: FINISH, safe: SAFE_POINTS });
@@ -136,19 +136,19 @@ export async function lagoon() {
     messageLeft = 3;
   };
   const DOWN: Partial<Record<DownCause, string>> = {
-    heron: 'Caught by a lava heron!',
-    shark: 'Bitten by a shark pup!',
-    cold: 'Too cold to move!',
-    air: 'Out of air!',
+    heron: 'Speared!',
+    shark: 'Bitten!',
+    cold: 'Too cold!',
+    air: 'Drowned!',
     hunger: 'Starved!',
   };
   run.onCaught = (by) => {
     messageLeft = null;
-    hud.message(DOWN[by] ?? 'Down!', run.checkpoint >= 0 ? 'Back to the safe point...' : 'Back to the lava coast...');
+    hud.message(DOWN[by] ?? 'Down!', run.checkpoint >= 0 ? 'Back to the safe point' : 'Back to the start');
   };
   run.onSafe = (i) => {
     markers.reached(i, true);
-    flashMessage('Safe in the roots', 'No heron reaches in here. Caught later, you start again from here.');
+    flashMessage('Safe point', '');
   };
   run.onRespawn = () => hud.message(null);
   run.onReset = () => {
@@ -161,8 +161,11 @@ export async function lagoon() {
     const best = run.best === run.time ? 'A new best!' : `Best ${clock(run.best!)}`;
     hud.message(`Across! ${clock(run.time)}`, best, endKeys('lagoon'));
   };
-  log.onJammed = () => flashMessage('The log has jammed across the channel', 'A bridge to the lava field.');
-  log.onLost = () => flashMessage('The log drifted out to sea', 'Another has washed into the pool.');
+  log.hooksOn = (a, b, r, out) => wrack.hooks(a, b, r, out);
+  wrack.onCleared = () => flashMessage('The creek flows', '');
+  log.onAfloat = () => flashMessage('The log is loose', '');
+  log.onJammed = () => flashMessage('A bridge!', '');
+  log.onLost = () => flashMessage('Lost to the sea', 'Another log washed into the pool');
   runKeys('lagoon', run);
 
   let forcedInput: Partial<InputState> | null = null;
@@ -177,7 +180,7 @@ export async function lagoon() {
   const flow = { x: 0, z: 0 };
 
   const hooks = createLagoonHooks({
-    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, swimmers, fries, run, vitals, wounds, algae, feeding, canEat: () => canEat,
+    world, obstacles, mangroves, player, states, camera, followCam, fade, herons, log, wrack, pods, swimmers, fries, run, vitals, wounds, algae, feeding, canEat: () => canEat,
     setInput: (i, forSteps = 0) => {
       forcedInput = i;
       forcedSteps = forSteps;
@@ -195,7 +198,9 @@ export async function lagoon() {
     if (run.held) input = { ...input, ...still };
     run.step(dt, input.move.x !== 0 || input.move.y !== 0);
     herons.step(dt);
-    log.step(dt, input.move.y > 0 && player.swimming);
+    wrack.step(dt, input.move.y > 0);
+    pods.step(dt);
+    log.step(dt, input.move.y > 0);
     player.feetAt(1, tickFeet);
     swimmers.step(dt);
     fries.step(dt);
@@ -215,6 +220,7 @@ export async function lagoon() {
     wounds.step(dt);
     if (frameInput.bite && !wounds.down) feeding.bite();
     player.speedScale = vitals.speedScale;
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);
@@ -242,6 +248,8 @@ export async function lagoon() {
     fade.update(camera.position, followCam.target, player.yawAt(alpha), frameDt);
     lizard.updateBodySpheres();
     log.update(alpha);
+    wrack.update(alpha);
+    pods.update();
     herons.update(alpha);
     swimmers.update(alpha, frameDt);
     fries.update(alpha);

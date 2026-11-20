@@ -13,7 +13,7 @@ export class GroundProbe {
   private ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
   constructor(
-    private world: RAPIER.World,
+    readonly world: RAPIER.World,
     private exclude: RAPIER.RigidBody,
   ) {}
 

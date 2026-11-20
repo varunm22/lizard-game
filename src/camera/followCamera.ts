@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { wrapAngle } from '../math/angles';
 import type { InputState } from '../input';
-import { EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { ANIMAL_GROUP, EDGE_WALL_GROUP, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 
 const CAM = {
   /** Look-at point above the lizard's feet (m). */
@@ -32,6 +32,16 @@ const CAM = {
   /** Never closer than this to the ground directly under the camera. */
   groundClearance: 0.012,
 };
+/**
+ * An eased arm, for enclosed stages (the tunnels): the arm never pulls in past `minArm`, and eases
+ * both in and out (per second) instead of snapping in, so the camera zooms gently with the space
+ * round it. Rock it then sits in or behind is the stage's to deal with (the tunnels cut it away).
+ */
+export interface EasedArm {
+  minArm: number;
+  inRate: number;
+  outRate: number;
+}
 /** A shake when the lizard is struck: strength (radians), how long it lasts (s) and how fast it shakes (Hz). */
 const SHAKE = { strength: 0.035, time: 0.35, rate: 18 };
 
@@ -66,6 +76,7 @@ export class FollowCamera {
     private ignoreBody: RAPIER.RigidBody,
     /** Collider handles the arm passes through (obstacles, which fade instead). */
     passThrough: Set<number>,
+    private eased: EasedArm | null = null,
   ) {
     this.skip = (c) => !passThrough.has(c.handle);
   }
@@ -132,14 +143,19 @@ export class FollowCamera {
       undefined,
       // The other iguanas don't pull it in either: one passing behind the lizard would snap the
       // camera right up to the lizard's back and out again.
-      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP & ~IGUANA_GROUP),
+      (0xffff << 16) | (0xffff & ~EDGE_WALL_GROUP & ~PLANT_STEM_GROUP & ~IGUANA_GROUP & ~ANIMAL_GROUP),
       undefined,
       this.ignoreBody,
       this.skip,
     );
-    if (hit) allowed = Math.max(CAM.minArm, hit.time_of_impact);
-    // Pull in instantly, ease back out.
-    this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
+    if (hit) allowed = Math.max(this.eased?.minArm ?? CAM.minArm, hit.time_of_impact);
+    if (this.eased) {
+      const rate = allowed < this.arm ? this.eased.inRate : this.eased.outRate;
+      this.arm += (allowed - this.arm) * (1 - Math.exp(-rate * dt));
+    } else {
+      // Pull in instantly, ease back out.
+      this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
+    }
 
     const pos = this.camera.position.copy(this.target).addScaledVector(this.dir, -this.arm);
     pos.y = Math.max(pos.y, terrainHeight(pos.x, pos.z) + CAM.groundClearance);

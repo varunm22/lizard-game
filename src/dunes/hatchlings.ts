@@ -8,7 +8,7 @@ import { LizardModel } from '../player/lizardModel';
 import { LizardVisual } from '../player/visual';
 import { rng } from '../world/noise';
 import type { Obstacle } from '../world/obstacles';
-import { CACTUS_GROUP, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { CACTUS_GROUP, IGNORE_ANIMALS, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import type { Bushes } from './bushes';
 import { steer } from './ground';
 import { BURROWS, COLONY, NEST, type Burrow } from './layout';
@@ -88,6 +88,8 @@ export class Hatchling {
     this.burrow = HOME_BURROWS[index % HOME_BURROWS.length];
     this.body = new PlayerController(world, new THREE.Vector3(this.burrow.x, terrainHeight(this.burrow.x, this.burrow.z), this.burrow.z), (IGUANA_GROUP << 16) | 0xffff);
     this.body.stillGroups = IGNORE_BODIES;
+    // On its own errands it passes the other animals' bodies, as they pass it.
+    this.body.moveGroups = IGNORE_ANIMALS;
     this.body.climbGroups = IGNORE_BODIES & ~PLANT_STEM_GROUP & ~CACTUS_GROUP;
     this.visual = new LizardVisual(model, this.body, world);
     this.prey = new BodyPrey(`hatchling-${index}`, this.body, herd.bushes, () => this.huntable, (by) => this.caught(by));

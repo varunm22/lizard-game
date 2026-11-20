@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { pushAnimalsOff } from '../creatures/solidBody';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
 import { buildTerrain, IGNORE_IGUANAS, PLAYER_GROUP, terrainHeight } from '../world/terrain';
@@ -165,6 +166,7 @@ export async function dunes() {
     hatchlings.step(dt);
     player.feetAt(1, tickFeet);
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw));
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);

@@ -4,8 +4,11 @@ The third stage, opened with `?level=lagoon` or from the "Select stage" picker (
 the still is `src/assets/stages/lagoon.jpg`). It's area 3 of the progression plan: a sheltered
 lagoon behind the lava, like Elizabeth Bay or Black Turtle Cove, walled by red mangroves. The lizard
 starts on the colony's lava coast in the west and has to reach the lava field across a tidal channel
-in the east, past lava herons (*Butorides sundevalli*) stalking the shallows. The gate is a driftwood
-log: floated out of its pool into the channel's ebb, it jams across the narrows as a bridge.
+in the east, past lava herons (*Butorides sundevalli*) stalking the shallows. The gate is a chain:
+clear the drift wrack damming the log pool's creek so the pool drains; shove the driftwood log, stuck
+by its keel at the pool's rim, loose; the creek carries it into the channel's ebb, where it catches
+(on the wrack, which has drifted down and racked up on a drowned snag, or wedged where the channel
+narrows) and lies across as a bridge.
 Everything lives in `src/lagoon/`; it reuses the dunes' run pieces (`GroundProbe`, `Markers`, the run
 HUD with the stage's own words, `HudText`) and the shared player, camera and water unchanged.
 
@@ -21,8 +24,8 @@ The plan's "high tide floats the log" is an **ebb current** here instead: a tide
 - `src/lagoon/main.ts` is the level's main, built like the dunes': fixed-step loop, `?test`
   driving, `advance`/`frame`. Hooks are `window.__lagoon` (`LagoonTestHooks` in
   `src/debug/testHooks.ts`, built in `createLagoonHooks.ts`).
-- Step order per physics tick: run (start, catch, safe point, finish, goals), herons, log (pushed if
-  the lizard swims forward into it), sharks and rays (which read the lizard through the run's
+- Step order per physics tick: run (start, catch, safe point, finish, goals), herons, wrack, pods, log (both
+  shoved if the lizard moves forward into them), sharks and rays (which read the lizard through the run's
   `prey`, like the herons), the current carrying a swimming lizard (`player.carry`), player, Rapier.
   Herons and swimmers use seeded `rng`.
 
@@ -34,8 +37,13 @@ herons wade, a pale sand bar, mud hummocks under mangrove stands, lava knobs to 
 line and half-width are `channelX(z)`/`channelHalf(z)`, narrowest at `JAM_Z`; its west bank is mud
 (`BANK_TOP`), its east bank a lava face up to `SHELF_TOP`, too high to climb out onto from the water
 (the controller climbs at most 7.5 cm above its feet, and swimming feet are 3 cm under). It's 30 cm
-deep and wider than a jump. `CURRENT` runs south, faster through the narrows; the log pool drains
-east down its `CREEK` into the channel. `SAFE_POINTS[0]` is a nook among three old mangroves (the
+deep and wider than a jump. `CURRENT` runs south, faster through the narrows; once the wrack dam is
+cleared (`CREEK_FLOW.open`, 0 to 1) the log pool drains toward its `CREEK`, east down it, and on out
+into the channel a way (`CREEK_JET`) before the ebb turns it. The log pool (`rim`) has a flat floor
+deep enough to float the log and its keel. Above the narrows a lava knob juts out from the east bank
+(`eastEdge`) over the drowned snag's foot (`SNAG`, on a rubble bar), and upstream across from it the
+west bank builds out as a mud spit just out of the water (`westEdge`), so a log caught there lies
+from mud to lava. `SAFE_POINTS[0]` is a nook among three old mangroves (the
 first stand). `HERON_HAUNTS` are each heron's spots: wadeable, clear of roots and rocks (the load
 test checks each with the `wadeable` hook; re-check after moving props). `props.ts` keeps the first
 three herons' spots clear as it scatters; herons 3 to 5 were placed in the clearings that leaves, so
@@ -93,17 +101,66 @@ position and the bill tip from the stance alone (`billTip`), so posing never fee
 
 ## The drift log (`driftLog.ts`)
 
-A kinematic body (a 14-sided prism) moved each step as far as it fits: enough water under it along
-its length and nothing in the way (a slightly shrunk shape, ignoring the ground and the lizard), or
-else only its drift, or only its turn. The lizard shoves it by swimming forward with its snout
-against its side (seen from above, and from up to 20 cm under it, since a swimmer sinks); a shove off
-its middle turns it a little. Water drag stills it. The current carries it at the mean of the
-current at three points along it, and the difference between its ends turns it, so a log nosing out
-of the creek swings round into the ebb; in the channel it lines up with the flow and drifts out to
-the middle. Within 0.4 m of the narrows it swings across in a scripted 1.6 s settle and lies jammed,
-each end half sunk in the bank (mud on the west, a crack in the lava on the east) so the lizard walks
-on and off it. Swept past the south edge it's lost and another lies in the pool. A lizard standing
-on it is carried with it (`player.carry`). `R` puts it back in its pool.
+A forked red mangrove limb, bleached and barkless, with a waterlogged prop-root stub (the keel). It's
+a real dynamic Rapier body: capsule colliders from the model's `segments`, the keel denser than the
+water. Each step adds buoyancy and linear plus quadratic drag per sample along each collider,
+relative to `current()`, so it floats, drifts, grounds and snags on its branches by itself. The
+lizard isn't in its solver groups: it shoves it only through `shove` (snout within 3 cm of a limb,
+seen from above, within 6 cm up or down; a sinking swimmer passes under, so tilt up), weighs on it
+where it stands (`RIDER_WEIGHT`), and rides it by following its pose (`player.carry`).
+
+It starts `aground`: a fixed body at `LOG_START`, its keel root stuck in the mud at the pool's west
+rim. Shoved for `WORK_LOOSE` (0.4 s) in all it turns dynamic and floats (`onAfloat`); the drain then
+carries it to the creek. Touching a racked wrack piece's upper half (`Wrack.hooks`), it hooks on: a
+ball joint at that point, so the current swings it round on it. Still for 1.2 s with its main limb's
+ends within 0.35 of the west bank and of the lava face (`acrossChannel`, `eastEdge`), it's `jammed`:
+fixed for good, a bridge. Swept past the south edge it's lost and another floats in the pool. `R`
+puts it back stuck in its pool.
+
+## The drift wrack (`wrack.ts`)
+
+Eight dead twigs and old propagules (1.3x the models, each with a smaller twig and propagule caught on
+it up top) jammed in a tangle across the creek on its flat bed, 10 cm west of `DAM`: sticks standing
+on end with their feet in the mud, propagules caught across them, the heap's top 2 cm out of the
+water. The pieces are kinematic bodies that only the log meets. The lizard meets the tangle as one
+slab from bank to bank, cut into eight equal cells along the creek (one per piece, fixed cuboids in
+`DAM_GROUP` that only the player collides with): it stops a swimmer, and its top can be climbed or
+landed on. A cell turns off when its piece comes out, opening a gap.
+
+Each piece has a `hold` (1 to 0). It gives way only to hard knocks (the user's ask, 2026-11-19: not
+"touch it and it drops"):
+- A ram, the snout meeting its cell (`touching`, within `PUSH_GAP`) after being clear of it: `RAM`
+  (2.4) per m/s over 0.05, so a fast swim (0.24) takes about 0.45 and a slow one under 0.25.
+- Pressing on it: `GRIND` (0.04) a second.
+- A landing on it from at least 0.1 s in the air (`MIN_AIR`), on top or through into the water
+  within `ON_TANGLE` of its cell: `STOMP` (0.7) per m/s of fall over 0.2, and it's pressed down
+  (`dip`).
+- Each knock passes `NEIGHBOUR` (0.15) of itself to the pieces either side, so wear stays where
+  the lizard works and the dam doesn't go all at once.
+
+Knocks set pieces rocking on their feet (a damped spring, `shake`), and a landing shudders the whole
+heap. Loosening, a piece sags: it leans over further and settles. At hold 0 it topples out over
+`FALL_TIME` (0.7 s), the way it was knocked but borne east by the creek, tugging `LOOSEN` (0.1) off
+its neighbours. Once `SLACK_AT` (4) are out, the rest slacken once (`SLACKEN`, 0.15 off each, with
+a shudder) but each still has to be knocked out (the user's ask, 2026-11-19: not all flowing out
+after four). In play that's about 15 fast rams, fewer with landings mixed in. `CREEK_FLOW.open` is the share out (`onCleared` once all of
+them are).
+
+Loose pieces roll along the bed with the current. In the channel, within 0.1 m of the snag line, they
+rack up on it in turn (`SLOTS`, from the knob's tip out across), standing and leaning downstream with
+their tops just awash (`onRacked`). The drowned trunk is solid but lies 27 cm down, too deep to catch
+a floating log until the wrack stands up on it. `rackAll` (hook `rackWrack`) racks them all at once
+for tests; `pushWrack(i, x, z)` frees one at once.
+
+## Propagules (`pods.ts`)
+
+The 90 fallen red mangrove propagules that `props.ts` places (same random draws as before: floating
+flat in the shallows, lying on the mud, stuck upright where they took root) are moved by `Pods` and
+drawn as one InstancedMesh, with no colliders. The lizard's body seen from above (hips to snout)
+pushes any it meets out of the way, carrying them at about its own speed along the push and turning
+them when met off-centre. Floating ones drift on `current()`; on the mud they stop quickly; they
+won't go up a bank. An upright seedling it walks or swims into topples flat over 0.35 s and is then
+loose. Hook `pods()`.
 
 ## Vitals
 
@@ -133,15 +190,23 @@ sprout as there. As on the island, "[F] to eat" shows while algae is within a bi
 
 As the dunes': the clock starts on the first move; going down (a heron's stab or a shark pup's bite
 taking the last of its health, or the cold, hunger or drowning) puts the lizard back at the start, or at
-the safe point once reached; reaching `FINISH` on the lava field wins. Goals: shelter in the roots,
-cross, hide from a stalking heron in the roots, escape one into deep water, slip away from one, float
-the log into the channel, jam it, ride it 1 s, swim beside a shark pup, swim with the rays.
+the safe point once reached; reaching `FINISH` on the lava field wins. Goals are side quests only
+(5; the steps the crossing needs anyway, the safe point, the wrack, the log and the bridge, aren't
+goals, the user's rule 2026-11-19): cross, hide from a stalking heron in the roots, ride the log 1 s,
+swim beside a shark pup, swim with the rays. `GOAL_COUNT.lagoon` in `src/progress.ts` is 5.
+
+Help text is terse, as on the dunes and in the tunnels: a four-line intro card (roots and deep water
+lose a heron, don't turn on a shark pup, a stuck log could bridge the channel, the water chills and F
+bites weed), the danger banner ("Stalked!", "Move!"), and short flashes for the safe point, the creek
+flowing, the log coming loose, the bridge and a log lost to the sea. A catch names its cause
+("Speared!", "Bitten!", "Too cold!", "Drowned!", "Starved!").
 
 ## Sharks and rays (`swimmers.ts`, models in `assets-src/lagoon.py`)
 
 Three newborn blacktip shark pups (0.38 m, slim) and fifteen young golden cownose rays (0.24 m
 across) keep to their own pools, steering toward points deep enough to swim. Drawn and steered
-only, no colliders. Each swims under the surface: its height is kept (only the smoothing changes it),
+here, solid as capsules from `slabParts` (a pup's body in four lengths, a ray's disc in three slices;
+off while a pup bites; docs/creatures.md). Each swims under the surface: its height is kept (only the smoothing changes it),
 the top of its fins or wingtips (`height`, from the model's bounds plus the ray's bank) stays
 `SUBMERGED` under the water, and it only heads where the water is `MIN_DEPTH` deep. Rays keep near the
 bed; sharks cruise low and rise toward the surface when they come to look at a swimmer. Each has its own material, so the vertex shader bends it from its own uniforms:
@@ -178,8 +243,14 @@ far side. Drawn only, with their own random numbers; cheap, so tests leave them 
 ## Tests (`tests/lagoon.spec.ts`, `tests/helpers/bootLagoon.ts`)
 
 `bootLagoon` holds the herons and the swimmers still unless a test asks for them. Hooks:
-`herons()`, `heronBody(i)`, `placeHeron`, `haunts(i)`, `tangle`, `wadeable`, `log()`, `placeLog`,
+`herons()`, `heronBody(i)`, `placeHeron`, `haunts(i)`, `tangle`, `wadeable`, `log()` (with its
+`spine`, the way along its top), `placeLog`, `logPoint`, `wrack()` (each piece's `hold` and `shake`), `pushWrack`, `rackWrack`, `pods()`,
 `swimmers()`, `placeSwimmer`, `vitals()`, `setVitals`, `channel`, `current`, `depth`, `run()`, `restart`, `mangroves()`,
 `marks()`. The hunting tests stand heron 1 at
-its first spot facing south over the open flat. The log test runs the whole gate in about 1,500
-steps: a push, the creek mouth into the channel, a drift into the jam, and the walk across.
+its first spot facing south over the open flat. The log test runs the whole gate in about 6,000
+steps (around 15 s): the dam loosed with `pushWrack`, the log shoved loose, its drift out of the
+pool and down to where it catches, and the walk from the west bank along its `spine` onto the lava
+and to the light. The dam test checks that a slow push only shakes it and is stopped, that fast rams
+free no piece at once but clear it within about 6 to 24, and that a landing from the bank stands
+the lizard on the heap and hops on it work pieces free. The propagule test walks into a floating one
+and an upright one.

@@ -4,6 +4,7 @@ import { rng } from '../world/noise';
 import type { Obstacle } from '../world/obstacles';
 import { terrainHeight } from '../world/terrain';
 import { GroundProbe, steer } from './ground';
+import { SolidBody } from '../creatures/solidBody';
 import { SnakeBody, type SnakeKit } from './snakeBody';
 
 /**
@@ -90,6 +91,9 @@ const STEER_EVERY = 4;
  * stops: after `wait` to `wait + waitMore` s, to a spot `near` to `far` m from home, at `speed`,
  * giving up after `time` s.
  */
+/** The racer's solid body: its spine bones, three to a capsule (the first two, by the head, left out). */
+const SOLID_SPINE = Array.from({ length: 15 }, (_, k) => [3, 4, 5].map((j) => 3 * k + j).filter((j) => j <= 46).map((j) => `spine_${j}`));
+
 const PROWL = { wait: 8, waitMore: 14, near: 0.15, far: 0.4, speed: 0.1, time: 8 };
 
 /** One racer: where it lies up, what it's doing, and its body. */
@@ -129,6 +133,8 @@ export class Racer {
   /** Seconds left lying up before it next prowls about home, and where that prowl is going. */
   prowlIn: number;
   readonly prowlTo = new THREE.Vector3();
+  /** Its body as the lizard bumps into it, from the neck back. */
+  solid!: SolidBody;
 
   constructor(
     readonly index: number,
@@ -193,6 +199,8 @@ export class Racers {
       const body = new SnakeBody(kit, i % 2);
       scene.add(body.root);
       const racer = new Racer(i, body, home, rng(300 + i));
+      // Solid from the neck back, three spine bones to a capsule; the head is left to the strike.
+      racer.solid = SolidBody.fitted(ground.world, body.root, SOLID_SPINE);
       coil(racer, home.x, home.z, home.yaw);
       this.list.push(racer);
     });
@@ -219,6 +227,9 @@ export class Racers {
       b.lift += (LIFT[r.state] - b.lift) * Math.min(1, dt * 8);
       this.tongue(r, dt);
       b.pose();
+      // Not solid while it lunges or holds a catch: the strike is the head reaching the prey.
+      r.solid.enabled = r.state !== 'strike' && r.state !== 'feed';
+      r.solid.update();
     }
   }
 

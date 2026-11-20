@@ -12,7 +12,7 @@ import { covers, type Obstacle } from '../world/obstacles';
 import { lavaCover, ROCK_PILES } from '../world/layout';
 import { rng } from '../world/noise';
 import { shoreX, WATER_Y } from '../world/shore';
-import { CACTUS_GROUP, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { CACTUS_GROUP, IGNORE_ANIMALS, IGNORE_BODIES, IGUANA_GROUP, PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
 import type { Algae, AlgaePatch } from '../world/algae';
 import type { Plants } from '../world/plants';
 import { Splashes } from '../world/splashes';
@@ -182,6 +182,8 @@ class Iguana {
     this.body = new PlayerController(world, new THREE.Vector3(home.x, terrainHeight(home.x, home.z), home.z), (IGUANA_GROUP << 16) | 0xffff);
     this.body.setFeet(this.body.feetAt(1, this.feet), yaw);
     this.body.stillGroups = IGNORE_BODIES;
+    // On its own errands it passes the other animals' bodies, as they pass it.
+    this.body.moveGroups = IGNORE_ANIMALS;
     // Brushing past another lizard or a cactus it slides along it; it never clambers onto one.
     this.body.climbGroups = IGNORE_BODIES & ~PLANT_STEM_GROUP & ~CACTUS_GROUP;
     this.navigation = new IguanaNavigation(this.body, this.feet, this.input, {
