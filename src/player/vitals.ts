@@ -30,9 +30,9 @@ export const VITALS = {
   groomRegen: 2,
   /** Below this warmth it's freezing, and loses health, faster the colder (at most `coldHurt` at 0). */
   freezing: 0.15,
-  coldHurt: 0.024,
-  /** Starving (no food left), health goes at this rate: empty to dead in a little over 2 minutes. */
-  starveHurt: 0.008,
+  coldHurt: 0.048,
+  /** Starving (no food left), health goes at this rate: empty to dead in about a minute. */
+  starveHurt: 0.016,
   /** Out of air, health goes at this rate: drowned 12 s after the last breath runs out. */
   drownHurt: 0.08,
 
