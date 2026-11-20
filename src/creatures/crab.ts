@@ -102,6 +102,8 @@ const CROSSFADE = 0.15;
 const COME_BACK = [30, 60] as const;
 /** Rays start this far above the highest surface they might find (m). */
 const RAY_HEAD = 0.02;
+/** The second look down (`surface`) starts this much higher (m). */
+const RAY_RECHECK = 0.9;
 
 interface Extras {
   gait_speed: number;
@@ -677,10 +679,16 @@ export class Crabs {
 
   /** Height of the surface under (x, z) at or below `below` (plus a little), or null. Ignores the lizard and the other iguanas. */
   surface(x: number, z: number, below: number): number | null {
-    const from = below + RAY_HEAD;
-    this.ray.origin = { x, y: from, z };
-    const hit = this.world.castRay(this.ray, from + 1, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, this.player.body);
-    return hit ? from - hit.timeOfImpact : null;
+    // A ray onto a rock's convex hull can catch a phantom face a centimetre or more above the real
+    // top, depending on where it starts from; it's a second ray from higher up that tells. The lower
+    // of the two is the rock's top.
+    let top: number | null = null;
+    for (const from of [below + RAY_HEAD, below + RAY_HEAD + RAY_RECHECK]) {
+      this.ray.origin = { x, y: from, z };
+      const hit = this.world.castRay(this.ray, from + 1, true, undefined, IGNORE_STEMS_AND_IGUANAS, undefined, this.player.body);
+      if (hit) top = Math.min(top ?? Infinity, from - hit.timeOfImpact);
+    }
+    return top;
   }
 
   /** There's rock (or ground) above the sea at (x, z) below `below`. */
