@@ -5,6 +5,7 @@ import { VITALS, type DownCause, type Vitals } from '../player/vitals';
 import type { Wounds } from '../player/wounds';
 import { terrainHeight } from '../world/terrain';
 import type { DriftLog } from './driftLog';
+import type { Wrack } from './wrack';
 import type { HeronPrey, Herons } from './herons';
 import { FINISH, SAFE_POINTS, START } from './layout';
 import type { Swimmers } from './swimmers';
@@ -43,8 +44,6 @@ export class LagoonRun {
   readonly goals: Goals;
   /** Things the goals wait on, set by the herons' callbacks. */
   private hid = false;
-  private dove = false;
-  private slipped = false;
   private feet = new THREE.Vector3();
   onReset: (() => void) | null = null;
   /** Down, and what took the last of its health; and a blow that only hurt it. */
@@ -60,6 +59,7 @@ export class LagoonRun {
     private vitals: Vitals,
     private herons: Herons,
     private log: DriftLog,
+    private wrack: Wrack,
     private swimmers: Swimmers,
   ) {
     const free = () => this.state === 'ready' || this.state === 'running';
@@ -82,17 +82,11 @@ export class LagoonRun {
     };
     herons.onLose = (_h, why) => {
       if (why === 'tangle') this.hid = true;
-      else if (why === 'deep') this.dove = true;
-      else if (why === 'away') this.slipped = true;
     };
+    // Side quests only: the steps the crossing needs anyway (the wrack, the log, the bridge) aren't goals.
     const specs: GoalSpec[] = [
-      { id: 'safe', label: "Shelter in the old mangroves' roots", met: () => this.checkpoint >= 0 },
       { id: 'cross', label: 'Cross the channel to the lava field', met: () => this.finishes > 0 },
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
-      { id: 'deep', label: 'Escape a heron into deep water', met: () => this.dove },
-      { id: 'slip', label: 'Slip away from a stalking heron', met: () => this.slipped },
-      { id: 'channel', label: 'Float the driftwood out into the channel', met: () => log.reachedChannel > 0 },
-      { id: 'bridge', label: 'Jam the log across the narrows', met: () => log.state === 'jammed' },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
       { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
@@ -140,6 +134,7 @@ export class LagoonRun {
     this.vitals.reset();
     this.player.setFeet(this.feet.set(START.x, terrainHeight(START.x, START.z), START.z), START.yaw);
     this.log.reset();
+    this.wrack.reset();
     this.herons.reset();
     this.swimmers.calm();
     this.onReset?.();
