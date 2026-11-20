@@ -167,8 +167,8 @@ unheard, swim over a sleeping whitetip.
 The island's bars (`Vitals`, `createVitalsPanel`) run here too, as the stage's clock. `ClimateSense`
 gets no `Cover`; its `sunAt` reads the baked light (`lightAt(...).sun`) at three points along the
 back. It starts cold but fed (warmth `VITALS.tunnelsStartWarmth` 0.3, fullness 0.7), so it is
-already slowed and not mending, and out of the sun the cold starts taking health after about a
-minute; the start's skylight warms it back. There is no food, so fullness only drains (from 0.7,
+already slowed and not mending, and out of the sun the cold starts taking health after about
+25 s; the start's skylight warms it back. There is no food, so fullness only drains (from 0.7,
 empty in about five and a half minutes keeping still, under four walking). Air works as on the island
 in the flooded stretch. Health at zero from cold, hunger or drowning counts as a catch ("Too cold!",
 "Starved!", "Drowned!"): back at the checkpoint with fresh bars (cold again, fed). The bars don't change once home.

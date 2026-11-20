@@ -109,9 +109,9 @@ test('under water the lizard cools and runs out of air, then drowns; at the surf
     return { dived, breathed, surfaced, downAt, wounds: g.wounds() };
   });
   expect(r.dived.climate.underwater).toBe(true);
-  // 10 s under: 40% of its air and 14% of its warmth.
+  // 10 s under: 40% of its air and 28% of its warmth.
   expect(r.dived.air).toBeCloseTo(0.6, 2);
-  expect(r.dived.warmth).toBeCloseTo(0.86, 2);
+  expect(r.dived.warmth).toBeCloseTo(0.72, 2);
   expect(r.breathed).toBeGreaterThan(5);
   expect(r.surfaced.air).toBeGreaterThan(0.5);
   // Out of air, 8% of its health a second: down after about 12.5 s.
@@ -172,9 +172,9 @@ test('cold, the lizard walks slower and loses health; fed and warm it mends, hun
   expect(r.fed.health).toBeGreaterThan(0.51);
   expect(r.hungry.health).toBe(0.5);
   expect(r.starving.health).toBeLessThan(0.5);
-  // Fed and warm it mends 2% a second; freezing costs up to 4.8% stone cold (well over 2.4% a second here, a little warmer than 5% by now); starving takes 1.6% a second.
+  // Fed and warm it mends 2% a second; freezing costs up to 4.8% stone cold (well over 1.6% a second here, warming in the sun from 5%); starving takes 1.6% a second.
   expect(r.fed.rate.health).toBeCloseTo(0.02, 4);
-  expect(r.freezing.rate.health).toBeLessThan(-0.024);
+  expect(r.freezing.rate.health).toBeLessThan(-0.016);
   expect(r.starving.rate.health).toBeCloseTo(-0.016, 4);
   expect(errors).toEqual([]);
 });

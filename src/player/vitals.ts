@@ -42,11 +42,11 @@ export const VITALS = {
    * Warmth. In the sun on land: a little while moving, `bask` lying still, times what it lies on
    * and the company it keeps. Out of the sun, or in the water, it cools.
    */
-  sunMoving: 0.003,
-  bask: 0.008,
-  shade: 0.003,
-  swimming: 0.009,
-  diving: 0.014,
+  sunMoving: 0.012,
+  bask: 0.032,
+  shade: 0.006,
+  swimming: 0.018,
+  diving: 0.028,
   /** Below this warmth it slows down, to `slowest` of its speed when stone cold. */
   slowBelow: 0.5,
   slowest: 0.55,
