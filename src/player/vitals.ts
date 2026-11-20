@@ -47,9 +47,10 @@ export const VITALS = {
   slowBelow: 0.5,
   slowest: 0.55,
 
-  /** Fullness empties over 8 minutes idling; running and swimming burn it faster. */
+  /** Fullness empties over 8 minutes keeping still; walking burns it 1.5 times as fast, running and swimming twice as fast. */
   hunger: 1 / 480,
-  runHunger: 1.5,
+  walkHunger: 1.5,
+  runHunger: 2,
   swimHunger: 2,
   /** One mouthful of algae (a sixth of a patch). */
   mouthful: 0.06,
@@ -132,7 +133,7 @@ export class Vitals {
     this.warmth = clamp01(warmth + warm * dt);
     this.rate.warmth = (this.warmth - warmth) / dt;
 
-    const burn = V.hunger * (a.swimming ? V.swimHunger : a.running ? V.runHunger : 1);
+    const burn = V.hunger * (a.swimming ? V.swimHunger : a.running ? V.runHunger : a.still ? 1 : V.walkHunger);
     this.fullness = clamp01(this.fullness - burn * dt);
 
     this.air = clamp01(this.air + (c.underwater ? -V.airUse : V.airBack) * dt);

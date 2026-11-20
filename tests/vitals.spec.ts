@@ -212,3 +212,35 @@ test('the bars show in the bottom corner', async ({ page }) => {
   expect(steps).toBeLessThan(5.1 * 60);
   expect(errors).toEqual([]);
 });
+
+test('food burns 1.5 times as fast walking as keeping still, and twice as fast running', async ({ page }) => {
+  const errors = await bootGame(page, { vitals: true });
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    // Open ground heading down the clear path to the beach, warm and fed, so nothing else is going on.
+    g.clearPlants(0.7, 1.12, 1.8, 1.12, 0.12);
+    g.teleport(0.7, 1.12, Math.PI / 2);
+    g.advance(10, false);
+    const burn = (input: { move: { x: number; y: number }; run?: boolean } | null) => {
+      g.setVitals({ fullness: 0.9, warmth: 0.9 });
+      if (input) g.setInput(input, 1000);
+      g.advance(30, false);
+      const before = g.vitals().fullness;
+      g.advance(40, false);
+      const burnt = (before - g.vitals().fullness) * 480 * (60 / 40);
+      g.setInput(null);
+      return burnt;
+    };
+    const still = burn(null);
+    const walk = burn({ move: { x: 0, y: 1 } });
+    g.teleport(0.7, 1.12, Math.PI / 2);
+    g.advance(10, false);
+    const run = burn({ move: { x: 0, y: 1 }, run: true });
+    return { still, walk, run };
+  });
+  // (Burnt per second, times the 480 s a full bar lasts keeping still: 1 keeping still.)
+  expect(r.still).toBeCloseTo(1, 1);
+  expect(r.walk).toBeCloseTo(1.5, 1);
+  expect(r.run).toBeCloseTo(2, 1);
+  expect(errors).toEqual([]);
+});
