@@ -434,8 +434,10 @@ test('the wrack dam blocks the creek; a nudge only shakes it, but hard rams and 
     }
     g.teleport(x0, marks.creek.z, Math.PI / 2, -0.07);
     g.advance(3);
-    g.setInput({ move: { x: 0, y: 1 }, run: true }, 120);
-    g.advance(120);
+    // Three seconds: a loose piece can come to rest on the bed in the gap and hold the lizard up for a
+    // moment. Where they settle hangs on everything else in the physics world, so it shifts as bodies are added.
+    g.setInput({ move: { x: 0, y: 1 }, run: true }, 180);
+    g.advance(180);
     const rammed = { open: g.wrack().open, player: g.player() };
     // From scratch: landing on the tangle from the bank, and hopping on it, presses it down and works it loose too.
     g.restart();

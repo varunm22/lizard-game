@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
+import { SolidBody } from './solidBody';
 import { createAnimationActions } from '../render/animationActions';
 import { loadGltf } from '../render/gltf';
 import { toonify } from '../render/toon';
@@ -163,6 +164,8 @@ export class Tortoise {
   private standingHeight: number;
   private lift = 0;
   private riderRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+  /** Its head, neck and legs, solid to the lizard (the shell is `collider`). */
+  readonly solid: SolidBody;
   /** The lizard was on the shell last step. */
   ridden = false;
 
@@ -195,6 +198,9 @@ export class Tortoise {
     this.x = at.x;
     this.z = at.z;
     this.yaw = Math.atan2(at.dx, at.dz);
+    // Head, neck and the legs below the shell's rim, fitted to the mesh and carried by their bones.
+    // On the shell's own body, so a shove from the tortoise looks past all of it.
+    this.solid = SolidBody.fitted(world, this.root, [['neck1'], ['neck2'], ['head', 'jaw'], ['lower_front_L'], ['lower_front_R'], ['lower_hind_L'], ['lower_hind_R']], true, undefined, this.body);
     this.untilRest = this.spell(WALK_SPELL);
     this.pose();
     this.prevPos.copy(this.pos);
@@ -384,6 +390,7 @@ export class Tortoise {
     this.root.position.lerpVectors(this.prevPos, this.pos, alpha);
     this.root.quaternion.slerpQuaternions(this.prevRot, this.rot, alpha);
     this.mixer.update(frameDt);
+    this.solid.update();
     this.lift = this.shellHeight() - this.standingHeight;
     // The shell as drawn: between steps, at the drawn shell's height.
     this.drawnAt.copy(this.root.position).y += this.lift;

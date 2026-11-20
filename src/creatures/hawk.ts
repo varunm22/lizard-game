@@ -9,6 +9,7 @@ import { WATER_Y } from '../world/shore';
 import { SUN_OFFSET } from '../render/scene';
 import type { Cover } from '../world/cover';
 import type { Quarry } from './quarry';
+import type { SolidBody } from './solidBody';
 import type { Perch, PerchFit } from './perches';
 
 /**
@@ -406,7 +407,19 @@ export class Hawk {
     this.root.quaternion.slerpQuaternions(this.prevQuat, this.quat, alpha);
     this.pickClip();
     this.mixer.update(dt);
+    if (this.solid) {
+      // Solid only standing (perched, or on a kill other than the lizard): on the wing it's the
+      // strike that touches, and over a downed lizard it would only shove it about.
+      this.solid.enabled = this.state === 'perch' || (this.state === 'feed' && this.quarry?.kind !== 'player');
+      this.solid.update();
+    }
   }
+
+  /** Its body, head and legs as the lizard bumps into them on the ground (`SolidBody`), set by the island. */
+  solid: SolidBody | null = null;
+
+  /** The bones its solid body is fitted to, folded as it sits. */
+  static readonly SOLID = [['body'], ['neck', 'head'], ['thigh_L', 'shank_L'], ['thigh_R', 'shank_R']];
 
   // ------------------------------------------------------------------ looking
 

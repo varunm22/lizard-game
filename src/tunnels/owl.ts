@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type RAPIER from '@dimforge/rapier3d';
+import { SolidBody } from '../creatures/solidBody';
 import { FreeRig, type FreeRigKit } from '../render/freeRig';
 import { FLOORS, ROOSTS, SKYLIGHTS, type Roost } from './layout';
 
@@ -295,12 +297,16 @@ export class Owls {
   /** Called as an owl catches the lizard. */
   onCatch: ((owl: Owl) => void) | null = null;
 
-  constructor(kit: FreeRigKit, scene: THREE.Scene) {
+  /** Each owl's body and head as the lizard bumps into them (wings, legs and tail left out). */
+  readonly solids: SolidBody[];
+
+  constructor(kit: FreeRigKit, scene: THREE.Scene, world: RAPIER.World) {
     this.list = ROOSTS.map((r) => new Owl(kit, r));
     for (const o of this.list) {
       scene.add(o.rig.root);
       o.pose(0);
     }
+    this.solids = this.list.map((o) => SolidBody.fitted(world, o.rig.root, [['body'], ['head']]));
   }
 
   step(dt: number, prey: Prey) {
@@ -310,7 +316,12 @@ export class Owls {
   }
 
   pose(dt: number) {
-    for (const o of this.list) o.pose(dt);
+    this.list.forEach((o, i) => {
+      o.pose(dt);
+      // Not while it drops onto the lizard and mantles over it, or flies back up.
+      this.solids[i].enabled = o.state === 'roost' || o.state === 'alert' || o.state === 'grounded';
+      this.solids[i].update();
+    });
   }
 
   /** Every owl back on its ledge. */

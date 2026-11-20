@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type RAPIER from '@dimforge/rapier3d';
+import { slabParts, SolidBody, type MeshPart } from '../creatures/solidBody';
 import { swimMaterial } from '../creatures/fish';
 import { rng } from '../world/noise';
 import { WATER_Y } from '../world/shore';
@@ -89,6 +91,9 @@ interface Batch {
   mesh: THREE.InstancedMesh;
   swim: THREE.InstancedBufferAttribute;
   fish: Fry[];
+  /** The fry as solid capsules (one each), and each one's capsule in its own space. */
+  solid: SolidBody | null;
+  parts: MeshPart[];
 }
 
 export class Fries {
@@ -112,6 +117,7 @@ export class Fries {
     extras: Map<string, Record<string, number>>,
     props: Pick<LagoonProps, 'rootPosts'>,
     private threats: readonly THREE.Vector3[],
+    world?: RAPIER.World,
   ) {
     const rand = rng(SEED);
     const range = (a: number, b: number) => a + (b - a) * rand();
@@ -165,7 +171,15 @@ export class Fries {
       swim.setUsage(THREE.DynamicDrawUsage);
       g.setAttribute('aSwim', swim);
       scene.add(mesh);
-      this.batches.push({ mesh, swim, fish });
+      // Each fry solid as a capsule along its body (tail fin left out); light, it only blocks the lizard.
+      const [part] = slabParts(g, [[0.02, 0.72]], true);
+      const parts = fish.map((f) => ({
+        radius: part.radius * f.scale,
+        half: part.half * f.scale,
+        local: part.local.clone().setPosition(new THREE.Vector3().setFromMatrixPosition(part.local).multiplyScalar(f.scale)),
+      }));
+      const solid = world ? new SolidBody(world, parts, false) : null;
+      this.batches.push({ mesh, swim, fish, solid, parts });
     }
     this.update(1);
   }
@@ -343,6 +357,10 @@ export class Fries {
         q.setFromEuler(e);
         m.compose(v, q, s.setScalar(f.scale));
         b.mesh.setMatrixAt(i, m);
+        if (b.solid) {
+          m.compose(v, q, s.setScalar(1)).multiply(b.parts[i].local).decompose(v, q, s);
+          b.solid.set(i, v, q);
+        }
         const speed = Math.hypot(f.vel.x, f.vel.z);
         b.swim.setXY(i, f.phase, f.length * clamp(0.05 + speed * 0.4, 0.05, 0.16));
       });
