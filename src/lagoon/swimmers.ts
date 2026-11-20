@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type RAPIER from '@dimforge/rapier3d';
+import { slabParts, SolidBody, type MeshPart } from '../creatures/solidBody';
 import { wrapAngle } from '../math/angles';
 import { toonGradient } from '../render/toon';
 import { rng } from '../world/noise';
@@ -154,7 +156,11 @@ export class Swimmers {
   private height: Record<Kind, number> = { shark: 0, ray: 0 };
   private feet = new THREE.Vector3();
 
-  constructor(geometry: Map<string, THREE.BufferGeometry>, scene: THREE.Scene) {
+  /** Each swimmer's solid body, and the capsules (in its mesh's space) it's made of, per kind. */
+  private solids: SolidBody[] = [];
+  private parts!: Record<Kind, MeshPart[]>;
+
+  constructor(geometry: Map<string, THREE.BufferGeometry>, scene: THREE.Scene, world: RAPIER.World) {
     const centre = (g: THREE.BufferGeometry) => {
       const c = g.clone();
       c.computeBoundingBox();
@@ -175,6 +181,12 @@ export class Swimmers {
     // A ray's wingtips rise above its back as it flaps and banks.
     this.height.ray = ray.boundingBox!.max.y + 0.016 + RAY.bank * RAY.bankTurn * ray.boundingBox!.max.x;
     const length = (g: THREE.BufferGeometry) => g.boundingBox!.max.z - g.boundingBox!.min.z;
+    // A pup's body in four lengths from the snout to the tail stock (fins and tail fin left out); a
+    // ray's disc in three slices across it (the whip of a tail left out).
+    this.parts = {
+      shark: slabParts(shark, [[0, 0.14], [0.14, 0.36], [0.36, 0.56], [0.56, 0.74]], true),
+      ray: slabParts(ray, [[0.04, 0.18], [0.18, 0.32], [0.32, 0.46]], false),
+    };
     // Which pool each lives in: shark pups in the big pools, rays in little schools.
     const plan: [Kind, number][] = [
       ['shark', 0], ['shark', 1], ['shark', 4],
@@ -203,6 +215,7 @@ export class Swimmers {
       s.prev.copy(s.pos);
       s.prevYaw = s.yaw;
       this.list.push(s);
+      this.solids.push(new SolidBody(world, this.parts[kind]));
     });
     this.update(1, 0);
   }
@@ -489,7 +502,7 @@ export class Swimmers {
 
   /** Each frame: drawn between steps; the body wave and the wing beat. */
   update(alpha: number, frameDt: number) {
-    for (const s of this.list) {
+    for (const [i, s] of this.list.entries()) {
       s.mesh.position.lerpVectors(s.prev, s.pos, alpha);
       s.mesh.rotation.y = s.prevYaw + wrapAngle(s.yaw - s.prevYaw) * alpha;
       const u = s.uniforms;
@@ -515,6 +528,13 @@ export class Swimmers {
         u.bend.value += (bank - u.bend.value) * Math.min(1, frameDt * 3);
         // The body heaves a little against each downstroke.
         s.mesh.position.y -= Math.cos(u.phase.value) * u.amp.value * 0.15;
+      }
+      const solid = this.solids[i];
+      if (solid) {
+        // Not while a pup darts in to bite: the bite is its snout reaching the lizard.
+        solid.enabled = s.state !== 'bite';
+        s.mesh.updateMatrixWorld();
+        solid.carry(this.parts[s.kind], s.mesh.matrixWorld);
       }
     }
   }

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type RAPIER from '@dimforge/rapier3d';
+import { slabParts, SolidBody, type MeshPart } from './solidBody';
 import { toonGradient } from '../render/toon';
 import { rng } from '../world/noise';
 import { OCEAN_X0, WATER_Y } from '../world/shore';
@@ -111,6 +113,9 @@ interface Batch {
   mesh: THREE.InstancedMesh;
   swim: THREE.InstancedBufferAttribute;
   fish: Fish[];
+  /** The fish as solid capsules (one per fish), and each one's capsule in its own space. */
+  solid: SolidBody | null;
+  parts: MeshPart[];
 }
 
 export class Fishes {
@@ -143,6 +148,7 @@ export class Fishes {
     private bed: SeaBed,
     private threats: readonly THREE.Vector3[],
     private body: readonly Sphere[],
+    world?: RAPIER.World,
   ) {
     const rand = rng(SEED);
     const range = (a: number, b: number) => a + (b - a) * rand();
@@ -206,7 +212,16 @@ export class Fishes {
       swim.setUsage(THREE.DynamicDrawUsage);
       g.setAttribute('aSwim', swim);
       scene.add(mesh);
-      this.batches.push({ mesh, swim, fish });
+      // Each fish solid as a capsule along its body (the tail fin left out), thinner than the reach
+      // of a touch so the lizard can still brush one: light, it blocks the lizard but never shoves it.
+      const [part] = slabParts(g, [[0.02, 0.72]], true);
+      const parts = fish.map((f) => ({
+        radius: Math.min(part.radius, 0.8 * FLANK * f.length) * f.scale,
+        half: part.half * f.scale,
+        local: part.local.clone().setPosition(new THREE.Vector3().setFromMatrixPosition(part.local).multiplyScalar(f.scale)),
+      }));
+      const solid = world ? new SolidBody(world, parts, false) : null;
+      this.batches.push({ mesh, swim, fish, solid, parts });
     }
     this.update(1);
   }
@@ -358,6 +373,10 @@ export class Fishes {
         q.setFromEuler(e);
         m.compose(v, q, s.setScalar(f.scale));
         b.mesh.setMatrixAt(i, m);
+        if (b.solid) {
+          m.compose(v, q, s.setScalar(1)).multiply(b.parts[i].local).decompose(v, q, s);
+          b.solid.set(i, v, q);
+        }
         const speed = f.vel.length();
         b.swim.setXY(i, f.phase, f.length * clamp(0.06 + (0.5 * speed) / KINDS[f.species].dash, 0.06, 0.16));
       });

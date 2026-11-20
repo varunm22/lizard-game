@@ -635,8 +635,8 @@ const Y = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
 /** The pieces themselves meet only the log; the lizard meets the dam's cells (`DAM_CELL`). */
 const LOG_ONLY = (0xffff << 16) | (0xffff & ~PLAYER_GROUP);
-/** The dam's cells stop only the lizard. */
-const DAM_GROUP = 0x0040;
+/** The dam's cells stop only the lizard. Its own bit: 0x0040 is the animals' (`ANIMAL_GROUP`), which the lizard's ground checks look past. */
+const DAM_GROUP = 0x0080;
 const CELL = (DAM_GROUP << 16) | PLAYER_GROUP;
 const d1 = new THREE.Vector3();
 const d2 = new THREE.Vector3();

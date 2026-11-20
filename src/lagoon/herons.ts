@@ -5,7 +5,8 @@ import { rng } from '../world/noise';
 import { covers, type Obstacle } from '../world/obstacles';
 import { WATER_Y } from '../world/shore';
 import type { GroundProbe } from '../dunes/ground';
-import { terrainHeight } from '../world/terrain';
+import { IGNORE_IGUANAS, terrainHeight } from '../world/terrain';
+import { SolidBody } from '../creatures/solidBody';
 import { HeronBody, type HeronKit } from './heronBody';
 import { acrossChannel, depthAt, HERON_HAUNTS, LAGOON_EDGE } from './layout';
 import type { Mangrove } from './props';
@@ -109,6 +110,8 @@ const POSE = {
 };
 
 export class Heron {
+  /** Its body, neck and legs as the lizard bumps into them. */
+  solid!: SolidBody;
   readonly body: HeronBody;
   state: HeronState = 'wait';
   /** Middle on the ground (world) and facing. */
@@ -366,6 +369,8 @@ export class Herons {
       h.stand(s.x, this.groundAt(s.x, s.z), s.z, s.yaw);
       h.timer = this.stay();
       h.update(1);
+      // Body, neck and legs solid; the head and bill are left to the stab.
+      h.solid = SolidBody.fitted(world, h.body.root, [['body'], ['neck_0', 'neck_1'], ['neck_2', 'neck_3', 'neck_4'], ['tibia_L'], ['tarsus_L'], ['tibia_R'], ['tarsus_R']]);
     }
   }
 
@@ -439,7 +444,7 @@ export class Herons {
     if (len < 1e-6) return true;
     this.ray.origin = { x: a.x, y: a.y, z: a.z };
     this.ray.dir = { x: dx / len, y: dy / len, z: dz / len };
-    return !this.world.castRay(this.ray, len - 0.01, true, undefined, undefined, undefined, this.exclude);
+    return !this.world.castRay(this.ray, len - 0.01, true, undefined, IGNORE_IGUANAS, undefined, this.exclude);
   }
 
   /** Who is after the lizard: the worst of 'watched' (stalking) and 'chased' (about to strike). */
@@ -771,6 +776,11 @@ export class Herons {
 
   /** Each frame: the drawn herons. */
   update(alpha: number) {
-    for (const h of this.list) h.update(alpha);
+    for (const h of this.list) {
+      h.update(alpha);
+      // Not while it stabs or holds a catch: the strike is the bill reaching the lizard.
+      h.solid.enabled = h.state !== 'strike' && h.state !== 'recover' && h.state !== 'hold';
+      h.solid.update();
+    }
   }
 }

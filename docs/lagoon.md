@@ -205,7 +205,8 @@ flowing, the log coming loose, the bridge and a log lost to the sea. A catch nam
 
 Three newborn blacktip shark pups (0.38 m, slim) and fifteen young golden cownose rays (0.24 m
 across) keep to their own pools, steering toward points deep enough to swim. Drawn and steered
-only, no colliders. Each swims under the surface: its height is kept (only the smoothing changes it),
+here, solid as capsules from `slabParts` (a pup's body in four lengths, a ray's disc in three slices;
+off while a pup bites; docs/creatures.md). Each swims under the surface: its height is kept (only the smoothing changes it),
 the top of its fins or wingtips (`height`, from the model's bounds plus the ray's bank) stays
 `SUBMERGED` under the water, and it only heads where the water is `MIN_DEPTH` deep. Rays keep near the
 bed; sharks cruise low and rise toward the surface when they come to look at a swimmer. Each has its own material, so the vertex shader bends it from its own uniforms:
