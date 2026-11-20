@@ -45,6 +45,8 @@ export class LagoonRun {
   readonly goals: Goals;
   /** Things the goals wait on, set by the herons' callbacks. */
   private hid = false;
+  /** Bitten by a shark pup and still going. */
+  private survivedBite = false;
   private feet = new THREE.Vector3();
   onReset: (() => void) | null = null;
   /** Down, and what took the last of its health; and a blow that only hurt it. */
@@ -77,6 +79,7 @@ export class LagoonRun {
       struck: (by, dx, dz) => {
         if (!free() || !wounds.strike(dx, dz, by === 'heron' ? VITALS.heronHit : VITALS.sharkBite, by)) return null;
         if (wounds.down) return 'down';
+        if (by === 'shark') this.survivedBite = true;
         this.onHurt?.(by);
         return 'hurt';
       },
@@ -89,7 +92,7 @@ export class LagoonRun {
     const specs: GoalSpec[] = [
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
-      { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
+      { id: 'shark', label: 'Survive a shark bite', met: () => this.survivedBite },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
     ];
     this.goals = new Goals(specs);

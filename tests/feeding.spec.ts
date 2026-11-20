@@ -84,8 +84,8 @@ test('biting algae at the snout trims it down, and enough bites eat it', async (
   expect(r.feeding!.canEat).toBe(false);
   // Each mouthful fills the food bar a little (held otherwise for this spec).
   expect(r.fullness).toBeCloseTo(0.3 + 6 * 0.06, 5);
-  // Eating ticks off the algae goal, and only that one.
-  expect(r.goals!.filter((o) => o.done).map((o) => o.id)).toEqual(['algae']);
+  // Eating is how the lizard keeps going, not a goal: it ticks nothing off.
+  expect(r.goals!.filter((o) => o.done).map((o) => o.id)).toEqual([]);
   expect(errors).toEqual([]);
 });
 

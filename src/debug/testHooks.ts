@@ -352,7 +352,7 @@ export interface GameTestHooks {
   };
   /** Set any of the bars; `frozen` holds them where they are (specs freeze them at boot). */
   setVitals: (v: Partial<{ health: number; warmth: number; fullness: number; air: number; frozen: boolean }>) => void;
-  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'algae') and which are done. */
+  /** The goals in the bottom-left tab ('hawk', 'tortoise', 'crab', 'iguana', 'fish') and which are done. */
   goals: () => { id: string; label: string; done: boolean }[];
   /** Tick goal `id` off now, with its animation; false if it's unknown or already done. */
   completeGoal: (id: string) => boolean;

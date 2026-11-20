@@ -142,7 +142,7 @@ async function main() {
   const input = new Input(renderer.domElement);
   const hud = createHud();
   stageSelect();
-  // One goal per creature, the algae and the fish.
+  // One goal per creature and the fish. Eating algae isn't one: the lizard has to, to keep going.
   let basking = false;
   let canEat = false;
   const goals = new Goals([
@@ -150,7 +150,6 @@ async function main() {
     { id: 'tortoise', label: 'Ride a giant tortoise', met: () => tortoise.ridden, hold: 1 },
     { id: 'crab', label: 'Get groomed by a crab', met: () => crabs.groomingPlayer },
     { id: 'iguana', label: 'Bask beside another iguana', met: () => basking && climate.now.company > 0 && climate.now.sun >= 0.5, hold: 2 },
-    { id: 'algae', label: 'Eat some algae', met: () => feeding.mouthfuls > 0 },
     { id: 'fish', label: 'Touch a fish', met: () => fishes.touched > 0 },
   ]);
   const goalsPanel = createGoalsPanel(hud.corner, goals.list);

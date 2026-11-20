@@ -194,7 +194,7 @@ the safe point once reached; reaching `FINISH` on the lava field wins. Crossing 
 (`LagoonRun.objective`, its own box over the goals, the hint following the wrack and the log). Goals
 are side quests only (4; the steps the crossing needs anyway, the safe point, the wrack, the log and
 the bridge, aren't goals, the user's rule 2026-11-19): hide from a stalking heron in the roots, ride
-the log 1 s, swim beside a shark pup, swim with the rays. `GOAL_COUNT.lagoon` in `src/progress.ts` is 4.
+the log 1 s, survive a shark pup's bite (bitten without going down), swim with the rays. `GOAL_COUNT.lagoon` in `src/progress.ts` is 4.
 
 Help text is terse, as on the dunes and in the tunnels: a four-line intro card (roots and deep water
 lose a heron, don't turn on a shark pup, a stuck log could bridge the channel, the water chills and F
@@ -217,9 +217,11 @@ and gliding, banking into turns with the tail swinging out. Turn rates ease in a
 
 A shark pup (`SHARK`) takes an interest now and then in a lizard swimming in its pool within 1.1 m
 and comes over to circle it (`curious`), closer as it grows bolder; once close, out of mild
-aggression, it may tense for 0.3 s (`tense`) and dart in to bite (`bite`). A lizard close by that
-suddenly turns (more than 0.7 rad in the last half second) to swim straight at a pup gets bitten out
-of surprise, with no warning; one swimming at it steadily makes it bolt. A bite takes
+aggression, it may tense for 0.3 s (`tense`) and dart in to bite (`bite`). A lizard that swims straight
+at a pup is bitten out of surprise, with no warning, if it comes on suddenly within 0.3 m (turning
+more than 0.5 rad in the last half second, or 5 cm/s faster than its pace of the last 0.4 s or so),
+or while the pup faces it (head within 0.6 rad of the lizard) within 0.38 m, sudden or not; one
+coming at it steadily from its side or behind makes it bolt (the user's ask, 2026-11-20). A bite takes
 `VITALS.sharkBite` (30%) of the lizard's health (`prey.struck('shark', …)`), and a tensing or biting
 pup shows as `chased` on the HUD.
 
