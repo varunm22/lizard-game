@@ -6,6 +6,8 @@ test('crabs live on the lava shore and the rock piles, standing on the rock out 
   const errors = await bootGame(page, { crabs: true });
   const run = await page.evaluate(() => {
     const g = window.__game!;
+    // The lizard out of the way in the clearing, not among the crabs on the lava where the island starts.
+    g.teleport(0.1, 0.05, Math.PI);
     g.advance(2, false);
     const { waterY } = g.ocean();
     // How far each is off the surface under it (looking from just above it: it may be in under the
