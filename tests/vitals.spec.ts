@@ -212,3 +212,24 @@ test('the bars show in the bottom corner', async ({ page }) => {
   expect(steps).toBeLessThan(5.1 * 60);
   expect(errors).toEqual([]);
 });
+
+test('the island starts out on the lava by the sea, hungry, with algae close by and the start card saying so', async ({ page }) => {
+  const errors = await bootGame(page);
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    const p = g.player();
+    const { waterY } = g.ocean();
+    const algae = Math.min(...g.algae().map((a) => Math.hypot(a.x - p.x, a.z - p.z)));
+    return { p, algae, ground: g.terrainHeight(p.x, p.z), waterY, vitals: g.vitals() };
+  });
+  // Above the water, out on the lava shore (east of the clearing, south of the beach), facing the sea.
+  expect(r.ground).toBeGreaterThan(r.waterY);
+  expect(r.p.x).toBeGreaterThan(1.2);
+  expect(r.p.z).toBeLessThan(-0.9);
+  expect(Math.sin(r.p.yaw)).toBeGreaterThan(0.5);
+  expect(r.algae).toBeLessThan(0.4);
+  expect(r.vitals.fullness).toBeLessThan(0.2);
+  await expect(page.locator('.island-intro')).toContainText('starving');
+  await expect(page.locator('.island-intro')).toContainText('algae');
+  expect(errors).toEqual([]);
+});

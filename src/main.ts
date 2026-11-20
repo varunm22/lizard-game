@@ -10,7 +10,7 @@ import { buildProps } from './world/props';
 import { Algae } from './world/algae';
 import { loadReefKit, Reef } from './world/reef';
 import { SeaBed } from './world/seaBed';
-import { forestCover, SPAWN, TORTOISE_ROUTE } from './world/layout';
+import { forestCover, SPAWN, START, TORTOISE_ROUTE } from './world/layout';
 import { updateUnderwaterView } from './world/shore';
 import { Water } from './world/water';
 import { Splashes } from './world/splashes';
@@ -27,7 +27,7 @@ import { StrikePuff } from './creatures/strikePuff';
 import { Cover } from './world/cover';
 import { Wounds } from './player/wounds';
 import { Spines } from './player/spines';
-import { Vitals } from './player/vitals';
+import { Vitals, VITALS } from './player/vitals';
 import { ClimateSense } from './player/climate';
 import { waterDepth, WATER_Y } from './world/shore';
 import { Input, type InputState } from './input';
@@ -102,8 +102,8 @@ async function main() {
   const regrowth = new Regrowth(route, plants);
   const tortoise = await Tortoise.load(tortoiseUrl, scene, world, route, plants, figs, () => steerRound);
 
-  const player = new PlayerController(world, new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), (PLAYER_GROUP << 16) | 0xffff);
-  player.setFeet(player.feetAt(1, new THREE.Vector3()), SPAWN.yaw);
+  const player = new PlayerController(world, new THREE.Vector3(START.x, terrainHeight(START.x, START.z), START.z), (PLAYER_GROUP << 16) | 0xffff);
+  player.setFeet(player.feetAt(1, new THREE.Vector3()), START.yaw);
   player.stillGroups = IGNORE_IGUANAS;
   const states = new MovementStateMachine();
 
@@ -119,10 +119,13 @@ async function main() {
   // Health, warmth, food and air. The hawk's strikes take health; at none the lizard goes down and
   // comes back at the spawn.
   const vitals = new Vitals();
+  // It wakes up hungry on the lava and has to forage first (only at the very start: back on its feet
+  // after going down, it starts with the usual bars).
+  vitals.fullness = VITALS.islandStartFullness;
   feeding.onMouthful = () => vitals.eat();
   const wounds = new Wounds(player, lizard, vitals, () => {
-    player.setFeet(new THREE.Vector3(SPAWN.x, terrainHeight(SPAWN.x, SPAWN.z), SPAWN.z), SPAWN.yaw);
-    followCam.yaw = SPAWN.yaw;
+    player.setFeet(new THREE.Vector3(START.x, terrainHeight(START.x, START.z), START.z), START.yaw);
+    followCam.yaw = START.yaw;
   });
   const cover = new Cover(world, obstacles, plants);
   const climate = new ClimateSense(player, cover, () => iguanas.list.filter((ig) => !ig.down).map((ig) => ig.body.position), waterDepth);
@@ -131,7 +134,7 @@ async function main() {
 
   const fade = new OccluderFade(world, obstacles);
   const followCam = new FollowCamera(camera, world, player.body, fade.handles);
-  followCam.yaw = SPAWN.yaw;
+  followCam.yaw = START.yaw;
 
   const input = new Input(renderer.domElement);
   const hud = createHud();
