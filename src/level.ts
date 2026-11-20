@@ -1,18 +1,21 @@
 /**
  * Which level this page plays: the nesting dunes (the default, where the game begins), the island
- * (`?level=island`), the mangrove lagoon (`?level=lagoon`) or the lava tunnels (`?level=tunnels`).
+ * (`?level=island`), the mangrove lagoon (`?level=lagoon`), the lava tunnels (`?level=tunnels`) or
+ * the sea lion beach (`?level=beach`), the last.
  */
-export type Level = 'island' | 'dunes' | 'lagoon' | 'tunnels';
+export type Level = 'island' | 'dunes' | 'lagoon' | 'tunnels' | 'beach';
 
 /** The stages, in the order they're played. */
-// The hatchling crosses the dunes to the island's colony, then goes on from there.
-export const LEVELS: readonly Level[] = ['dunes', 'island', 'lagoon', 'tunnels'];
+// The hatchling crosses the dunes to the island's colony, then goes on from there; grown, it ends on
+// the outer islet's beach, and its young hatch back in the dunes.
+export const LEVELS: readonly Level[] = ['dunes', 'island', 'lagoon', 'tunnels', 'beach'];
 
 export const LEVEL_NAMES: Record<Level, string> = {
   island: 'Galápagos island',
   dunes: 'Nesting dunes',
   lagoon: 'Mangrove lagoon',
   tunnels: 'Lava tunnels',
+  beach: 'Sea lion beach',
 };
 
 /** The stage after `level`; after the last, back to the first. */

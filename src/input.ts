@@ -7,6 +7,8 @@ export interface InputState {
   jump: boolean;
   /** Bite was pressed since the last read. */
   bite?: boolean;
+  /** Head-bob display was pressed since the last read (the sea lion beach's males). */
+  display?: boolean;
   /** Camera orbit since the last read (radians): yaw right, pitch up. */
   look: { yaw: number; pitch: number };
   /** Camera zoom since the last read; positive pulls out. */
@@ -18,9 +20,9 @@ const MOUSE_RAD_PER_PX = 0.006;
 const STICK_RAD_PER_S = 2.5;
 
 /**
- * Keyboard (WASD or arrows, Shift run, Space jump, F bite, Q/E orbit), mouse (drag to orbit, wheel to zoom)
- * and the first connected gamepad (left stick turns and moves, right stick orbit, A jump, X bite, any
- * shoulder or a full stick push to run).
+ * Keyboard (WASD or arrows, Shift run, Space jump, F bite, B display, Q/E orbit), mouse (drag to orbit,
+ * wheel to zoom) and the first connected gamepad (left stick turns and moves, right stick orbit, A jump,
+ * X bite, Y display, any shoulder or a full stick push to run).
  */
 export class Input {
   private keys = new Set<string>();
@@ -30,11 +32,14 @@ export class Input {
   private dragging = false;
   private bitePressed = false;
   private padBite = false;
+  private displayPressed = false;
+  private padDisplay = false;
 
   constructor(target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
       if (e.code === 'KeyF' && !e.repeat) this.bitePressed = true;
+      if (e.code === 'KeyB' && !e.repeat) this.displayPressed = true;
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -70,6 +75,7 @@ export class Input {
     let run = k('ShiftLeft', 'ShiftRight');
     let jump = k('Space');
     let bite = this.bitePressed;
+    let display = this.displayPressed;
     let yaw = this.lookYaw + ((k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0)) * STICK_RAD_PER_S * dt;
     let pitch = this.lookPitch;
 
@@ -86,13 +92,15 @@ export class Input {
       jump ||= pressed(0);
       bite ||= pressed(2) && !this.padBite;
       this.padBite = pressed(2);
+      display ||= pressed(3) && !this.padDisplay;
+      this.padDisplay = pressed(3);
       run ||= pressed(4) || pressed(5) || pressed(6) || pressed(7) || Math.hypot(lx, ly) > 0.95;
     }
 
     const zoom = this.wheel;
     this.lookYaw = this.lookPitch = this.wheel = 0;
-    this.bitePressed = false;
-    return { move: { x, y }, run, jump, bite, look: { yaw, pitch }, zoom };
+    this.bitePressed = this.displayPressed = false;
+    return { move: { x, y }, run, jump, bite, display, look: { yaw, pitch }, zoom };
   }
 }
 

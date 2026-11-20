@@ -8,6 +8,7 @@ import { LEVEL } from '../level';
 import { duneColour, duneHeight } from '../dunes/layout';
 import { lagoonColour, lagoonHeight } from '../lagoon/layout';
 import { tunnelsColour, tunnelsHeight } from '../tunnels/layout';
+import { beachColour, beachHeight } from '../beach/layout';
 import { rippleAttribute, rippleSand } from '../dunes/sandShader';
 import { CRACK, crackCut, crackHalf, crackX } from '../island/crack';
 import { basinDip, basinFloor, basinGap } from '../island/basin';
@@ -16,14 +17,14 @@ import { basinDip, basinFloor, basinGap } from '../island/basin';
  * Side of the walkable square (m). The physics heightfield covers exactly this. The nesting dunes,
  * the mangrove lagoon and the lava tunnels are longer crossings than the island, on bigger squares.
  */
-export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : LEVEL === 'lagoon' ? 12 : LEVEL === 'tunnels' ? 10 : 8;
+export const TERRAIN_SIZE = LEVEL === 'dunes' ? 14 : LEVEL === 'lagoon' || LEVEL === 'beach' ? 12 : LEVEL === 'tunnels' ? 10 : 8;
 /** Cells per side of the physics heightfield: 8 m / 256 = ~3 cm, a sixth of a lizard (the same on the bigger squares). */
-const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' ? 384 : LEVEL === 'tunnels' ? 320 : 256;
+const CELLS = LEVEL === 'dunes' ? 448 : LEVEL === 'lagoon' || LEVEL === 'beach' ? 384 : LEVEL === 'tunnels' ? 320 : 256;
 /**
  * The drawn ground extends past the walkable square so the island's rim fades into the fog. Outside
  * the square it is drawn coarser (OUTER_CELL m), since only the fog-faded distance is out there.
  */
-const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' ? 22 : LEVEL === 'tunnels' ? 34 : 18;
+const VISUAL_SIZE = LEVEL === 'dunes' ? 26 : LEVEL === 'lagoon' || LEVEL === 'beach' ? 22 : LEVEL === 'tunnels' ? 34 : 18;
 const OUTER_CELL = 0.125;
 /** Collision group bit carried by the invisible edge walls, so the camera can see past them. */
 export const EDGE_WALL_GROUP = 0x0002;
@@ -53,11 +54,11 @@ export const IGNORE_ANIMALS = (0xffff << 16) | (0xffff & ~ANIMAL_GROUP);
 
 /**
  * Ground height (m) at a world position: the island's, or the nesting dunes' (`dunes/layout.ts`), the
- * mangrove lagoon's (`lagoon/layout.ts`) or the lava tunnels' lower floor (`tunnels/layout.ts`) on
- * those levels. Everything that stands on or follows the ground reads it from here.
+ * mangrove lagoon's (`lagoon/layout.ts`), the lava tunnels' lower floor (`tunnels/layout.ts`) or the
+ * sea lion beach's (`beach/layout.ts`) on those levels. Everything that stands on or follows the ground reads it from here.
  */
 export const terrainHeight: (x: number, z: number) => number =
-  LEVEL === 'dunes' ? duneHeight : LEVEL === 'lagoon' ? lagoonHeight : LEVEL === 'tunnels' ? tunnelsHeight : islandHeight;
+  LEVEL === 'dunes' ? duneHeight : LEVEL === 'lagoon' ? lagoonHeight : LEVEL === 'tunnels' ? tunnelsHeight : LEVEL === 'beach' ? beachHeight : islandHeight;
 
 /**
  * The island's ground height (m). Layered noise, damped to almost flat in the middle of the
@@ -156,7 +157,8 @@ function islandColour(x: number, z: number, y: number, c: THREE.Color) {
   }
 }
 const tmp = new THREE.Color();
-const groundColour = LEVEL === 'dunes' ? duneColour : LEVEL === 'lagoon' ? lagoonColour : LEVEL === 'tunnels' ? tunnelsColour : islandColour;
+const groundColour =
+  LEVEL === 'dunes' ? duneColour : LEVEL === 'lagoon' ? lagoonColour : LEVEL === 'tunnels' ? tunnelsColour : LEVEL === 'beach' ? beachColour : islandColour;
 
 /** A grid of ground vertices `cells` across a square of side `size` centred on the origin; `skip(x, z)` drops a cell. */
 function groundGrid(size: number, cells: number, skip?: (x: number, z: number) => boolean) {

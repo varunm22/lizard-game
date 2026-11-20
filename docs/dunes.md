@@ -100,8 +100,8 @@ of the safe points' knolls) and on the shore rocks. `DUNES_EDGE` keeps animals a
   point sets the checkpoint: inside it no snake hunts the lizard (`BodyPrey.huntable`), and a later
   catch puts the lizard back there with the clock still running; caught before the first, it starts
   over at the nest. R restarts; once the run is won, C goes on to the next stage (`runKeys` and
-  `endKeys` in `hud.ts`, shared with the lagoon and the tunnels; after the tunnels, back to the
-  island). The objective is reaching the colony. Goals (3) are few and short, things worth doing rather
+  `endKeys` in `hud.ts`, shared with the lagoon, the tunnels and the beach; after the beach, back to the
+  dunes). The objective is reaching the colony. Goals (3) are few and short, things worth doing rather
   than a checklist of the level: freeze until a watching racer looks away, outrun one, cross without being chased.
   The warnings are one word ("Freeze!" while watched, "Run!" while chased) and the intro card three
   lines.

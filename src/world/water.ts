@@ -6,6 +6,7 @@ import { LEVEL } from '../level';
 
 const LAGOON = LEVEL === 'lagoon';
 const TUNNELS = LEVEL === 'tunnels';
+const BEACH = LEVEL === 'beach';
 
 /** Ripples alive at once; a new one replaces the oldest. */
 const MAX_RIPPLES = 16;
@@ -24,7 +25,7 @@ const RIPPLE_LIFE = { base: 1.4, perStrength: 1.2 };
  */
 const SHEET = TUNNELS
   ? { west: -5, east: 20, north: -5, south: 26, cell: 0.16 }
-  : LAGOON
+  : LAGOON || BEACH
     ? { west: -10, east: 10, north: -10, south: 10, cell: 0.08 }
     : { west: OCEAN_X0, east: 12, north: -9, south: 9, cell: 0.08 };
 /**
@@ -33,7 +34,7 @@ const SHEET = TUNNELS
  */
 const DEPTH_MAP = TUNNELS
   ? { x0: -5, x1: 11, z0: -5, z1: 18 }
-  : LAGOON
+  : LAGOON || BEACH
     ? { x0: -6.5, x1: 6.5, z0: -6.5, z1: 6.5 }
     : { x0: OCEAN_X0, x1: 5, z0: -6, z1: 6 };
 /**
