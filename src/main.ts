@@ -57,6 +57,7 @@ import { stageSelect } from './stageSelect';
 import { dunes } from './dunes/main';
 import { lagoon } from './lagoon/main';
 import { tunnels } from './tunnels/main';
+import { beach } from './beach/main';
 import { endKeys, runKeys } from './dunes/hud';
 import { clearForPuzzle, FIG_TREE, SNAG } from './island/layout';
 import { Figs } from './island/figs';
@@ -386,4 +387,5 @@ async function main() {
 if (LEVEL === 'dunes') dunes();
 else if (LEVEL === 'lagoon') lagoon();
 else if (LEVEL === 'tunnels') tunnels();
+else if (LEVEL === 'beach') beach();
 else main();

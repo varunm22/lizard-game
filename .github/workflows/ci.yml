@@ -24,6 +24,8 @@ jobs:
       - run: npm run typecheck
 
   test:
+    # Pinned: ubuntu-latest became 26.04, which Playwright 1.56 has no Chromium build for
+    # ("Playwright does not support chromium-headless-shell on ubuntu26.04-x64").
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
