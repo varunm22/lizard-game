@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
+import type { ObjectiveView } from '../objective';
 import type { PlayerController } from '../player/controller';
 import { VITALS, type DownCause, type Vitals } from '../player/vitals';
 import type { Wounds } from '../player/wounds';
@@ -83,15 +84,25 @@ export class LagoonRun {
     herons.onLose = (_h, why) => {
       if (why === 'tangle') this.hid = true;
     };
-    // Side quests only: the steps the crossing needs anyway (the wrack, the log, the bridge) aren't goals.
+    // Side quests only: the crossing is the objective, and the steps it needs anyway (the wrack, the
+    // log, the bridge) aren't goals.
     const specs: GoalSpec[] = [
-      { id: 'cross', label: 'Cross the channel to the lava field', met: () => this.finishes > 0 },
       { id: 'hide', label: 'Hide in the roots from a stalking heron', met: () => this.hid },
       { id: 'ride', label: 'Ride the drifting log', met: () => log.ridden >= RIDE },
       { id: 'shark', label: 'Swim beside a shark pup', met: () => swimmers.nearShark },
       { id: 'rays', label: 'Swim with the golden rays', met: () => swimmers.nearRay },
     ];
     this.goals = new Goals(specs);
+  }
+
+  /** The stage's objective (across the channel) and a hint toward it, for the box over the goals. */
+  get objective(): ObjectiveView {
+    const text = 'Cross the channel to the lava field';
+    if (this.state === 'home') return { text, done: true, hint: 'Across the channel.' };
+    if (this.log.state === 'jammed') return { text, done: false, hint: 'The log caught across the channel. Walk over it!' };
+    if (this.log.state === 'float') return { text, done: false, hint: 'The ebb carries the log down the channel.' };
+    if (this.wrack.cleared) return { text, done: false, hint: 'The pool is draining. Shove the log loose.' };
+    return { text, done: false, hint: 'A stuck log could bridge the channel.' };
   }
 
   get danger(): 'none' | 'watched' | 'chased' {

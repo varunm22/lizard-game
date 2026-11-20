@@ -86,7 +86,7 @@ test('diving out of sight as the hawk stoops dodges it, and once it gives up the
   expect(errors).toEqual([]);
 });
 
-test("ticked goals are kept across visits, and the stage picker shows each stage's share of them", async ({ page }) => {
+test("ticked goals are kept across visits, and the stage picker shows each stage's share of them and whether it's cleared", async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => localStorage.setItem('lizard-goals-dunes', JSON.stringify(['freeze', 'shore'])));
@@ -99,10 +99,15 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   await expect(bar('island').locator('.seg')).toHaveCount(6);
   await expect(bar('island').locator('.seg.on')).toHaveCount(1);
   await expect(bar('island')).toHaveAttribute('aria-label', '1 of 6 goals done');
-  await expect(bar('dunes').locator('.seg.on')).toHaveCount(2);
-  await expect(bar('dunes')).toHaveAttribute('aria-label', '2 of 4 goals done');
-  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 5 goals done');
-  await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 4 goals done');
+  // The dunes' old finish goal ('shore') is its objective now: it marks the tile cleared, off the bar.
+  await expect(bar('dunes').locator('.seg')).toHaveCount(3);
+  await expect(bar('dunes').locator('.seg.on')).toHaveCount(1);
+  await expect(bar('dunes')).toHaveAttribute('aria-label', '1 of 3 goals done');
+  await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 4 goals done');
+  await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 3 goals done');
+  const cleared = (stage: string) => page.locator(`.stage-tile[data-stage="${stage}"] .stage-cleared`);
+  await expect(cleared('dunes')).toBeVisible();
+  for (const stage of ['island', 'lagoon', 'tunnels']) await expect(cleared(stage)).toBeHidden();
   // Once the picker has faded in.
   await page.waitForTimeout(300);
   await screenshot(page, 'stage-progress.png');

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ObjectiveView } from '../objective';
 import { terrainHeight } from '../world/terrain';
 import type { PlayerController } from '../player/controller';
 import type { Tortoise } from '../creatures/tortoise';
@@ -74,19 +75,24 @@ export class IslandRun {
   }
 
   /** What to do, and a hint toward how. */
-  get objective(): { text: string; hint: string } {
+  get objective(): ObjectiveView {
     const text = 'Cross the lava crack to the west';
+    const done = this.progress === 'home';
+    return { text, done, hint: this.hint };
+  }
+
+  private get hint(): string {
     switch (this.progress) {
       case 'start':
-        return { text, hint: "It's too wide to jump. A burnt, dead tree leans out over it." };
+        return "It's too wide to jump. A burnt, dead tree leans out over it.";
       case 'seen':
-        return { text, hint: 'Something heavy could knock that dead tree over. Tortoises love figs.' };
+        return 'Something heavy could knock that dead tree over. Tortoises love figs.';
       case 'luring':
-        return { text, hint: 'The tortoise is after that fig. Lead it to the dead tree.' };
+        return 'The tortoise is after that fig. Lead it to the dead tree.';
       case 'bridged':
-        return { text, hint: 'The tree fell across the crack. Walk over on it!' };
+        return 'The tree fell across the crack. Walk over on it!';
       case 'home':
-        return { text, hint: 'You made it across.' };
+        return 'You made it across.';
     }
   }
 

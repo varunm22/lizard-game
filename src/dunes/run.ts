@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Goals, type GoalSpec } from '../goals';
+import type { ObjectiveView } from '../objective';
 import type { PlayerController } from '../player/controller';
 import type { LizardVisual } from '../player/visual';
 import { terrainHeight } from '../world/terrain';
@@ -62,15 +63,22 @@ export class DuneRun {
     racers.onLeave = (_r, p) => {
       if (p === this.prey && p.speed() < 0.04) this.froze = true;
     };
-    // A few things worth doing, not a checklist of the level: getting there, the two ways to beat a
-    // racer that has spotted you, and the clean crossing.
+    // A few things worth doing on the way, not a checklist of the level: the two ways to beat a racer
+    // that has spotted you, and the clean crossing. Getting there is the objective, not a goal.
     const specs: GoalSpec[] = [
-      { id: 'shore', label: 'Reach the colony', met: () => this.finishes > 0 },
       { id: 'freeze', label: 'Freeze out a racer', met: () => this.froze },
       { id: 'outrun', label: 'Outrun a racer', met: () => this.outran },
       { id: 'unseen', label: 'Cross without a chase', met: () => this.state === 'home' && !this.chasedThisRun },
     ];
     this.goals = new Goals(specs);
+  }
+
+  /** The stage's objective (reach the colony) and a hint toward it, for the box over the goals. */
+  get objective(): ObjectiveView {
+    const text = 'Reach the adults under the golden light';
+    if (this.state === 'home') return { text, done: true, hint: 'You made it to the colony.' };
+    if (this.checkpoint < 0) return { text, done: false, hint: 'Racers see movement: freeze when one looks up.' };
+    return { text, done: false, hint: `Safe point ${this.checkpoint + 1} of ${SAFE_POINTS.length}. Hide in burrows and under saltbushes.` };
   }
 
   /** How much danger the lizard's in: a snake watching it, or after it. */

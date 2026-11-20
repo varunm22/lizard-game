@@ -1,5 +1,5 @@
 import { goToLevel, LEVEL, LEVEL_NAMES, type Level } from './level';
-import { GOAL_COUNT, goalsDone } from './progress';
+import { GOAL_COUNT, goalsDone, objectiveDone } from './progress';
 import islandTile from './assets/stages/island.jpg';
 import dunesTile from './assets/stages/dunes.jpg';
 import lagoonTile from './assets/stages/lagoon.jpg';
@@ -37,6 +37,9 @@ const CSS = `
 .stage-progress{position:absolute;left:0;right:0;bottom:0;display:flex;gap:1px;background:#1d241a66}
 .stage-progress .seg{flex:1;height:5px;background:#ffffff38}
 .stage-progress .seg.on{background:#8fd4f2}
+.stage-cleared{position:absolute;left:8px;top:8px;padding:3px 8px;border-radius:7px;background:#fffffff0;box-shadow:0 1px 4px #0003;
+  font:700 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#2f7a2f}
+.stage-cleared[hidden]{display:none}
 .stage-tile .info{padding:10px 12px 12px}
 .stage-tile .name{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 16px system-ui,sans-serif;color:#2f3a2a}
 .stage-tile .badge{font:600 11px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:#4aa84a;
@@ -46,8 +49,8 @@ const CSS = `
 
 /**
  * The "Select stage" button in the top-right corner and the picker it opens: a tile per stage with
- * a still from it with a thin bar along its foot, a segment per goal, filled for those ticked off. The
- * one being played is marked. Picking another loads it; Escape, the close button or a click outside
+ * a still from it with a thin bar along its foot, a segment per side goal, filled for those ticked
+ * off, and a "Cleared" mark once its objective (`objective.ts`) has been done. The one being played is marked. Picking another loads it; Escape, the close button or a click outside
  * the panel shuts it. Not in tests unless asked for (`?test&picker`).
  */
 export function stageSelect() {
@@ -78,6 +81,7 @@ export function stageSelect() {
   const grid = document.createElement('div');
   grid.className = 'stage-grid';
   const bars = new Map<Level, HTMLElement>();
+  const clearedMarks = new Map<Level, HTMLElement>();
   for (const stage of STAGES) {
     const tile = document.createElement('button');
     tile.className = 'stage-tile';
@@ -90,7 +94,11 @@ export function stageSelect() {
     const bar = document.createElement('div');
     bar.className = 'stage-progress';
     bars.set(stage.id, bar);
-    thumb.append(img, bar);
+    const cleared = document.createElement('span');
+    cleared.className = 'stage-cleared';
+    cleared.textContent = '✓ Cleared';
+    clearedMarks.set(stage.id, cleared);
+    thumb.append(img, bar, cleared);
     const info = document.createElement('div');
     info.className = 'info';
     const name = document.createElement('div');
@@ -118,7 +126,7 @@ export function stageSelect() {
   modal.append(panel);
   document.body.appendChild(modal);
 
-  // Filled in each time it opens, to count goals ticked off since the page loaded.
+  // Filled in each time it opens, to count goals ticked off (and objectives done) since the page loaded.
   const showProgress = () => {
     for (const [level, bar] of bars) {
       const total = GOAL_COUNT[level];
@@ -131,6 +139,7 @@ export function stageSelect() {
         segs.push(seg);
       }
       bar.replaceChildren(...segs);
+      clearedMarks.get(level)!.hidden = !objectiveDone(level);
     }
   };
 

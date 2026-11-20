@@ -103,6 +103,7 @@ export function createTunnelsHooks(ctx: TunnelsHookContext): TunnelsTestHooks {
       checkpoint: { ...run.checkpoint },
       basked: [...run.basked],
       goals: run.goals.list.map((g) => ({ ...g })),
+      objective: run.objective,
     }),
     restart: () => run.restart(),
     layout: () => ({

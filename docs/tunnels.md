@@ -157,9 +157,10 @@ The clock starts on the first move; standing on the beach at `FINISH` (not swimm
 over. The run tracks the floor the lizard last stood on: landing on the lower floor having left the
 upper one by a hole is a drop (by hole name), standing on the upper floor again having walked up is
 a climb, landing on the upper floor after being in the air over the gap is a leap (tracked for the
-tests and checkpoints, not goals). Goals (4, few and distinctive like the dunes': the mechanics the
+tests and checkpoints, not goals). Reaching the sea is the objective (`TunnelsRun.objective`, its own
+box over the goals). Goals (3, few and distinctive like the dunes': the mechanics the
 maze needs anyway aren't goals, and no stage has a time goal since the best time already tracks
-speed, the user's rules 2026-11-19): reach the sea, bask under all four skylights, bask under an owl
+speed, the user's rules 2026-11-19): bask under all four skylights, bask under an owl
 unheard, swim over a sleeping whitetip.
 
 ## Vitals: the time pressure

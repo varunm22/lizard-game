@@ -153,6 +153,7 @@ export function createDunesHooks(ctx: DunesHookContext): DunesTestHooks {
         danger: run.danger,
         inCover: coverAt(bushes, f.x, f.z),
         goals: run.goals.list.map((g) => ({ ...g })),
+        objective: run.objective,
       };
     },
     restart: () => run.restart(),

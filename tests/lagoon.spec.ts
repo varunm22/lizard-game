@@ -581,8 +581,7 @@ test('the log: the wrack dam holds the pool still; cleared, it drains; shoved lo
   expect(s.onLog).toBe(true);
   expect(s.crossed.player.swimming).toBe(false);
   expect(s.crossed.run.state).toBe('home');
-  const done = Object.fromEntries(s.crossed.run.goals.map((g) => [g.id, g.done]));
-  expect(done).toMatchObject({ cross: true });
+  expect(s.crossed.run.objective.done).toBe(true);
   await screenshot(page, 'lagoon-bridge.png');
   // Starting over puts the log back, stuck in its pool, and the wrack back in the creek's mouth.
   const reset = await page.evaluate(() => {
