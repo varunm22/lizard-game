@@ -397,24 +397,30 @@ def zigzag(rng, start, direction, length, nodes, kink, droop=0.0):
     return pts, cuts[1:-1]
 
 
-def snap_end(mb, rng, pts, r, sign_end=True):
-    """A snapped-off end: a ragged ring of splinters round pale bare wood."""
+def snap_end(mb, rng, pts, r, ring, sign_end=True):
+    """A snapped-off end: a ragged crown of splinters round pale bare wood, built on the limb's own
+    end ring (`ring`, the tube's vertex ids there), so the break is sealed to the bark all round."""
     tip, prev = (pts[-1], pts[-2]) if sign_end else (pts[0], pts[1])
     t = (tip - prev).normalized()
-    a = t.orthogonal().normalized()
-    b = t.cross(a)
-    ring = []
-    n = 7
+    # Same draws as ever (seven splinter lengths and the core), so the rest of the model is unchanged.
+    reach = [rng.uniform(0.0, 1.4) for _ in range(7)]
+    core = rng.uniform(0.2, 0.8)
+    n = len(ring)
+    splinters = []
+    for k, i in enumerate(ring):
+        rim = Vector(mb.verts[i])
+        co = tip + (rim - tip) * 0.85 + t * r * reach[k % 7]
+        splinters.append(mb.vert(co, C['drift_light']))
+    centre = mb.vert(tip + t * r * core, C['drift_core'])
     for k in range(n):
-        ang = 2 * math.pi * k / n
-        co = tip + (a * math.cos(ang) + b * math.sin(ang)) * r * 0.85 + t * r * rng.uniform(0.0, 1.4)
-        ring.append(mb.vert(co, C['drift_light']))
-    centre = mb.vert(tip + t * r * rng.uniform(0.2, 0.8), C['drift_core'])
-    for k in range(n):
+        a, b = ring[k], ring[(k + 1) % n]
+        sa, sb = splinters[k], splinters[(k + 1) % n]
         if sign_end:
-            mb.face(ring[k], ring[(k + 1) % n], centre)
+            mb.face(a, b, sb, sa)
+            mb.face(sa, sb, centre)
         else:
-            mb.face(ring[(k + 1) % n], ring[k], centre)
+            mb.face(b, a, sa, sb)
+            mb.face(sb, sa, centre)
 
 
 def driftwood_colour(seed, keel_z=-0.02):
@@ -453,18 +459,18 @@ def drift_limb(rng):
     def limb(start, direction, length, nodes, kink, r0, r1, sides, every=3, snapped=True, droop=0.0):
         pts, ns = zigzag(rng, start, direction, length, nodes, kink, droop)
         r = limb_radius(r0, r1, ns)
-        tube(mb, pts, r, col, sides=sides, cap=not snapped, rough=0.14, seed=seed + len(segs))
+        rings = tube(mb, pts, r, col, sides=sides, cap=not snapped, rough=0.14, seed=seed + len(segs))
         if snapped:
-            snap_end(mb, rng, pts, r(1.0))
+            snap_end(mb, rng, pts, r(1.0), rings[-1])
         segs.extend(segments(pts, r, every))
         return pts
 
     # The main limb: butt end at -X (snapped, thickest), kinking at its nodes, forking near +X.
     main, nodes = zigzag(rng, Vector((-0.48, 0.0, 0.004)), Vector((1, 0.04, 0)), 0.98, 3, 0.28)
     r_main = limb_radius(0.037, 0.019, nodes)
-    tube(mb, main, r_main, col, sides=10, cap=False, rough=0.14, seed=seed)
-    snap_end(mb, rng, main, r_main(0.0), sign_end=False)
-    snap_end(mb, rng, main, r_main(1.0))
+    rings = tube(mb, main, r_main, col, sides=10, cap=False, rough=0.14, seed=seed)
+    snap_end(mb, rng, main, r_main(0.0), rings[0], sign_end=False)
+    snap_end(mb, rng, main, r_main(1.0), rings[-1])
     segs += segments(main, r_main)
     # The fork: a long limb out to +Y, nearly level, so the log lies wide on the water; it forks again.
     fork = limb(at(main, 0.62), Vector((0.7, 0.7, 0.0)), 0.34, 2, 0.3, 0.022, 0.01, 8)
@@ -489,8 +495,8 @@ def drift_limb(rng):
     root = bezier(p0, p1, p2, p3, 8)
     r_root = limb_radius(0.014, 0.01, [0.45], swell=0.15)
     root_col = driftwood_colour(seed + 9, keel_z=0.02)
-    tube(mb, root, r_root, root_col, sides=8, cap=False, rough=0.12, seed=seed + 9)
-    snap_end(mb, rng, root, r_root(1.0))
+    rings = tube(mb, root, r_root, root_col, sides=8, cap=False, rough=0.12, seed=seed + 9)
+    snap_end(mb, rng, root, r_root(1.0), rings[-1])
     keel = list(range(len(segs), len(segs) + len(segments(root, r_root, every=2))))
     segs += segments(root, r_root, every=2)
     # Near the butt, two short prop-root stubs, snapped off near the limb.
@@ -500,8 +506,8 @@ def drift_limb(rng):
         root2 = bezier(base + Vector((dx, 0, 0)) + out * 0.02, base + Vector((dx + 0.02, 0, 0.0)) + out * 0.06,
                        base + Vector((dx + 0.03, 0, -drop * 0.5)) + out * 0.07, base + Vector((dx + 0.04, 0, -drop)) + out * 0.075, 4)
         r_root2 = limb_radius(0.011, 0.009, [])
-        tube(mb, root2, r_root2, root_col, sides=6, cap=False, rough=0.1, seed=seed + 11 + dx)
-        snap_end(mb, rng, root2, r_root2(1.0))
+        rings = tube(mb, root2, r_root2, root_col, sides=6, cap=False, rough=0.1, seed=seed + 11 + dx)
+        snap_end(mb, rng, root2, r_root2(1.0), rings[-1])
         segs += segments(root2, r_root2, every=4)
     return mb, {'segments': segs, 'keel': keel}
 
@@ -513,9 +519,9 @@ def wrack_stick(rng, length):
     col = driftwood_colour(seed, keel_z=0.05)
     main, nodes = zigzag(rng, Vector((-length / 2, 0, 0)), Vector((1, 0, 0)), length, 2, 0.3)
     r = limb_radius(0.008, 0.004, nodes, swell=0.3)
-    tube(mb, main, r, col, sides=6, cap=False, rough=0.12, seed=seed)
-    snap_end(mb, rng, main, r(0.0), sign_end=False)
-    snap_end(mb, rng, main, r(1.0))
+    rings = tube(mb, main, r, col, sides=6, cap=False, rough=0.12, seed=seed)
+    snap_end(mb, rng, main, r(0.0), rings[0], sign_end=False)
+    snap_end(mb, rng, main, r(1.0), rings[-1])
     segs = segments(main, r, every=3)
     for k in range(2):
         f, _ = zigzag(rng, main[min(len(main) - 2, 2 + k * 3)], Vector((0.6, rng.choice((-1, 1)) * 0.8, rng.uniform(-0.3, 0.3))), length * rng.uniform(0.25, 0.4), 1, 0.3)
@@ -534,17 +540,17 @@ def drowned_trunk(rng):
         return mix(C['drowned'], C['drowned_film'], 0.4 + 0.4 * n)
     main, nodes = zigzag(rng, Vector((-0.5, 0, 0.045)), Vector((1, 0, 0)), 1.0, 3, 0.07)
     r = limb_radius(0.045, 0.032, nodes, swell=0.15)
-    tube(mb, main, r, col, sides=10, cap=False, rough=0.18, seed=seed)
-    snap_end(mb, rng, main, r(0.0), sign_end=False)
-    snap_end(mb, rng, main, r(1.0))
+    rings = tube(mb, main, r, col, sides=10, cap=False, rough=0.18, seed=seed)
+    snap_end(mb, rng, main, r(0.0), rings[0], sign_end=False)
+    snap_end(mb, rng, main, r(1.0), rings[-1])
     segs = segments(main, r)
     for k, s in enumerate((0.15, 0.35, 0.55, 0.75, 0.9)):
         p = main[round(s * (len(main) - 1))]
         d = Vector((rng.uniform(-0.3, 0.3), rng.choice((-1, 1)) * rng.uniform(0.5, 0.9), 0.8))
         stub, _ = zigzag(rng, p, d, rng.uniform(0.035, 0.05), 0, 0.0)
         rs = limb_radius(0.012, 0.009, [])
-        tube(mb, stub, rs, col, sides=6, cap=False, rough=0.15, seed=seed + k)
-        snap_end(mb, rng, stub, rs(1.0))
+        rings = tube(mb, stub, rs, col, sides=6, cap=False, rough=0.15, seed=seed + k)
+        snap_end(mb, rng, stub, rs(1.0), rings[-1])
         segs += segments(stub, rs, every=4)
     return mb, {'segments': segs}
 
