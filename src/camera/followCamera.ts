@@ -34,6 +34,16 @@ const CAM = {
 };
 /** Looking down from overhead (while the lizard is stuck down in the lava crack): the pitch it swings to (radians, near straight down) and how fast (per second). */
 const OVERHEAD = { pitch: 1.4, rate: 5 };
+/**
+ * An eased arm, for enclosed stages (the tunnels): the arm never pulls in past `minArm`, and eases
+ * both in and out (per second) instead of snapping in, so the camera zooms gently with the space
+ * round it. Rock it then sits in or behind is the stage's to deal with (the tunnels cut it away).
+ */
+export interface EasedArm {
+  minArm: number;
+  inRate: number;
+  outRate: number;
+}
 /** A shake when the lizard is struck: strength (radians), how long it lasts (s) and how fast it shakes (Hz). */
 const SHAKE = { strength: 0.035, time: 0.35, rate: 18 };
 
@@ -71,6 +81,7 @@ export class FollowCamera {
     private ignoreBody: RAPIER.RigidBody,
     /** Collider handles the arm passes through (obstacles, which fade instead). */
     passThrough: Set<number>,
+    private eased: EasedArm | null = null,
   ) {
     this.skip = (c) => !passThrough.has(c.handle);
   }
@@ -145,9 +156,14 @@ export class FollowCamera {
       this.skip,
     );
     // (Overhead it looks straight down out of the crack, which is clear; the sweep would only catch on the wall the lizard is wedged against.)
-    if (hit && this.overheadMix < 0.5) allowed = Math.max(CAM.minArm, hit.time_of_impact);
-    // Pull in instantly, ease back out.
-    this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
+    if (hit && this.overheadMix < 0.5) allowed = Math.max(this.eased?.minArm ?? CAM.minArm, hit.time_of_impact);
+    if (this.eased) {
+      const rate = allowed < this.arm ? this.eased.inRate : this.eased.outRate;
+      this.arm += (allowed - this.arm) * (1 - Math.exp(-rate * dt));
+    } else {
+      // Pull in instantly, ease back out.
+      this.arm = allowed < this.arm ? allowed : this.arm + (allowed - this.arm) * (1 - Math.exp(-CAM.armReturnRate * dt));
+    }
 
     const pos = this.camera.position.copy(this.target).addScaledVector(this.dir, -this.arm);
     pos.y = Math.max(pos.y, terrainHeight(pos.x, pos.z) + CAM.groundClearance);
