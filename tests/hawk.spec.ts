@@ -95,6 +95,9 @@ test('hunting in the open, three strikes jerk the lizard aside, knock it down an
     const g = window.__game!;
     g.advance(2, false);
     const spawn = g.player();
+    // Out in the open clearing, away from the shore's rocks the start is among.
+    g.teleport(0.1, 0.05, Math.PI);
+    g.advance(2, false);
     g.hawkDo('hunt');
     const hits: { jerk: number; flinched: boolean; clip: string | null; puff: number; health: number }[] = [];
     let downAt = -1;
@@ -203,6 +206,9 @@ test('riding the tortoise the lizard is out of reach: the hawk pulls out of its 
   const errors = await bootGame(page, { hawk: true });
   const r = await page.evaluate(() => {
     const g = window.__game!;
+    g.advance(2, false);
+    // In the clearing by the tortoise's round, not out on the shore where the island starts.
+    g.teleport(0.1, 0.05, Math.PI);
     g.advance(2, false);
     g.hawkDo('hunt');
     for (let i = 0; i < 60 * 60 && g.wounds().hits < 1; i++) g.advance(1, false);
