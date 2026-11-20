@@ -267,6 +267,22 @@ test('the sea lions lie on the sand: a cow lying down or sitting up rests her be
   expect(errors).toEqual([]);
 });
 
+test('a standing penguin is solid: the lizard walking into it stops against it', async ({ page }) => {
+  const errors = await bootBeach(page);
+  const r = await page.evaluate(() => {
+    const g = window.__beach!;
+    // The second penguin on the point stands still (the first goes to sea).
+    const [px, pz] = [3.55, -3.45];
+    g.teleport(px - 0.18, pz, Math.PI / 2);
+    g.advance(2);
+    g.setInput({ move: { x: 0, y: 1 } }, 100);
+    g.advance(100);
+    return { gap: Math.hypot(g.player().x - px, g.player().z - pz) };
+  });
+  expect(r.gap).toBeGreaterThan(0.04);
+  expect(errors).toEqual([]);
+});
+
 test('a penguin and a cormorant go to sea and come back: in from the edge, swimming and diving clear of rock, out onto the rock', async ({ page }) => {
   const errors = await bootBeach(page);
   const r = await page.evaluate(() => {
@@ -280,6 +296,8 @@ test('a penguin and a cormorant go to sea and come back: in from the edge, swimm
         const mark = t.state === 'ashore' ? ' a' : t.state[0];
         if (!seen[k].endsWith(mark)) seen[k] += mark;
         if (t.under > 0.5) dived[k] = true;
+        // Its solid body goes with it: trunk, neck and head within its own height of its feet.
+        if (t.solid.length < 2 || t.solid.some((d) => d > 0.15)) bad.push(`${t.kind} solid body ${t.solid.map((d) => d.toFixed(3)).join(',')} from it`);
         const top = Math.max(g.terrainHeight(t.x, t.z), g.groundAt(t.x, t.z, 2) ?? -9);
         // At sea, water under it all the way round; ashore and walking, on the ground, not in it or floating.
         if (t.state === 'sea' && top > t.y - 0.005) bad.push(`${t.kind} sea over rock ${t.x.toFixed(2)},${t.z.toFixed(2)}`);

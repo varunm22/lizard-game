@@ -27,7 +27,7 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   body off the sand like a plank). Ashore each lies along the slope under it (`SeaLion.tilt`, level
   afloat). Its solid body is one capsule across the trunk per slice, rump to head, fitted at load to
   the mesh's trunk vertices (`fitParts`, flippers left out) and moved each step to where the pose put
-  that slice (`partAt`); all on one kinematic body in `PLANT_STEM_GROUP` (solid, never ground to climb).
+  that slice (`partAt`); all on one kinematic body in `ANIMAL_GROUP`, like every creature's `SolidBody` (solid; the lizard can climb on).
   `player.shove` looks past every collider on the pusher's body. Hook `sealions().cows[].gaps`.
   The bull swims his beat 1.2 m off the waterline (about 17 cm deep; nearer in there's too little
   water to dive). He plays under water (`SeaLion.play`, `swimAttitude`): weaving, darting
@@ -63,6 +63,8 @@ uses `CELLS` 384 like the lagoon; `OCEAN_X0` is -12 so the shore code treats the
   paddle their feet one then the other at the surface and fly with their flippers under it, feet back
   against the tail. Back, the penguin leaps out onto the rock and
   lands on its feet; the cormorant scrambles out with its wings half open and holds them out to dry.
+  Each bird is solid where it's thick (`SolidBody.fitted`: body and head, and a cormorant's neck; wings,
+  flippers, feet and tail left out), moved each step; `pushAnimalsOff` runs before the lizard steps.
   Hook `birdTrips()`. Swimming within `WITH` of a swimming bird
   ticks its goal. The swimming loops (`SWIM_LOOPS`) keep to open water clear of the point's lava
   (a test samples them); and a bird only swims where there's water under it (`Birds.place` casts

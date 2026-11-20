@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import { FIXED_DT, startLoop } from '../loop';
 import { createScene, followSun } from '../render/scene';
-import { buildTerrain, EDGE_WALL_GROUP, IGNORE_IGUANAS, IGUANA_GROUP, PLANT_STEM_GROUP, PLAYER_GROUP, terrainHeight } from '../world/terrain';
+import { pushAnimalsOff } from '../creatures/solidBody';
+import { ANIMAL_GROUP, buildTerrain, EDGE_WALL_GROUP, IGNORE_IGUANAS, IGUANA_GROUP, PLANT_STEM_GROUP, PLAYER_GROUP, terrainHeight } from '../world/terrain';
 import { updateUnderwaterView, WATER_Y, waterDepth } from '../world/shore';
 import { covers } from '../world/obstacles';
 import { Cover } from '../world/cover';
@@ -65,7 +66,7 @@ const TEXT: HudText = {
 };
 
 /** Rays for the ground itself: past plants, sea lions, iguanas, the lizard and the edge walls. */
-const SURFACE_ONLY = (0xffff << 16) | (0xffff & ~(EDGE_WALL_GROUP | PLANT_STEM_GROUP | IGUANA_GROUP | PLAYER_GROUP));
+const SURFACE_ONLY = (0xffff << 16) | (0xffff & ~(EDGE_WALL_GROUP | PLANT_STEM_GROUP | IGUANA_GROUP | PLAYER_GROUP | ANIMAL_GROUP));
 
 /** The sea lion beach (`?level=beach`), the last stage: ashore past the bull, and win a rock on the lek. */
 export async function beach() {
@@ -104,6 +105,7 @@ export async function beach() {
     penguinUrl,
     cormorantUrl,
     scene,
+    world,
     (out) => (player.swimming ? player.feetAt(1, out) : null),
     // The top of the sand, lava or a rock (not plants, animals or the lizard).
     (x, z) => {
@@ -265,6 +267,7 @@ export async function beach() {
     wounds.step(dt);
     if (frameInput.bite && !wounds.down) feeding.bite();
     player.speedScale = plants.speedScale(tickFeet.x, tickFeet.z, Math.sin(player.yaw), Math.cos(player.yaw)) * vitals.speedScale;
+    pushAnimalsOff(world, player);
     player.step(dt, input);
     if (forcedSteps > 0 && --forcedSteps === 0) forcedInput = null;
     splashes.update(player, dt);

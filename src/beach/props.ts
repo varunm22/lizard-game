@@ -3,7 +3,7 @@ import RAPIER from '@dimforge/rapier3d';
 import { toonGradient } from '../render/toon';
 import { rng } from '../world/noise';
 import { WATER_Y } from '../world/shore';
-import { PLANT_STEM_GROUP, terrainHeight } from '../world/terrain';
+import { ANIMAL_GROUP, terrainHeight } from '../world/terrain';
 import { covers, hull, type Obstacle } from '../world/obstacles';
 import { algaeSite, type Placement as AlgaePlacement } from '../world/algae';
 import type { Placement as PlantPlacement } from '../world/plants';
@@ -340,5 +340,5 @@ export function beachAlgaeSites(): { first: AlgaePlacement[]; spare: AlgaePlacem
   }
 }
 
-/** Sea lion bodies are solid to the lizard (it can't climb onto them): `PLANT_STEM_GROUP` colliders. */
-export const SEA_LION_GROUPS = (PLANT_STEM_GROUP << 16) | 0xffff;
+/** Sea lion bodies are solid animals (`ANIMAL_GROUP`, like every creature's `SolidBody`): the lizard runs into them and can climb on. */
+export const SEA_LION_GROUPS = (ANIMAL_GROUP << 16) | 0xffff;

@@ -167,7 +167,7 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
       ...birds.penguins.map((b) => ({ kind: 'penguin', x: b.pos.x, y: b.pos.y, z: b.pos.z, swim: b.swim })),
       ...birds.cormorants.map((b) => ({ kind: 'cormorant', x: b.pos.x, y: b.pos.y, z: b.pos.z, swim: b.swim })),
     ],
-    birdTrips: () => birds.trips.map((t) => ({ kind: t.species, state: t.state, under: t.bird.under, x: t.bird.pos.x, y: t.bird.pos.y, z: t.bird.pos.z })),
+    birdTrips: () => birds.trips.map((t) => ({ kind: t.species, state: t.state, under: t.bird.under, x: t.bird.pos.x, y: t.bird.pos.y, z: t.bird.pos.z, solid: t.bird.solid.colliders.map((c) => { const p = c.translation(); return Math.hypot(p.x - t.bird.pos.x, p.y - t.bird.pos.y, p.z - t.bird.pos.z); }) })),
     swimLoops: () => SWIM_LOOPS.map((l) => ({ ...l })),
     birdGoals: () => ({ penguin: birds.nearPenguin, cormorant: birds.nearCormorant }),
     vitals: () => ({ health: vitals.health, warmth: vitals.warmth, fullness: vitals.fullness, air: vitals.air, down: wounds.down, downBy: wounds.downBy }),

@@ -5,10 +5,15 @@ import { toonify } from '../render/toon';
 import { FreeRig, turn } from '../render/freePose';
 import { WATER_Y } from '../world/shore';
 import { terrainHeight } from '../world/terrain';
+import type RAPIER from '@dimforge/rapier3d';
+import { SolidBody } from '../creatures/solidBody';
 import { CORMORANT_ROCKS, PENGUIN_ROCKS, SWIM_LOOPS } from './layout';
 
 /** The lizard swimming this near (m) a swimming bird counts as swimming with it. */
 export const WITH = 0.35;
+/** The bones each bird's solid body is fitted to: the trunk, neck and head, never wings, flippers, feet or tail. */
+const PENGUIN_SOLID = [['body'], ['head']];
+const CORMORANT_SOLID = [['body'], ['neck1'], ['neck2'], ['head']];
 /** Penguins swim their loops this fast (m/s). */
 const PENGUIN_SPEED = 0.2;
 /** How deep (m) a bird's feet ride below the surface, swimming: a penguin low with its back out, a cormorant lower still, only its back awash. */
@@ -95,6 +100,8 @@ class Bird {
    * it is heading down (1) or up (-1). */
   kick = 0;
   dip = 0;
+  /** Its body, neck and head as the lizard bumps into them (wings, flippers, feet and tail left out). */
+  solid!: SolidBody;
 
   constructor(source: THREE.Object3D, seed: number) {
     this.root = clone(source);
@@ -373,6 +380,7 @@ export class Birds {
     penguin: THREE.Object3D,
     cormorant: THREE.Object3D,
     scene: THREE.Scene,
+    world: RAPIER.World,
     private swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null,
     private surface: (x: number, z: number) => number,
   ) {
@@ -384,13 +392,16 @@ export class Birds {
       this.penguins.push(b);
     });
     CORMORANT_ROCKS.forEach((c, i) => this.cormorants.push(this.add(cormorant, scene, 5 + i, c.x, c.z, c.yaw)));
+    for (const b of this.penguins) b.solid = SolidBody.fitted(world, b.root, PENGUIN_SOLID);
+    for (const b of this.cormorants) b.solid = SolidBody.fitted(world, b.root, CORMORANT_SOLID);
+    this.follow();
     this.trips.push(new Trip(this.penguins[0], 'penguin', PENGUIN_ROCKS[0], 6), new Trip(this.cormorants[1], 'cormorant', CORMORANT_ROCKS[1], 2));
   }
 
   /** `surface(x, z)`: the top of whatever is there, sand, lava or a rock. */
-  static async load(penguinUrl: string, cormorantUrl: string, scene: THREE.Scene, swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null, surface: (x: number, z: number) => number) {
+  static async load(penguinUrl: string, cormorantUrl: string, scene: THREE.Scene, world: RAPIER.World, swimmerFeet: (out: THREE.Vector3) => THREE.Vector3 | null, surface: (x: number, z: number) => number) {
     const [p, c] = await Promise.all([loadBird(penguinUrl, 'Penguin'), loadBird(cormorantUrl, 'Cormorant')]);
-    return new Birds(p, c, scene, swimmerFeet, surface);
+    return new Birds(p, c, scene, world, swimmerFeet, surface);
   }
 
   private add(source: THREE.Object3D, scene: THREE.Scene, seed: number, x: number, z: number, yaw: number) {
@@ -445,6 +456,16 @@ export class Birds {
       const near = (b: Bird) => b.swim > 0.5 && Math.hypot(b.pos.x - lizard.x, b.pos.z - lizard.z) < WITH;
       if (this.penguins.some(near)) this.nearPenguin = true;
       if (this.cormorants.some(near)) this.nearCormorant = true;
+    }
+    this.follow();
+  }
+
+  /** Every bird's solid body to where this step put it (in its last drawn pose). */
+  private follow() {
+    for (const b of [...this.penguins, ...this.cormorants]) {
+      b.root.position.copy(b.pos);
+      b.root.rotation.y = b.yaw;
+      b.solid.update();
     }
   }
 
