@@ -13,7 +13,7 @@ export interface HudVitals {
 /** The card at the start: what each bar in the corner means, and what the stage asks. */
 const INTRO =
   '<h2>Galápagos colony</h2>' +
-  '<b class="food">You wake up starving.</b> Swim out from the lava and bite the algae on the rocks with <b>F</b> before anything else.<br><br>' +
+  '<b class="food">You wake up starving.</b> Head to the water to forage on algae.<br><br>' +
   'Your bars, bottom right:' +
   '<ul><li><b class="health">Health:</b> the hawk and the tortoise\'s feet take it. It mends slowly while you\'re warm and fed.</li>' +
   '<li><b class="warmth">Warmth:</b> lie still in the sun to bask, best on black lava. Cold slows you down.</li>' +

@@ -18,8 +18,8 @@ export const VITALS = {
   sharkBite: 0.3,
   /** On its feet again at the spawn, it starts with these. */
   start: { health: 1, warmth: 0.7, fullness: 0.7, air: 1 },
-  /** On the island it wakes up hungry, this full, and has to forage on algae first (about a minute and a half before it's starving). */
-  islandStartFullness: 0.15,
+  /** On the island it wakes up starving, this full, and has to forage on algae first (about 25 s before it's out of food). */
+  islandStartFullness: 0.05,
 
   /** Health mends at up to this rate (a full bar in 100 s), scaled by how fed and how warm it is. */
   regen: 0.01,

@@ -228,7 +228,7 @@ test('the island starts out on the lava by the sea, hungry, with algae close by 
   expect(r.p.z).toBeLessThan(-0.9);
   expect(Math.sin(r.p.yaw)).toBeGreaterThan(0.5);
   expect(r.algae).toBeLessThan(0.4);
-  expect(r.vitals.fullness).toBeLessThan(0.2);
+  expect(r.vitals.fullness).toBeLessThan(0.1);
   await expect(page.locator('.island-intro')).toContainText('starving');
   await expect(page.locator('.island-intro')).toContainText('algae');
   expect(errors).toEqual([]);
