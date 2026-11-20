@@ -298,10 +298,11 @@ test('a barn owl stirs at a lizard walking right under it but never drops on it'
   expect(s.owl).toBe('roost');
 });
 
-test('the bars: the shade cools and slows the lizard, a skylight warms it, food only drains, and the cold can bring it down', async ({ page }) => {
+test('the bars: it starts cold but fed, the shade cools and slows the lizard, a skylight warms it, food only drains, and the cold can bring it down', async ({ page }) => {
   await bootTunnels(page, { vitals: true });
   const s = await page.evaluate(() => {
     const g = window.__tunnels!;
+    const start = g.vitals();
     const L = g.layout();
     const upper = L.floors[1];
     const sky = L.skylights.find((k) => k.name === 'start')!;
@@ -332,8 +333,10 @@ test('the bars: the shade cools and slows the lizard, a skylight warms it, food 
       if (g.run().state === 'caught') caught = g.vitals();
     }
     g.advance(200);
-    return { sunny, shade, sun, caught, after: { run: g.run(), vitals: g.vitals() } };
+    return { start, sunny, shade, sun, caught, after: { run: g.run(), vitals: g.vitals() } };
   });
+  expect(s.start.warmth).toBeCloseTo(0.3, 1);
+  expect(s.start.fullness).toBeCloseTo(0.7, 1);
   expect(s.sunny.sun).toBeGreaterThan(0.5);
   expect(s.shade.warmth).toBeLessThan(0.45 - 0.01);
   expect(s.shade.speedScale).toBeLessThan(1);
@@ -343,7 +346,8 @@ test('the bars: the shade cools and slows the lizard, a skylight warms it, food 
   expect(s.caught!.cause).toBe('cold');
   expect(s.after.run.state).toBe('running');
   expect(s.after.vitals.health).toBe(1);
-  expect(s.after.vitals.warmth).toBeCloseTo(0.7, 2);
+  expect(s.after.vitals.warmth).toBeCloseTo(0.3, 1);
+  expect(s.after.vitals.fullness).toBeCloseTo(0.7, 1);
 });
 
 test('a whitetip pup resting in the sea mouth bolts out to sea when swum over', async ({ page }) => {

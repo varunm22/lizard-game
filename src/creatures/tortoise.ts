@@ -21,8 +21,8 @@ import type { Route } from './route';
  * A Galapagos giant tortoise (assets-src/tortoise.py) that grazes its meadow all day: it ambles from
  * one spot in it to another, picked at random, pressing the plants under it flat; it heads for food
  * it notices, liking figs best, then flowers, then grass; now and then it lies down for a rest. A
- * fig it will walk well out of its way for (`FIG_SENSE`), off its meadow and down the trail if that's
- * where the fig is; a flower only nearby; grass only when it hasn't eaten for a while and the grass
+ * fig it notices only fairly close (`FIG_NOTICE`), but then walks out of its way for, off its meadow and
+ * down the trail if that's where the fig is, until the fig is pushed out past `FIG_LOSE`; a flower only nearby; grass only when it hasn't eaten for a while and the grass
  * is right at its mouth. It steers round rocks, trees and logs, and keeps off the crack and the sea.
  * It takes no notice of the lizard. Its shell is solid (a kinematic body, so the lizard can stand on
  * it), and if it walks into the lizard it shoves it aside; if the lizard can't go anywhere, the
@@ -37,10 +37,11 @@ const BITE_REACH = 0.035;
 const FIG_REACH = 0.045;
 /**
  * What it notices, and how long after a meal (s) before it wants each: a fig this far from its centre
- * (m), a flower this far from its mouth, and grass only once it's hungry and the grass is right at
- * its mouth.
+ * (m), which it then follows until it's further than `FIG_LOSE`; a flower this far from its mouth;
+ * and grass only once it's hungry and the grass is right at its mouth.
  */
-const FIG_SENSE = 1.0;
+const FIG_NOTICE = 0.55;
+const FIG_LOSE = 0.75;
 const FIG_AFTER = 3;
 const FLOWER_SENSE = 0.5;
 const FLOWER_AFTER = 12;
@@ -475,13 +476,15 @@ export class Tortoise {
   private think() {
     const { x: mx, z: mz } = this.mouth;
     const side = crackSide(this.x, this.z);
-    // A fig, if one lies within its notice on this side of the crack.
+    // A fig, if one lies within its notice on this side of the crack; the one it's after holds its
+    // attention a little further out, and it loses interest once that's pushed out of range.
     if (this.figs && this.sinceMeal > FIG_AFTER) {
       let best: Fig | null = null;
-      let bestD = FIG_SENSE;
+      let bestD = Infinity;
+      const after = this.aim?.kind === 'fig' ? this.aim.fig : null;
       for (const f of this.figs.lying) {
         const d = Math.hypot(f.x - this.x, f.z - this.z);
-        if (d < bestD && crackSide(f.x, f.z) === side) [best, bestD] = [f, d];
+        if (d < (f === after ? FIG_LOSE : FIG_NOTICE) && d < bestD && crackSide(f.x, f.z) === side) [best, bestD] = [f, d];
       }
       if (best) {
         this.aim = { kind: 'fig', fig: best };

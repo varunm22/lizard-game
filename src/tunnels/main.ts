@@ -35,7 +35,7 @@ import { buildRock, buildSunbeams } from './rock';
 import { darkenGroundUnderRock, RockSection } from './section';
 import { TunnelsRun, type CaughtBy } from './run';
 import { ClimateSense } from '../player/climate';
-import { Vitals } from '../player/vitals';
+import { Vitals, VITALS } from '../player/vitals';
 import { createVitalsPanel } from '../vitalsPanel';
 import { HEARING, Owls } from './owl';
 import { Sharks } from './sharks';
@@ -104,7 +104,14 @@ export async function tunnels() {
   // The island's bars, for time pressure: out of the sun it cools, slows and at last loses health,
   // and there's nothing to eat down here. The sun is the baked light (skylights, the cove), and the
   // rock is all lava, so basking in a skylight warms it fast.
+  // It starts cold but fed (`tunnelsStartWarmth`), and again after going down: bask in a skylight first.
   const vitals = new Vitals();
+  const startBars = () => {
+    vitals.reset();
+    // Specs that hold the bars (`frozen`) keep the usual warmth, so the cold doesn't slow them.
+    if (!vitals.frozen) vitals.warmth = VITALS.tunnelsStartWarmth;
+  };
+  startBars();
   const sunPoint = { sun: 0, glow: 0 };
   const climate = new ClimateSense(player, null, () => [], waterDepth, () => 1, (p) => lightAt(p.x, p.y, p.z, sunPoint).sun);
   const [owlKit, whitetipKit, sealionKit] = await Promise.all([
@@ -144,10 +151,10 @@ export async function tunnels() {
     messageLeft = null;
     followCam.yaw = START.yaw;
     owls.callOff();
-    vitals.reset();
+    startBars();
   };
   run.onRespawn = () => {
-    vitals.reset();
+    startBars();
     owls.callOff();
     followCam.yaw = run.checkpoint.yaw;
   };

@@ -185,7 +185,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
       i = g.crabs().findIndex((c) => c.state === 'groom' && c.grooming === 'player');
     }
     if (i < 0) return { waited, groomed: false };
-    // Warm and fed, it mends twice as fast while the crab grooms it.
+    // Warm and fed, it mends twice as fast while the crab grooms it (2%/s becomes 4%/s).
     g.setVitals({ health: 0.5, warmth: 0.9, fullness: 0.9, frozen: false });
     g.advance(120, false);
     const mend = { groomed: g.vitals().groomed, rate: g.vitals().rate.health, goal: g.goals().find((o) => o.id === 'crab')!.done };
@@ -216,7 +216,7 @@ test('once the lizard lies still a crab comes and grooms it, riding its back, an
 
   expect(run.groomed).toBe(true);
   expect(run.mend!.groomed).toBe(true);
-  expect(run.mend!.rate).toBeCloseTo(0.02, 4);
+  expect(run.mend!.rate).toBeCloseTo(0.04, 4);
   expect(run.mend!.goal).toBe(true);
   expect(off.groomed).toBe(false);
   // It's up on the lizard's back, picking at its skin, still there two seconds on.

@@ -22,9 +22,11 @@ export const VITALS = {
   start: { health: 1, warmth: 0.7, fullness: 0.7, air: 1 },
   /** On the island it wakes up starving, this full, and has to forage on algae first (about 25 s before it's out of food). */
   islandStartFullness: 0.05,
+  /** In the lava tunnels it starts (and comes back after going down) this cold, though still well fed: find a skylight to bask in. */
+  tunnelsStartWarmth: 0.3,
 
-  /** Health mends at up to this rate (a full bar in 100 s), scaled by how fed and how warm it is. */
-  regen: 0.01,
+  /** Health mends at up to this rate (a full bar in 50 s), scaled by how fed and how warm it is. */
+  regen: 0.02,
   /** No mending at or below these; full rate at or above the second. */
   regenFed: [0.15, 0.6],
   regenWarm: [0.3, 0.7],
@@ -32,9 +34,9 @@ export const VITALS = {
   groomRegen: 2,
   /** Below this warmth it's freezing, and loses health, faster the colder (at most `coldHurt` at 0). */
   freezing: 0.15,
-  coldHurt: 0.012,
-  /** Starving (no food left), health goes at this rate. */
-  starveHurt: 0.004,
+  coldHurt: 0.048,
+  /** Starving (no food left), health goes at this rate: empty to dead in about a minute. */
+  starveHurt: 0.016,
   /** Out of air, health goes at this rate: drowned 12 s after the last breath runs out. */
   drownHurt: 0.08,
 
@@ -42,18 +44,19 @@ export const VITALS = {
    * Warmth. In the sun on land: a little while moving, `bask` lying still, times what it lies on
    * and the company it keeps. Out of the sun, or in the water, it cools.
    */
-  sunMoving: 0.003,
-  bask: 0.008,
-  shade: 0.003,
-  swimming: 0.009,
-  diving: 0.014,
+  sunMoving: 0.012,
+  bask: 0.032,
+  shade: 0.006,
+  swimming: 0.036,
+  diving: 0.056,
   /** Below this warmth it slows down, to `slowest` of its speed when stone cold. */
   slowBelow: 0.5,
   slowest: 0.55,
 
-  /** Fullness empties over 8 minutes idling; running and swimming burn it faster. */
+  /** Fullness empties over 8 minutes keeping still; walking burns it 1.5 times as fast, running and swimming twice as fast. */
   hunger: 1 / 480,
-  runHunger: 1.5,
+  walkHunger: 1.5,
+  runHunger: 2,
   swimHunger: 2,
   /** One mouthful of algae (a sixth of a patch). */
   mouthful: 0.06,
@@ -136,7 +139,7 @@ export class Vitals {
     this.warmth = clamp01(warmth + warm * dt);
     this.rate.warmth = (this.warmth - warmth) / dt;
 
-    const burn = V.hunger * (a.swimming ? V.swimHunger : a.running ? V.runHunger : 1);
+    const burn = V.hunger * (a.swimming ? V.swimHunger : a.running ? V.runHunger : a.still ? 1 : V.walkHunger);
     this.fullness = clamp01(this.fullness - burn * dt);
 
     this.air = clamp01(this.air + (c.underwater ? -V.airUse : V.airBack) * dt);

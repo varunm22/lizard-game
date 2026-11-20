@@ -109,9 +109,9 @@ test('under water the lizard cools and runs out of air, then drowns; at the surf
     return { dived, breathed, surfaced, downAt, wounds: g.wounds() };
   });
   expect(r.dived.climate.underwater).toBe(true);
-  // 10 s under: 40% of its air and 14% of its warmth.
+  // 10 s under: 40% of its air and 56% of its warmth.
   expect(r.dived.air).toBeCloseTo(0.6, 2);
-  expect(r.dived.warmth).toBeCloseTo(0.86, 2);
+  expect(r.dived.warmth).toBeCloseTo(0.44, 2);
   expect(r.breathed).toBeGreaterThan(5);
   expect(r.surfaced.air).toBeGreaterThan(0.5);
   // Out of air, 8% of its health a second: down after about 12.5 s.
@@ -172,6 +172,10 @@ test('cold, the lizard walks slower and loses health; fed and warm it mends, hun
   expect(r.fed.health).toBeGreaterThan(0.51);
   expect(r.hungry.health).toBe(0.5);
   expect(r.starving.health).toBeLessThan(0.5);
+  // Fed and warm it mends 2% a second; freezing costs up to 4.8% stone cold (well over 1.6% a second here, warming in the sun from 5%); starving takes 1.6% a second.
+  expect(r.fed.rate.health).toBeCloseTo(0.02, 4);
+  expect(r.freezing.rate.health).toBeLessThan(-0.016);
+  expect(r.starving.rate.health).toBeCloseTo(-0.016, 4);
   expect(errors).toEqual([]);
 });
 
@@ -210,6 +214,38 @@ test('the bars show in the bottom corner', async ({ page }) => {
   expect(down).toBe(5);
   expect(steps).toBeGreaterThan(4.9 * 60);
   expect(steps).toBeLessThan(5.1 * 60);
+  expect(errors).toEqual([]);
+});
+
+test('food burns 1.5 times as fast walking as keeping still, and twice as fast running', async ({ page }) => {
+  const errors = await bootGame(page, { vitals: true });
+  const r = await page.evaluate(() => {
+    const g = window.__game!;
+    // Open ground heading down the clear path to the beach, warm and fed, so nothing else is going on.
+    g.clearPlants(0.7, 1.12, 1.8, 1.12, 0.12);
+    g.teleport(0.7, 1.12, Math.PI / 2);
+    g.advance(10, false);
+    const burn = (input: { move: { x: number; y: number }; run?: boolean } | null) => {
+      g.setVitals({ fullness: 0.9, warmth: 0.9 });
+      if (input) g.setInput(input, 1000);
+      g.advance(30, false);
+      const before = g.vitals().fullness;
+      g.advance(40, false);
+      const burnt = (before - g.vitals().fullness) * 480 * (60 / 40);
+      g.setInput(null);
+      return burnt;
+    };
+    const still = burn(null);
+    const walk = burn({ move: { x: 0, y: 1 } });
+    g.teleport(0.7, 1.12, Math.PI / 2);
+    g.advance(10, false);
+    const run = burn({ move: { x: 0, y: 1 }, run: true });
+    return { still, walk, run };
+  });
+  // (Burnt per second, times the 480 s a full bar lasts keeping still: 1 keeping still.)
+  expect(r.still).toBeCloseTo(1, 1);
+  expect(r.walk).toBeCloseTo(1.5, 1);
+  expect(r.run).toBeCloseTo(2, 1);
   expect(errors).toEqual([]);
 });
 
