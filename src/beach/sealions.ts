@@ -17,6 +17,14 @@ export interface BeachPrey {
   struck(dx: number, dz: number): 'down' | 'hurt' | null;
 }
 
+/** Another iguana the bull may see off his beach: a rival male, by index. */
+export interface Intruder {
+  x: number;
+  z: number;
+  /** Out on open ground, where he'd go for it (not swimming, not routed already). */
+  open: boolean;
+}
+
 export type BullState = 'patrol' | 'rear' | 'charge' | 'back';
 export type PupState = 'rest' | 'come' | 'nudge' | 'back';
 
@@ -26,7 +34,18 @@ export const REAR_TIME = 0.9;
 /** His charge: this fast (m/s) on land, turning at most this fast (rad/s), for at most this long (s). */
 export const CHARGE_SPEED = 0.42;
 const CHARGE_TURN = 1.6;
-export const CHARGE_TIME = 3.5;
+export const CHARGE_TIME = 6;
+/** Once he's charging the lizard he's committed: he runs on this far past his stretch (m), and gives up only on a hit, at `CHARGE_TIME`, or when it gets well away (`GIVE_UP`, m) or into the water. */
+export const OVERRUN = 0.5;
+const GIVE_UP = NOTICE + 0.4;
+/**
+ * He won't charge into his own cows: anything this near a cow (m, past half her length, centre to
+ * centre) is left alone, unless she's barking.
+ */
+export const COW_SHELTER = 0.1;
+/** A pup's nudge wakes its mother: she sits up and barks this long (s), and while she does the bull comes for the lizard wherever it is on his stretch or beside her (within `ALARM_REACH`, m), cows or none. */
+export const ALARM_TIME = 4;
+export const ALARM_REACH = 0.6;
 /** After a charge he won't charge again for this long (s). */
 const COOLDOWN = 4;
 /** Swimming his beat, this fast (m/s). */
@@ -184,8 +203,11 @@ class Pup {
   timer = 0;
   nudgeLeft = 0;
   readonly home: { x: number; z: number; yaw: number };
-  constructor(readonly lion: SeaLion, home: { x: number; z: number; yaw: number }) {
-    this.home = { ...home };
+  /** Its mother, by index into the cows. */
+  readonly mother: number;
+  constructor(readonly lion: SeaLion, home: { x: number; z: number; yaw: number; mother: number }) {
+    this.home = { x: home.x, z: home.z, yaw: home.yaw };
+    this.mother = home.mother;
   }
 }
 
@@ -196,17 +218,28 @@ class Pup {
  * The bull swims to and fro along his beat; a lizard on his stretch of beach (`onBullStretch`)
  * within `NOTICE` gets a warning, rearing up and barking, then a charge up the sand. He turns slowly,
  * so a lizard that dodges aside or gets off the beach is safe; caught, it's thrown aside and hurt.
+ * He won't charge into his own cows, so beside one (`COW_SHELTER`) it's left alone, unless a pup's
+ * nudge has woken her and she's barking for him (`ALARM_TIME`). A rival male iguana out on his beach
+ * is charged before the lizard (`intruders`, `onCharge`): that's how the old male is got off his rock.
  */
 export class SeaLions {
   readonly cows: SeaLion[] = [];
   readonly pups: Pup[] = [];
   readonly bull: SeaLion;
   bullState: BullState = 'patrol';
-  /** Charges that ended without catching the lizard, and that caught it; pup nudges. */
+  /** Charges that ended without catching the lizard, and that caught it; pup nudges; rival males he's charged off his beach. */
   dodged = 0;
   hits = 0;
   nudges = 0;
+  routs = 0;
   prey: BeachPrey | null = null;
+  /** The rival males, for him to see off his beach too (each `Intruder`, by index), and called as he charges one. */
+  intruders: (() => Intruder[]) | null = null;
+  onCharge: ((intruder: number) => void) | null = null;
+  /** What he's rearing at or charging: the lizard, or a rival male by index. */
+  quarry: 'lizard' | number = 'lizard';
+  /** Each cow's bark left (s): woken by her pup's nudge. */
+  readonly alarm: number[] = [];
   /** Tests not about them stop them. */
   paused = false;
   private timer = 0;
@@ -243,6 +276,7 @@ export class SeaLions {
       cow.body.pose();
       cow.syncBody(true);
       this.cows.push(cow);
+      this.alarm.push(0);
     });
     PUPS.forEach((p, i) => {
       const pup = add('Pup', p.x, p.z, p.yaw, 10 + i);
@@ -274,6 +308,8 @@ export class SeaLions {
     this.bull.under = this.bull.swimPitch = this.bull.swimRoll = 0;
     this.timer = 0;
     this.cooldown = 0;
+    this.quarry = 'lizard';
+    this.alarm.fill(0);
     const x = (BULL_BEAT.x0 + BULL_BEAT.x1) / 2;
     this.bull.place(x, shoreZ(x) - BULL_BEAT.off);
     this.bull.yaw = Math.PI / 2;
@@ -297,9 +333,26 @@ export class SeaLions {
     b.begin();
     b.syncBody(true);
     this.bullState = state;
+    this.quarry = 'lizard';
     this.timer = 0;
     this.hit = false;
     this.cooldown = 0;
+  }
+
+  /** Whether (x, z) is beside one of his cows (`COW_SHELTER`), where he won't charge, and she isn't barking. */
+  sheltered(x: number, z: number): boolean {
+    return this.cows.some((c, i) => this.alarm[i] <= 0 && Math.hypot(c.pos.x - x, c.pos.z - z) < 0.5 * c.body.length + COW_SHELTER);
+  }
+
+  /** A cow barking, woken by her pup, near enough (x, z) to bring him over: her index, or -1. */
+  private alarmedNear(x: number, z: number): number {
+    return this.cows.findIndex((c, i) => this.alarm[i] > 0 && Math.hypot(c.pos.x - x, c.pos.z - z) < ALARM_REACH);
+  }
+
+  /** Whether he'd go for something at (x, z): on his stretch and not among his cows, or anywhere near a barking cow. */
+  private wanted(x: number, z: number): boolean {
+    if (this.alarmedNear(x, z) >= 0) return true;
+    return onBullStretch(x, z) && !this.sheltered(x, z);
   }
 
   /** Called off (the lizard went down or finished): the bull goes back to his beat. */
@@ -315,9 +368,25 @@ export class SeaLions {
     const huntable = !!prey && prey.huntable();
     this.stepBull(dt, feet, huntable && !prey!.swimming());
     for (const p of this.pups) this.stepPup(p, dt, feet, huntable);
-    for (const c of this.cows) {
-      // Sitting up, a cow looks about now and then; lying, she dozes.
-      c.body.look = c.body.lift > 0 ? 0.5 * Math.sin(this.time * 0.3 + c.body.length * 40) : 0;
+    this.cows.forEach((c, i) => this.stepCow(c, i, dt));
+  }
+
+  /** A cow lies or sits where she is; woken by her pup's nudge she sits up and barks. */
+  private stepCow(c: SeaLion, i: number, dt: number) {
+    const body = c.body;
+    const rest = COWS[i].lift;
+    const barking = this.alarm[i] > 0;
+    this.alarm[i] = Math.max(0, this.alarm[i] - dt);
+    // Sitting up, a cow looks about now and then; lying, she dozes.
+    body.look = barking ? 0.4 * Math.sin(this.time * 2.3) : body.lift > 0.2 ? 0.5 * Math.sin(this.time * 0.3 + body.length * 40) : 0;
+    const bark = barking ? Math.max(0, Math.sin(this.time * 9)) : 0;
+    body.jaw += (0.45 * bark - body.jaw) * (1 - Math.exp(-14 * dt));
+    body.nod = 0.2 * bark;
+    const lift = barking ? 1 : rest;
+    if (Math.abs(lift - body.lift) > 1e-3 || barking || body.jaw > 1e-3) {
+      body.lift += (lift - body.lift) * (1 - Math.exp(-4 * dt));
+      c.begin();
+      c.syncBody();
     }
   }
 
@@ -325,11 +394,30 @@ export class SeaLions {
     const b = this.bull;
     b.begin();
     this.cooldown -= dt;
-    const dx = feet.x - b.pos.x;
-    const dz = feet.z - b.pos.z;
+    // What he'd go for: a rival male out on his beach first (the bigger, and the one that matters to
+    // him), else the lizard. Rearing or charging, he keeps to the one he picked.
+    const males = this.intruders?.() ?? [];
+    const wantedMale = (m: Intruder | undefined) => !!m && m.open && this.wanted(m.x, m.z);
+    // A male who comes onto his beach while he's after the lizard takes his attention off it.
+    if (this.bullState === 'patrol' || (this.quarry === 'lizard' && this.bullState !== 'back')) {
+      const near = males.findIndex((m) => wantedMale(m) && Math.hypot(m.x - b.pos.x, m.z - b.pos.z) < NOTICE);
+      this.quarry = near >= 0 ? near : 'lizard';
+      if (near >= 0 && this.bullState === 'charge') {
+        this.routs++;
+        this.onCharge?.(near);
+      }
+    }
+    const q = this.quarry === 'lizard' ? null : males[this.quarry];
+    const tx = q ? q.x : feet.x;
+    const tz = q ? q.z : feet.z;
+    const dx = tx - b.pos.x;
+    const dz = tz - b.pos.z;
     const dist = Math.hypot(dx, dz);
     const atLizard = Math.atan2(dx, dz);
-    const stretch = onLand && onBullStretch(feet.x, feet.z);
+    // Once he's charging a male, he keeps after him (fleeing) as long as he's still on his beach.
+    const stretch = q ? this.wanted(q.x, q.z) && (q.open || this.bullState === 'charge') : onLand && this.wanted(feet.x, feet.z);
+    // Brought up the beach by a barking cow, he comes a little past his stretch.
+    const reach = BULL_STRETCH + (this.alarm.some((a) => a > 0) ? ALARM_REACH : 0) + (this.bullState === 'charge' && !q ? OVERRUN : 0);
     const deep = b.depth > 0.4 * b.body.height;
     const body = b.body;
     let lift = deep ? 0 : 0.6;
@@ -351,7 +439,7 @@ export class SeaLions {
         b.head(want, this.dartLeft > 0 ? 4 : 1.8, speed, dt);
         // Swimming low, the head up, looking to the beach now and then.
         body.look = deep ? 0 : 0.4 * Math.sin(this.time * 0.5);
-        if (stretch && dist < NOTICE && this.cooldown <= 0) {
+        if (stretch && (dist < NOTICE || this.alarm.some((t) => t > 0)) && this.cooldown <= 0) {
           this.bullState = 'rear';
           this.timer = 0;
         }
@@ -371,6 +459,10 @@ export class SeaLions {
           this.bullState = 'charge';
           this.timer = 0;
           this.hit = false;
+          if (q) {
+            this.routs++;
+            this.onCharge?.(this.quarry as number);
+          }
         }
         break;
       }
@@ -381,13 +473,13 @@ export class SeaLions {
         b.head(atLizard, CHARGE_TURN, speed, dt);
         // Up the beach no further than his stretch.
         const s = b.pos.z - shoreZ(b.pos.x);
-        if (s > BULL_STRETCH) b.place(b.pos.x, shoreZ(b.pos.x) + BULL_STRETCH);
+        if (s > reach) b.place(b.pos.x, shoreZ(b.pos.x) + reach);
         gait = deep ? 0 : 1;
         lift = 0.8;
         jaw = 0.35 * Math.max(0, Math.sin(this.timer * 7));
         body.look = 0;
         body.nod = 0;
-        if (this.touching(b, HIT_REACH) && this.prey) {
+        if (!q && this.touching(b, HIT_REACH) && this.prey) {
           const fx = Math.sin(b.yaw);
           const fz = Math.cos(b.yaw);
           if (this.prey.struck(fx, fz)) {
@@ -396,7 +488,9 @@ export class SeaLions {
             this.hits++;
           }
           this.endCharge();
-        } else if (!stretch || this.timer >= CHARGE_TIME) this.endCharge();
+        } else if (this.timer >= CHARGE_TIME) this.endCharge();
+        // A male he keeps after only while he's on the beach; the lizard, wherever it goes, unless it gets well away or into the sea.
+        else if (q ? !stretch : !onLand || dist > GIVE_UP) this.endCharge();
         break;
       }
       case 'back': {
@@ -474,8 +568,10 @@ export class SeaLions {
 
   /** The charge is over, caught or not (or the warning, if `warned` and the lizard got off his stretch first). */
   private endCharge(warned = false) {
-    if (this.bullState === 'charge' && !this.hit) this.dodged++;
-    if (warned && this.bullState === 'rear') this.dodged++;
+    const lizard = this.quarry === 'lizard';
+    if (lizard && this.bullState === 'charge' && !this.hit) this.dodged++;
+    if (lizard && warned && this.bullState === 'rear') this.dodged++;
+    this.quarry = 'lizard';
     this.bullState = 'back';
     this.cooldown = COOLDOWN;
   }
@@ -506,6 +602,8 @@ export class SeaLions {
           p.state = 'nudge';
           p.nudgeLeft = NUDGE_TIME;
           this.nudges++;
+          // Her pup's squeal wakes its mother: she sits up and barks for the bull.
+          this.alarm[p.mother] = ALARM_TIME;
           break;
         }
         gait = 1;

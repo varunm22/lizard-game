@@ -7,7 +7,8 @@ import { WATER_Y } from '../world/shore';
 import { terrainHeight } from '../world/terrain';
 import type { Birds } from './birds';
 import { beachLava, DISPLAY_ROCKS, shoreZ, START } from './layout';
-import type { Rivals } from './rivals';
+import type { ObjectiveView } from '../objective';
+import { OLD_ROCK, WARM_ENOUGH, type Rivals } from './rivals';
 import type { BeachPrey, SeaLions } from './sealions';
 
 export type RunState = 'ready' | 'running' | 'caught' | 'home';
@@ -49,7 +50,7 @@ export class BeachRun {
   constructor(
     private player: PlayerController,
     private wounds: Wounds,
-    private vitals: Vitals,
+    readonly vitals: Vitals,
     private sealions: SeaLions,
     private rivals: Rivals,
     birds: Birds,
@@ -67,16 +68,13 @@ export class BeachRun {
       },
     };
     const specs: GoalSpec[] = [
-      { id: 'ashore', label: 'Come ashore on the beach', met: () => this.ashore !== null },
       { id: 'bull', label: "Dodge the bull's charge", met: () => sealions.dodged > 0 },
       { id: 'pup', label: 'Get nudged by a sea lion pup', met: () => sealions.nudges > 0 },
       { id: 'penguin', label: 'Swim with a penguin', met: () => birds.nearPenguin },
       { id: 'cormorant', label: 'Swim beside a flightless cormorant', met: () => birds.nearCormorant },
       { id: 'display', label: 'Out-display a rival male', met: () => rivals.outDisplayed > 0 },
       { id: 'shove', label: 'Win a shoving match', met: () => rivals.shoveWins > 0 },
-      { id: 'claim', label: 'Claim a display rock', met: () => rivals.claims > 0 },
       { id: 'hold', label: 'See off a challenger from your rock', met: () => rivals.defended > 0 },
-      { id: 'chosen', label: 'Be chosen by a female', met: () => rivals.chosen },
     ];
     this.goals = new Goals(specs);
   }
@@ -88,18 +86,36 @@ export class BeachRun {
     return a === 'chased' || b === 'chased' ? 'chased' : a === 'watched' || b === 'watched' ? 'watched' : 'none';
   }
 
+  /** What finishes the stage, and a hint at the next step toward it. */
+  get objective(): ObjectiveView {
+    const text = 'Be chosen by a female';
+    const r = this.rivals;
+    if (this.state === 'home' || r.chosen) return { text, done: true, hint: 'Her eggs will hatch in the dunes.' };
+    if (!this.ashore) return { text, done: false, hint: "Come ashore. The bull won't charge in among his cows, but mind their pups." };
+    const cold = this.vitals.warmth < WARM_ENOUGH;
+    const f = r.suitorFemale;
+    if (r.held === OLD_ROCK) {
+      if (cold) return { text, done: false, hint: 'Too cold to impress her. Warm up in the sun, then come back.' };
+      return { text, done: false, hint: f?.state === 'watch' ? 'She is watching. Display to her (B).' : 'A female is coming over. Display to her (B).' };
+    }
+    const old = r.rivals[OLD_ROCK];
+    if (old.state === 'routed') return { text, done: false, hint: "The old male's rock is free. Stand on it to claim it." };
+    if (old.state === 'chase') return { text, done: false, hint: "Walk, don't run: keep him on your tail, down onto the bull's beach." };
+    if (cold) return { text, done: false, hint: 'Cold, your displays impress nobody. Bask on the black lava first.' };
+    return { text, done: false, hint: "The females watch only the old male's rock. He's too big to shove, but the bull isn't." };
+  }
+
   /** Its input is held: down, or locked head to head in a shoving match. */
   get held() {
     return this.wounds.down || this.rivals.match !== null;
   }
 
-  /** Where the HUD's arrow points: the beach until ashore, then the nearest display rock, or its own. */
+  /** Where the HUD's arrow points: the beach until ashore, then the old male's rock (the bull's beach while he chases). */
   target(out: { x: number; z: number; r: number }) {
     this.player.feetAt(1, this.feet);
     if (!this.ashore) return Object.assign(out, { x: this.feet.x, z: shoreZ(this.feet.x) + 0.4, r: 0.3 });
-    const held = this.rivals.held;
-    let best: (typeof DISPLAY_ROCKS)[number] = DISPLAY_ROCKS[held >= 0 ? held : 0];
-    if (held < 0) for (const d of DISPLAY_ROCKS) if (Math.hypot(d.x - this.feet.x, d.z - this.feet.z) < Math.hypot(best.x - this.feet.x, best.z - this.feet.z)) best = d;
+    if (this.rivals.chasing) return Object.assign(out, { x: this.feet.x, z: shoreZ(this.feet.x) + 0.6, r: 0.5 });
+    const best = DISPLAY_ROCKS[OLD_ROCK];
     return Object.assign(out, { x: best.x, z: best.z, r: best.r });
   }
 
@@ -133,7 +149,9 @@ export class BeachRun {
     if (this.state === 'running') {
       this.time += dt;
       this.player.feetAt(1, this.feet);
-      if (!this.ashore && !this.player.swimming && onSand(this.feet.x, this.feet.z, this.feet.y)) {
+      // Up on the sand, or past the waterline some other way (over the lava shores).
+      const landed = onSand(this.feet.x, this.feet.z, this.feet.y) || (this.player.grounded && this.feet.z > shoreZ(this.feet.x) + 0.3 && this.feet.y > WATER_Y + 0.004);
+      if (!this.ashore && !this.player.swimming && landed) {
         // Put back here, it faces up the beach (south, +z).
         this.ashore = { x: this.feet.x, z: this.feet.z, yaw: 0 };
         this.onAshore?.();

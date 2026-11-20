@@ -4,13 +4,16 @@ import { LEVEL, type Level } from './level';
  * How many side goals each stage has, for the stage picker's bars before a stage has been played.
  * The stage's objective, the one thing that finishes it, isn't one of them (`objective.ts`).
  */
-export const GOAL_COUNT: Record<Level, number> = { island: 5, dunes: 3, lagoon: 4, tunnels: 3, beach: 10 };
+export const GOAL_COUNT: Record<Level, number> = { island: 5, dunes: 3, lagoon: 4, tunnels: 3, beach: 7 };
 
 const key = (level: Level) => `lizard-goals-${level}`;
 const objectiveKey = (level: Level) => `lizard-objective-${level}`;
 
 /** The goal each stage once had for finishing it, before the objective was split out of the goals. */
-const OLD_FINISH_GOAL: Partial<Record<Level, string>> = { dunes: 'shore', lagoon: 'cross', tunnels: 'out' };
+const OLD_FINISH_GOAL: Partial<Record<Level, string>> = { dunes: 'shore', lagoon: 'cross', tunnels: 'out', beach: 'chosen' };
+
+/** Goals a stage has dropped since (part of its objective now), left out if an old visit saved them. */
+const RETIRED_GOALS: Partial<Record<Level, string[]>> = { beach: ['ashore', 'claim'] };
 
 function read(level: Level): string[] {
   try {
@@ -23,8 +26,8 @@ function read(level: Level): string[] {
 
 /** The goals ticked off on `level` so far, kept in the browser across visits. */
 export function goalsDone(level: Level = LEVEL): string[] {
-  const old = OLD_FINISH_GOAL[level];
-  return old ? read(level).filter((id) => id !== old) : read(level);
+  const gone = [OLD_FINISH_GOAL[level], ...(RETIRED_GOALS[level] ?? [])];
+  return read(level).filter((id) => !gone.includes(id));
 }
 
 export function saveGoalsDone(ids: string[], level: Level = LEVEL) {

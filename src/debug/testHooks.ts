@@ -634,16 +634,22 @@ export interface BeachTestHooks
     danger: string;
     held: boolean;
     goals: { id: string; label: string; done: boolean }[];
+    objective: { text: string; hint: string; done: boolean };
   };
   restart(): void;
   /** The bull: state, where he is and faces, his muzzle, whether he's swimming, and counts; the cows and pups. */
   sealions(): {
-    bull: { state: string; x: number; y: number; z: number; yaw: number; nose: { x: number; z: number }; swim: number; dodged: number; hits: number };
-    /** `gaps`: for each solid part of her trunk, rump to head, how far its underside is above the sand (m). */
-    cows: { x: number; z: number; yaw: number; lift: number; gaps: number[] }[];
-    pups: { state: string; x: number; z: number; yaw: number }[];
+    /** `quarry`: what he's rearing at or charging, 'lizard' or a rival male's index; `routs`: rival males he's charged off. */
+    bull: { state: string; x: number; y: number; z: number; yaw: number; nose: { x: number; z: number }; swim: number; dodged: number; hits: number; quarry: 'lizard' | number; routs: number };
+    /** `gaps`: for each solid part of her trunk, rump to head, how far its underside is above the sand (m); `alarm`: her bark left (s). */
+    cows: { x: number; z: number; yaw: number; lift: number; gaps: number[]; alarm: number }[];
+    pups: { state: string; x: number; z: number; yaw: number; mother: number }[];
     nudges: number;
   };
+  /** Whether (x, z) is beside a cow (and she isn't barking), where the bull won't charge. */
+  sheltered(x: number, z: number): boolean;
+  /** The algae patches growing: where, and how far grown (0..1). */
+  algae(): { id: number; x: number; y: number; z: number; grown: number }[];
   /** The bull as drawn: each bone's world position by name. */
   bullBones(): Record<string, { x: number; y: number; z: number }>;
   /** Stand the bull at (x, z) facing `yaw`, on his beat or charging. */
@@ -667,8 +673,10 @@ export interface BeachTestHooks
   };
   /** Display, as pressing B does. */
   display(): void;
-  /** Send rival `i` off to sulk now (its rock vacant), or bring it back to challenge now. */
-  rivalTo(i: number, state: 'retreat' | 'return'): void;
+  /** Send rival `i` off to sulk now (its rock vacant), bring it back to challenge now, or have the bull charge it off (`routed`). */
+  rivalTo(i: number, state: 'retreat' | 'return' | 'routed'): void;
+  /** Stand rival `i` at (x, z), facing `yaw`. */
+  placeRival(i: number, x: number, z: number, yaw: number): void;
   /** The display rocks: middle, top radius and the height of the top (world m). */
   displayRocks(): { x: number; z: number; r: number; top: number }[];
   /** The penguins and cormorants: where each is, swimming or not; whether the lizard has swum with each kind. */

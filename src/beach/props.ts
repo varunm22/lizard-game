@@ -302,7 +302,9 @@ export function beachPlants(open: (x: number, z: number) => boolean): PlantPlace
 
 /**
  * Where the beach's algae grow: the island's sea lettuce and red turf, on the lava where it runs
- * into the water (the west shore, the point and the reef the lizard comes in on).
+ * into the water (the west shore, the point, round the tide pools and the reef the lizard comes in
+ * on). Most in the splash zone just above the water, the way marine iguanas graze the exposed
+ * intertidal rock at low tide, so the lizard can eat standing dry rather than chilling in the water.
  */
 export function beachAlgaeSites(): { first: AlgaePlacement[]; spare: AlgaePlacement[] } {
   const rand = rng(SEED + 13);
@@ -313,24 +315,30 @@ export function beachAlgaeSites(): { first: AlgaePlacement[]; spare: AlgaePlacem
   const onLava = (x: number, z: number) => {
     const y = terrainHeight(x, z);
     const depth = WATER_Y - y;
-    if (depth < 0.003 || depth > 0.08 || beachLava(x, z) < 0.3) return;
+    if (depth < -0.016 || depth > 0.06 || beachLava(x, z) < 0.3) return;
     const position = new THREE.Vector3(x, y - 0.001, z);
-    if (taken.some((p) => p.distanceToSquared(position) < 0.045 * 0.045)) return;
+    if (taken.some((p) => p.distanceToSquared(position) < 0.04 * 0.04)) return;
     taken.push(position);
     const n = new THREE.Vector3(terrainHeight(x - e, z) - terrainHeight(x + e, z), 2 * e, terrainHeight(x, z - e) - terrainHeight(x, z + e)).normalize();
     (rand() < 0.55 ? first : spare).push(algaeSite((r) => (r < 0.55 ? 'red' : 'green'), position, n, rand));
   };
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < 2000; i++) {
     const z = range(-4.8, 1.5);
-    onLava(westX(z) + range(-0.25, 0.05), z);
+    onLava(westX(z) + range(-0.3, 0.12), z);
   }
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < 2000; i++) {
     const z = range(-4.8, 0);
-    onLava(pointX(z) + range(-0.05, 0.25), z);
+    onLava(pointX(z) + range(-0.12, 0.3), z);
   }
-  for (let i = 0; i < 200; i++) {
+  for (const pool of TIDE_POOLS)
+    for (let i = 0; i < 150; i++) {
+      const a = rand() * 2 * Math.PI;
+      const d = pool.r * range(0.4, 1.15);
+      onLava(pool.x + Math.cos(a) * d, pool.z + Math.sin(a) * d);
+    }
+  for (let i = 0; i < 400; i++) {
     const a = rand() * 2 * Math.PI;
-    const d = START.r + range(-0.08, 0.12);
+    const d = START.r + range(-0.12, 0.14);
     onLava(START.x + Math.cos(a) * d, START.z + Math.sin(a) * d);
   }
   return { first, spare };

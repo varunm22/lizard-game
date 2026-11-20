@@ -12,6 +12,7 @@ import type { BeachTestHooks } from './testHooks';
 import type { BeachRun } from '../beach/run';
 import type { SeaLions } from '../beach/sealions';
 import type { Rivals } from '../beach/rivals';
+import type { Algae } from '../world/algae';
 import type { Birds } from '../beach/birds';
 import { depthAt, DISPLAY_ROCKS, onBullStretch, shoreZ, START, SWIM_LOOPS } from '../beach/layout';
 
@@ -26,6 +27,7 @@ interface BeachHookContext {
   run: BeachRun;
   sealions: SeaLions;
   rivals: Rivals;
+  algae: Algae;
   birds: Birds;
   vitals: Vitals;
   wounds: Wounds;
@@ -37,7 +39,7 @@ interface BeachHookContext {
 
 /** The sea lion beach's test hooks (`window.__beach`); the beach's main owns input and view overrides. */
 export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
-  const { world, obstacles, player, states, camera, followCam, fade, run, sealions, rivals, birds, vitals, wounds, setInput, viewFrom } = ctx;
+  const { world, obstacles, player, states, camera, followCam, fade, run, sealions, rivals, birds, vitals, wounds, algae, setInput, viewFrom } = ctx;
   const v = new THREE.Vector3();
   return {
     ready: false,
@@ -93,14 +95,15 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
       danger: run.danger,
       held: run.held,
       goals: run.goals.list.map((g) => ({ ...g })),
+      objective: run.objective,
     }),
     restart: () => run.restart(),
     sealions: () => {
       const b = sealions.bull;
       const nose = b.nose(v);
       return {
-        bull: { state: sealions.bullState, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, nose: { x: nose.x, z: nose.z }, swim: b.body.swim, dodged: sealions.dodged, hits: sealions.hits },
-        cows: sealions.cows.map((c) => ({
+        bull: { state: sealions.bullState, x: b.pos.x, y: b.pos.y, z: b.pos.z, yaw: b.yaw, nose: { x: nose.x, z: nose.z }, swim: b.body.swim, dodged: sealions.dodged, hits: sealions.hits, quarry: sealions.quarry, routs: sealions.routs },
+        cows: sealions.cows.map((c, i) => ({
           x: c.pos.x,
           z: c.pos.z,
           yaw: c.yaw,
@@ -117,8 +120,9 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
               return t.y - Math.abs(axis.y) - k.radius() - terrainHeight(x, z);
             })
             .reverse(),
+          alarm: sealions.alarm[i],
         })),
-        pups: sealions.pups.map((p) => ({ state: p.state, x: p.lion.pos.x, z: p.lion.pos.z, yaw: p.lion.yaw })),
+        pups: sealions.pups.map((p) => ({ state: p.state, x: p.lion.pos.x, z: p.lion.pos.z, yaw: p.lion.yaw, mother: p.mother })),
         nudges: sealions.nudges,
       };
     },
@@ -161,7 +165,14 @@ export function createBeachHooks(ctx: BeachHookContext): BeachTestHooks {
       playerDisplay: ctx.playerDisplay(),
     }),
     display: () => ctx.display(),
-    rivalTo: (i, state) => rivals.send(i, state),
+    rivalTo: (i, state) => (state === 'routed' ? rivals.rout(i) : rivals.send(i, state)),
+    placeRival: (i, x, z, yaw) => {
+      const n = rivals.rivals[i].npc;
+      n.body.setFeet(v.set(x, terrainHeight(x, z) + 0.005, z), yaw);
+      n.body.feetAt(1, n.feet);
+    },
+    sheltered: (x, z) => sealions.sheltered(x, z),
+    algae: () => algae.all().map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, grown: algae.grown(p.id) })),
     displayRocks: () => DISPLAY_ROCKS.map((d) => ({ x: d.x, z: d.z, r: d.r, top: terrainHeight(d.x, d.z) + d.top })),
     birds: () => [
       ...birds.penguins.map((b) => ({ kind: 'penguin', x: b.pos.x, y: b.pos.y, z: b.pos.z, swim: b.swim })),

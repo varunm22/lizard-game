@@ -105,7 +105,7 @@ test("ticked goals are kept across visits, and the stage picker shows each stage
   await expect(bar('dunes')).toHaveAttribute('aria-label', '1 of 3 goals done');
   await expect(bar('lagoon')).toHaveAttribute('aria-label', '0 of 4 goals done');
   await expect(bar('tunnels')).toHaveAttribute('aria-label', '0 of 3 goals done');
-  await expect(bar('beach')).toHaveAttribute('aria-label', '0 of 10 goals done');
+  await expect(bar('beach')).toHaveAttribute('aria-label', '0 of 7 goals done');
   const cleared = (stage: string) => page.locator(`.stage-tile[data-stage="${stage}"] .stage-cleared`);
   await expect(cleared('dunes')).toBeVisible();
   for (const stage of ['island', 'lagoon', 'tunnels', 'beach']) await expect(cleared(stage)).toBeHidden();
