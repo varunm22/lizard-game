@@ -44,7 +44,7 @@ test('walking into a fig noses it along the ground ahead of the snout', async ({
   expect(errors).toEqual([]);
 });
 
-test('the tortoise goes for a fig over a nearer flower, and only eats grass when hungry', async ({ page }) => {
+test('the tortoise notices a fig only fairly close, goes for it over a nearer flower, loses it pushed out of range, and only eats grass when hungry', async ({ page }) => {
   const errors = await bootGame(page);
   const fig = await page.evaluate(() => {
     const g = window.__game!;
@@ -53,16 +53,36 @@ test('the tortoise goes for a fig over a nearer flower, and only eats grass when
     g.clearPlants(x - 0.9, z, x + 0.9, z, 0.6);
     g.tortoisePlace(x, z, Math.PI / 2, 20);
     g.sprout('lecocarpus', x + 0.2, z + 0.25, true);
-    g.figPlace(0, x + 0.45, z - 0.6);
+    // Too far off at first (0.7 m) for it to notice the fig.
+    g.figPlace(0, x + 0.42, z - 0.56);
+    g.advance(20, false);
+    const far = g.tortoise().heading?.kind;
+    // Closer (0.45 m), it does, over the nearer flower.
+    g.tortoisePlace(x, z, Math.PI / 2, 20);
+    g.figPlace(0, x + 0.27, z - 0.36);
     g.advance(20, false);
     const first = g.tortoise().heading;
-    const d0 = Math.hypot(g.tortoise().x - (x + 0.45), g.tortoise().z - (z - 0.6));
-    g.advance(8 * 60, false);
+    const d0 = Math.hypot(g.tortoise().x - (x + 0.27), g.tortoise().z - (z - 0.36));
+    g.advance(3 * 60, false);
     const t = g.tortoise();
-    return { first, d0, d1: Math.hypot(t.x - (x + 0.45), t.z - (z - 0.6)) };
+    const d1 = Math.hypot(t.x - (x + 0.27), t.z - (z - 0.36));
+    // Pushed out to 0.7 m, still within its attention; out past 0.75 m, it loses interest.
+    const out = (r: number) => {
+      const c = g.tortoise();
+      const a = Math.atan2(g.figs()[0].z - c.z, g.figs()[0].x - c.x);
+      g.figPlace(0, c.x + r * Math.cos(a), c.z + r * Math.sin(a));
+      g.advance(20, false);
+      return g.tortoise().heading?.kind;
+    };
+    const held = out(0.7);
+    const lost = out(0.9);
+    return { far, first, d0, d1, held, lost };
   });
+  expect(fig.far).not.toBe('fig');
   expect(fig.first?.kind).toBe('fig');
-  expect(fig.d1).toBeLessThan(fig.d0 - 0.12);
+  expect(fig.d1).toBeLessThan(fig.d0 - 0.06);
+  expect(fig.held).toBe('fig');
+  expect(fig.lost).not.toBe('fig');
 
   const grass = await page.evaluate(() => {
     const g = window.__game!;
