@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toonGradient } from '../render/toon';
-import { rng } from './noise';
+import { rng, smoothstep } from './noise';
 import { shoreDistance } from './layout';
 import { algaeShare, rockyShore, WATER_Y } from './shore';
 import { terrainHeight } from './terrain';
@@ -39,6 +39,13 @@ const PER_ROCK_DENSITY = 1600;
 /** Patches on the open lava sea floor and the ledge above it. */
 const FLOOR_PATCHES = 140;
 const SEED = 53;
+/**
+ * The splash zone and the first few centimetres down, where the lizard can graze standing on the
+ * ledge, keep only this share of their patches (and of their spare sites, so they grow back as
+ * slowly): it has to swim out and dive for a proper meal. Full share from `SHALLOW[1]` down (m below the surface).
+ */
+const SHALLOW_KEEP = 0.22;
+const SHALLOW = [0.03, 0.09] as const;
 
 /** Which kind grows at a depth (m below the surface): mostly red turf in the shallows, mostly sea lettuce deeper. */
 const kindAt = (depth: number, r: number): AlgaeKind => (r < (depth < 0.1 ? 0.7 : 0.3) ? 'red' : 'green');
@@ -363,7 +370,9 @@ function place(rocks: readonly Obstacle[], seed: number, perRockMax: number, flo
   }
   // Below the shallows they thin out to none. Sites are dropped after drawing them, by a hash of the
   // spot rather than a random number, so every patch that's left is where it always was.
-  return out.filter((p) => spotHash(p.position.x, p.position.z) < algaeShare(WATER_Y - p.position.y));
+  // So do the shallows, to a sparse fringe (`SHALLOW_KEEP`).
+  const share = (depth: number) => algaeShare(depth) * (SHALLOW_KEEP + (1 - SHALLOW_KEEP) * smoothstep(SHALLOW[0], SHALLOW[1], depth));
+  return out.filter((p) => spotHash(p.position.x, p.position.z) < share(WATER_Y - p.position.y));
 }
 
 /** A fixed pseudo-random number in [0, 1) for a spot. */

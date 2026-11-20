@@ -53,7 +53,7 @@ const TEXT: HudText = {
     '<h2>Sea lion beach</h2>' +
     "Grown now, and in your <b>breeding colours</b>: win the best <b>display rock</b> on the lava behind the beach, and a female's eye." +
     '<ul><li>The <b>bull</b> patrols the waterline. On his stretch of sand he barks, then charges. He turns slowly, and he won\'t charge in among his <b>cows</b>, unless a pup squeals and its mother barks for him.</li>' +
-    '<li>You\'re <b>cold</b> from the sea: below half warmth your head-bobs (<b>B</b>) impress nobody and your shove is weak. Bask on the black lava. You\'re <b>hungry</b> too: bite (<b>F</b>) the algae on the lava at the waterline.</li>' +
+    '<li>You\'re <b>cold</b> from the sea: below half warmth your head-bobs (<b>B</b>) impress nobody and your shove is weak. Bask on the black lava. You\'re <b>hungry</b> too: bite (<b>F</b>) algae. A little grows on the lava at the waterline, but most is on the drowned rocks offshore: stop swimming to sink down to it, <b>Space</b> to come up.</li>' +
     '<li>Rival males hold the rocks. Answer each head-bob with your own: the younger ones back down. Or <b>shove</b>: hold <b>W</b>, butting (<b>Space</b>) as he eases off.</li>' +
     "<li>The females only watch the <b>old male's rock</b>. He's too big to shove, and he chases intruders off. The bull isn't so patient.</li></ul>" +
     '<span class="go">Move to start.</span>',

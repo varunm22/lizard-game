@@ -10,7 +10,7 @@ import type { Placement as PlantPlacement } from '../world/plants';
 import type { Kit } from '../lagoon/props';
 import {
   BEACH_EDGE, beachLava, BULL_BEAT, COWS, CORMORANT_ROCKS, DISPLAY_ROCKS, FEMALE_SPOTS, fieldZ, PENGUIN_ROCKS, pointX, PUPS, shoreZ, START, SULK_SPOTS,
-  TIDE_POOLS, westX,
+  REEFS, TIDE_POOLS, westX,
 } from './layout';
 
 /**
@@ -340,6 +340,38 @@ export function beachAlgaeSites(): { first: AlgaePlacement[]; spare: AlgaePlacem
     const a = rand() * 2 * Math.PI;
     const d = START.r + range(-0.12, 0.14);
     onLava(START.x + Math.cos(a) * d, START.z + Math.sin(a) * d);
+  }
+
+  // Under the water, out of reach from the rock: the drowned reef knobs' tops and the shore ledges'
+  // sides as they drop off. Most of the beach's algae, so a proper meal means diving for it. Their
+  // own random numbers, so the sites above are where they always were.
+  const deep = rng(SEED + 14);
+  const under = (x: number, z: number) => {
+    const y = terrainHeight(x, z);
+    const depth = WATER_Y - y;
+    if (depth < 0.065 || depth > 0.2 || beachLava(x, z) < 0.5) return;
+    const position = new THREE.Vector3(x, y - 0.001, z);
+    if (taken.some((p) => p.distanceToSquared(position) < 0.035 * 0.035)) return;
+    taken.push(position);
+    const n = new THREE.Vector3(terrainHeight(x - e, z) - terrainHeight(x + e, z), 2 * e, terrainHeight(x, z - e) - terrainHeight(x, z + e)).normalize();
+    if (n.y < 0.5) return;
+    // Sea lettuce mostly, deeper down; some red turf.
+    (deep() < 0.6 ? first : spare).push(algaeSite((r) => (r < 0.3 ? 'red' : 'green'), position, n, deep));
+  };
+  const span = (a: number, b: number) => a + (b - a) * deep();
+  for (const reef of REEFS.slice(1))
+    for (let i = 0; i < 120; i++) {
+      const a = deep() * 2 * Math.PI;
+      const d = (reef.r + 0.05) * Math.sqrt(deep());
+      under(reef.x + Math.cos(a) * d, reef.z + Math.sin(a) * d);
+    }
+  for (let i = 0; i < 600; i++) {
+    const z = span(-5.5, shoreZ(westX(-3)) - 0.9);
+    under(westX(z) + span(0, 0.6), z);
+  }
+  for (let i = 0; i < 600; i++) {
+    const z = span(-5.5, -3.2);
+    under(pointX(z) + span(-0.6, 0), z);
   }
   return { first, spare };
 
