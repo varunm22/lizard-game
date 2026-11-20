@@ -324,21 +324,25 @@ test('moving about beside its kill drives the hawk off; it circles, comes back o
     }
     const kill = g.hawk().quarry!;
     const crab = () => g.crabs()[kill.index];
-    // Lying still right beside it doesn't bother it.
-    // Beside it on the same rock (whichever side has footing level with it).
+    // Lying still right beside it doesn't bother it; walking about beside it does. Beside it on the
+    // same rock: whichever side has footing level with it and room to walk (wedged between two
+    // rocks, the lizard can't move about, and the hawk rightly eats on).
+    let stillBeside = { feeding: false, driven: -1 };
+    let offAt = -1;
     for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2, Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4]) {
+      g.setInput(null);
       g.teleport(crab().x + Math.sin(a) * 0.12, crab().z + Math.cos(a) * 0.12, a + Math.PI / 2, crab().y + 0.03);
       g.advance(20, false);
-      if (Math.abs(g.player().y - crab().y) < 0.04) break;
-    }
-    g.advance(70, false);
-    const stillBeside = { feeding: g.hawk().feeding, driven: g.hawk().drivenOff };
-    // Walking about beside it does.
-    g.setInput({ move: { x: 0.6, y: 1 }, run: false, jump: false });
-    let offAt = -1;
-    for (let i = 0; i < 60 && offAt < 0; i++) {
-      g.advance(1, false);
-      if (!g.hawk().feeding) offAt = i;
+      if (Math.abs(g.player().y - crab().y) >= 0.04) continue;
+      g.advance(70, false);
+      stillBeside = { feeding: g.hawk().feeding, driven: g.hawk().drivenOff };
+      const from = g.player();
+      g.setInput({ move: { x: 0.6, y: 1 }, run: false, jump: false });
+      for (let i = 0; i < 60 && offAt < 0; i++) {
+        g.advance(1, false);
+        if (!g.hawk().feeding) offAt = i;
+      }
+      if (offAt >= 0 || Math.hypot(g.player().x - from.x, g.player().z - from.z) > 0.02) break;
     }
     for (let i = 0; i < 60; i++) g.advance(1, false);
     // While the lizard keeps moving about, it stays up, after nothing else.

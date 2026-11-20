@@ -105,11 +105,21 @@ export const TIDE_POOLS = [
   { x: -4.7, z: -1.4, r: 0.2, d: 0.05 },
 ] as const;
 
-/** Reef lava in the sea: the start reef, just awash, and a few knobs further out under the water. */
-const REEFS = [
+/**
+ * Reef lava in the sea: the start reef, just awash, and drowned knobs further out, their tops 7 to
+ * 13 cm under the water, where most of the algae grow (`beachAlgaeSites`): the lizard dives to eat.
+ * The knobs keep clear of the bull's beat and the penguins' loops.
+ */
+export const REEFS = [
   { x: START.x, z: START.z, r: 0.4, top: W + 0.018 },
   { x: -0.9, z: -5.1, r: 0.35, top: W - 0.09 },
   { x: 0.9, z: -3.6, r: 0.25, top: W - 0.11 },
+  { x: -1.8, z: -5.3, r: 0.3, top: W - 0.1 },
+  { x: -3.6, z: -5.05, r: 0.32, top: W - 0.08 },
+  { x: -3.55, z: -4.35, r: 0.18, top: W - 0.12 },
+  { x: 0.35, z: -5.3, r: 0.3, top: W - 0.12 },
+  { x: -0.25, z: -4.65, r: 0.2, top: W - 0.13 },
+  { x: 1.6, z: -5.3, r: 0.26, top: W - 0.09 },
 ] as const;
 
 /** How far below the surface the open sea floor lies (m). */

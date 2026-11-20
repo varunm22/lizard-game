@@ -97,7 +97,7 @@ female; its hint follows the steps. The bars push the order, as the tunnels' col
 lizard starts on the reef at the usual 70% warmth, but the swim in (water chills 3.6%/s) lands it at
 about a quarter to a third, too cold to court, so it must bask on the black lava first. It starts at
 35% fullness (`VITALS.beachStartFullness`, and again after going down): a breeding male has fasted
-holding his rock, so it eats the algae on the lava at the waterline (about 100 patches, most in the splash zone and round the tide pools and the reef, so it can graze without standing in the chilling water; hook `algae()`). Up the beach, the cows are
+holding his rock, so it has to eat. A little algae grows on the lava at the waterline (about 100 patches in the splash zone, round the tide pools and the start reef), but most (about 190 more) grow on drowned lava knobs offshore (`REEFS`, tops 7 to 13 cm down, clear of the bull's beat and the penguins' loops) and down the shore ledges, 6.5 to 20 cm under: a proper meal means diving for it, which chills it (hook `algae()`). Up the beach, the cows are
 cover from the bull, their pups the risk. On the lek, only the old male's rock brings a female, and
 he can't be out-displayed or shoved: the lizard lets him chase it down onto the bull's stretch, and
 the bull charges him off. His rock then claimed and the lizard warm, the female comes over.
