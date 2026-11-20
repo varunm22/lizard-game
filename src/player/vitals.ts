@@ -21,8 +21,8 @@ export const VITALS = {
   /** On the island it wakes up starving, this full, and has to forage on algae first (about 25 s before it's out of food). */
   islandStartFullness: 0.05,
 
-  /** Health mends at up to this rate (a full bar in 100 s), scaled by how fed and how warm it is. */
-  regen: 0.01,
+  /** Health mends at up to this rate (a full bar in 50 s), scaled by how fed and how warm it is. */
+  regen: 0.02,
   /** No mending at or below these; full rate at or above the second. */
   regenFed: [0.15, 0.6],
   regenWarm: [0.3, 0.7],
@@ -30,7 +30,7 @@ export const VITALS = {
   groomRegen: 2,
   /** Below this warmth it's freezing, and loses health, faster the colder (at most `coldHurt` at 0). */
   freezing: 0.15,
-  coldHurt: 0.012,
+  coldHurt: 0.024,
   /** Starving (no food left), health goes at this rate: empty to dead in a little over 2 minutes. */
   starveHurt: 0.008,
   /** Out of air, health goes at this rate: drowned 12 s after the last breath runs out. */
