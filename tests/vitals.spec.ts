@@ -172,6 +172,8 @@ test('cold, the lizard walks slower and loses health; fed and warm it mends, hun
   expect(r.fed.health).toBeGreaterThan(0.51);
   expect(r.hungry.health).toBe(0.5);
   expect(r.starving.health).toBeLessThan(0.5);
+  // Starving takes 0.8% health a second.
+  expect(r.starving.rate.health).toBeCloseTo(-0.008, 4);
   expect(errors).toEqual([]);
 });
 

@@ -31,8 +31,8 @@ export const VITALS = {
   /** Below this warmth it's freezing, and loses health, faster the colder (at most `coldHurt` at 0). */
   freezing: 0.15,
   coldHurt: 0.012,
-  /** Starving (no food left), health goes at this rate. */
-  starveHurt: 0.004,
+  /** Starving (no food left), health goes at this rate: empty to dead in a little over 2 minutes. */
+  starveHurt: 0.008,
   /** Out of air, health goes at this rate: drowned 12 s after the last breath runs out. */
   drownHurt: 0.08,
 
