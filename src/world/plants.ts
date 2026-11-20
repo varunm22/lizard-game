@@ -5,7 +5,7 @@ import { toonGradient } from '../render/toon';
 import { bendPlants, plantUniforms } from '../render/plantBend';
 import { lineWeight } from '../render/cel';
 import { stepPlant, type PlantBody, type Pusher } from './plantSpring';
-import { PLANT_STEM_GROUP, terrainHeight, TERRAIN_SIZE } from './terrain';
+import { PLANT_STEM_GROUP, plantingHeight, terrainHeight, TERRAIN_SIZE } from './terrain';
 import { rng, smoothstep } from './noise';
 import { forestCover, lavaCover, sandCover } from './layout';
 import { WATER_Y, waterDepth } from './shore';
@@ -531,9 +531,9 @@ function scatter(open: (x: number, z: number) => boolean, clear: { x: number; z:
   const ok = (kind: PlantKind, x: number, z: number) => {
     if (Math.abs(x) > edge || Math.abs(z) > edge) return false;
     if (Math.hypot(x - clear.x, z - clear.z) < 0.1) return false;
-    if (waterDepth({ x, y: terrainHeight(x, z) + 0.004, z }) > 0) return false;
+    if (waterDepth({ x, y: plantingHeight(x, z) + 0.004, z }) > 0) return false;
     // Open sand and lava run down to the sea: keep off the wet strip at its edge.
-    if (terrainHeight(x, z) < WATER_Y + 0.01) return false;
+    if (plantingHeight(x, z) < WATER_Y + 0.01) return false;
     if (lavaCover(x, z) > 0.4 && kind !== 'tiquilia') return false;
     if (sandCover(x, z) > 0.75 && kind !== 'ipomoea') return false;
     return open(x, z);

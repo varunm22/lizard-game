@@ -12,7 +12,9 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
     const g = window.__game!;
     const obstacles = g.obstacles();
     // A log's footprint runs half its length (up to 0.7 m) either side of its centre, not just its radius.
-    const clear = (x: number, z: number) => obstacles.every((o) => Math.hypot(o.x - x, o.z - z) > o.radius + (o.kind === 'log' ? 0.75 : 0.3));
+    // The lava crack's walls are sheer, so the heightfield's cells can't follow them: keep off its rim.
+    const clear = (x: number, z: number) =>
+      obstacles.every((o) => Math.hypot(o.x - x, o.z - z) > o.radius + (o.kind === 'log' ? 0.75 : 0.3)) && Math.abs(x - g.crack(z).x) > g.crack(z).half + 0.05;
     const out: { x: number; z: number; mesh: number; physics: number | null }[] = [];
     for (let x = -3.5; x <= 3.5; x += 0.29) {
       for (let z = 3.5; z >= -3.5; z -= 0.27) if (clear(x, z)) out.push({ x, z, mesh: g.terrainHeight(x, z), physics: g.groundAt(x, z) });
@@ -38,9 +40,11 @@ test('boots: heightfield matches the drawn ground, obstacles sit on it, lizard l
   const count = (kind: string) => obstacles.filter((o) => o.kind === kind).length;
   expect(count('tree')).toBeGreaterThan(30);
   expect(count('rock')).toBeGreaterThan(100);
-  expect(count('log')).toBeGreaterThan(4);
-  // (Not the rock piles' slabs: they are stacked and overlap, so the surface over one is often another's.)
-  for (const o of obstacles.filter((o) => !o.name.startsWith('pile-'))) {
+  // (Fewer since the way to the lava crack was cleared: those in the crack and on the trail to it went.)
+  expect(count('log')).toBeGreaterThan(2);
+  // (Not the rock piles' slabs: they are stacked and overlap, so the surface over one is often
+  // another's; nor the dead tree, which leans out over the crack.)
+  for (const o of obstacles.filter((o) => !o.name.startsWith('pile-') && o.name !== 'snag')) {
     expect(o.top - o.ground, o.name).toBeGreaterThan(o.height * 0.6);
     expect(o.top - o.ground, o.name).toBeLessThan(o.height + 0.01);
   }
