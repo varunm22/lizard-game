@@ -109,9 +109,9 @@ test('under water the lizard cools and runs out of air, then drowns; at the surf
     return { dived, breathed, surfaced, downAt, wounds: g.wounds() };
   });
   expect(r.dived.climate.underwater).toBe(true);
-  // 10 s under: 40% of its air and 28% of its warmth.
+  // 10 s under: 40% of its air and 56% of its warmth.
   expect(r.dived.air).toBeCloseTo(0.6, 2);
-  expect(r.dived.warmth).toBeCloseTo(0.72, 2);
+  expect(r.dived.warmth).toBeCloseTo(0.44, 2);
   expect(r.breathed).toBeGreaterThan(5);
   expect(r.surfaced.air).toBeGreaterThan(0.5);
   // Out of air, 8% of its health a second: down after about 12.5 s.

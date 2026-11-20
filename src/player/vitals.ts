@@ -45,8 +45,8 @@ export const VITALS = {
   sunMoving: 0.012,
   bask: 0.032,
   shade: 0.006,
-  swimming: 0.018,
-  diving: 0.028,
+  swimming: 0.036,
+  diving: 0.056,
   /** Below this warmth it slows down, to `slowest` of its speed when stone cold. */
   slowBelow: 0.5,
   slowest: 0.55,
